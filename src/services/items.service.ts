@@ -1,6 +1,7 @@
 import { PrismaClient, Item } from '@prisma/client';
 import { CreateItemInput, UpdateItemInput, QueryParams } from '../utils/validator';
 import { logger } from '../utils/logger';
+import { generateSkuWithTimestamp } from '../utils/skuGenerator';
 
 export class ItemsService {
   constructor(private prisma: PrismaClient) {}
@@ -18,7 +19,12 @@ export class ItemsService {
           { sku: { contains: search, mode: 'insensitive' } },
           { description: { contains: search, mode: 'insensitive' } },
           { brand: { contains: search, mode: 'insensitive' } },
-          { model: { contains: search, mode: 'insensitive' } }
+          { model: { contains: search, mode: 'insensitive' } },
+          { modelNumber: { contains: search, mode: 'insensitive' } },
+          { storage: { contains: search, mode: 'insensitive' } },
+          { color: { contains: search, mode: 'insensitive' } },
+          { carrier: { contains: search, mode: 'insensitive' } },
+          { carrierId: { contains: search, mode: 'insensitive' } }
         ];
       }
       if (brand) {
@@ -71,14 +77,26 @@ export class ItemsService {
 
   async createItem(data: CreateItemInput): Promise<Item> {
     try {
+      // Generate SKU if not provided
+      let skuData: { sku: string; skuGeneratedAt: Date } | undefined;
+      if (!data.sku) {
+        skuData = generateSkuWithTimestamp(data);
+        logger.info('SKU auto-generated', { sku: skuData.sku, itemData: data });
+      }
+
       const item = await this.prisma.item.create({
         data: {
-          sku: data.sku,
+          sku: data.sku ?? skuData?.sku ?? null,
           name: data.name,
           description: data.description ?? null,
           upc: data.upc ?? null,
           brand: data.brand ?? null,
           model: data.model ?? null,
+          modelNumber: data.modelNumber ?? null,
+          storage: data.storage ?? null,
+          color: data.color ?? null,
+          carrier: data.carrier ?? null,
+          carrierId: data.carrierId ?? null,
           condition: data.condition ?? 'used',
           cost: data.cost ?? null,
           price: data.price ?? null,
@@ -88,7 +106,8 @@ export class ItemsService {
           type: data.type,
           imei: data.imei ?? null,
           serialNumber: data.serialNumber ?? null,
-          isActive: data.isActive ?? true
+          isActive: data.isActive ?? true,
+          skuGeneratedAt: skuData?.skuGeneratedAt ?? null
         }
       });
 
@@ -117,6 +136,11 @@ export class ItemsService {
       if (data.upc !== undefined) updateData.upc = data.upc ?? null;
       if (data.brand !== undefined) updateData.brand = data.brand ?? null;
       if (data.model !== undefined) updateData.model = data.model ?? null;
+      if (data.modelNumber !== undefined) updateData.modelNumber = data.modelNumber ?? null;
+      if (data.storage !== undefined) updateData.storage = data.storage ?? null;
+      if (data.color !== undefined) updateData.color = data.color ?? null;
+      if (data.carrier !== undefined) updateData.carrier = data.carrier ?? null;
+      if (data.carrierId !== undefined) updateData.carrierId = data.carrierId ?? null;
       if (data.condition !== undefined) updateData.condition = data.condition ?? null;
       if (data.cost !== undefined) updateData.cost = data.cost ?? null;
       if (data.price !== undefined) updateData.price = data.price ?? null;

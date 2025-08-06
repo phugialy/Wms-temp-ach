@@ -47,30 +47,36 @@ enum OutboundStatus {
 }
 
 model Item {
-  id          Int        @id @default(autoincrement())
-  sku         String     // No longer unique - multiple units can share same SKU
-  name        String
-  description String?
-  upc         String?
-  brand       String?
-  model       String?
-  condition   String     @default("used")
-  cost        Float?
-  price       Float?
-  weightOz    Int?
-  dimensions  String?
-  imageUrl    String?
-  type        String     // Required field to categorize items (e.g. phone, tablet, watch, laptop)
-  imei        String?    @unique // Optional unique IMEI for mobile devices
-  serialNumber String?   @unique // Optional unique serial number for other devices
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  inventory   Inventory[] @relation("ItemInventory")
-  inboundLogs InboundLog[] @relation("ItemInboundLogs")
-  outboundLogs OutboundLog[] @relation("ItemOutboundLogs")
+  id            Int        @id @default(autoincrement())
+  sku           String?    // Optional SKU; can be generated
+  name          String
+  description   String?
+  upc           String?
+  brand         String?
+  model         String?
+  modelNumber   String?    // NEW - e.g., "GVU6C"
+  storage       String?    // NEW - e.g., "128GB"
+  color         String?    // NEW - e.g., "Obsidian"
+  carrier       String?    // NEW - e.g., "Unlocked"
+  carrierId     String?    // NEW - for internal carrier identification
+  condition     String     @default("used")
+  cost          Float?
+  price         Float?
+  weightOz      Int?
+  dimensions    String?
+  imageUrl      String?
+  type          String     // Required field to categorize items (e.g. phone, tablet, watch, laptop)
+  imei          String?    @unique // Optional unique IMEI for mobile devices
+  serialNumber  String?    @unique // Optional unique serial number for other devices
+  isActive      Boolean    @default(true)
+  skuGeneratedAt DateTime? // NEW - track when SKU was generated
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  inventory     Inventory[] @relation("ItemInventory")
+  inboundLogs   InboundLog[] @relation("ItemInboundLogs")
+  outboundLogs  OutboundLog[] @relation("ItemOutboundLogs")
   processingQueue ProcessingQueue[] @relation("ItemProcessingQueue")
-  qcApprovals QCApproval[] @relation("ItemQCApproval")
+  qcApprovals   QCApproval[] @relation("ItemQCApproval")
   outboundQueue OutboundQueue[] @relation("ItemOutboundQueue")
 }
 

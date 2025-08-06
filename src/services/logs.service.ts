@@ -56,7 +56,7 @@ export class LogsService {
         await tx.inventory.create({
           data: {
             itemId: data.itemId,
-            sku: item.sku,
+            sku: item.sku || 'UNKNOWN', // Provide fallback for optional SKU
             quantity: data.quantity,
             location: data.location
           }
