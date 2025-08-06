@@ -6,7 +6,7 @@ async function main() {
   console.log('🌱 Starting database seeding...');
 
   // Create sample items
-  const items = await Promise.all([
+  await Promise.all([
     prisma.item.upsert({
       where: { sku: 'ITEM-001' },
       update: {},
@@ -102,7 +102,7 @@ async function main() {
   console.log('✅ Items created');
 
   // Create sample inventory records
-  const inventory = await Promise.all([
+  await Promise.all([
     prisma.inventory.upsert({
       where: { 
         sku_location: {
