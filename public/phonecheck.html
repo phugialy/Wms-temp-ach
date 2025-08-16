@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phonecheck Device Lookup - WMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Toast Component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 5000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const getToastStyles = () => {
+                switch (type) {
+                    case 'success': return 'bg-green-500 text-white';
+                    case 'error': return 'bg-red-500 text-white';
+                    case 'pending': return 'bg-yellow-500 text-white';
+                    case 'warning': return 'bg-orange-500 text-white';
+                    default: return 'bg-blue-500 text-white';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'success': return '✓';
+                    case 'error': return '✕';
+                    case 'pending': return '⏳';
+                    case 'warning': return '⚠';
+                    default: return 'ℹ';
+                }
+            };
+
+            return (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${getToastStyles()} min-w-80`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-2 font-bold">{getIcon()}</span>
+                            <span>{message}</span>
+                        </div>
+                        <button onClick={onClose} className="ml-4 text-white hover:text-gray-200 font-bold">×</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // PhonecheckLookup Component
+        const PhonecheckLookup = ({ isOpen, onClose, onDataReceived, imei }) => {
+            const [deviceData, setDeviceData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [lastRawData, setLastRawData] = useState(null);
+
+            const PHONECHECK_CONFIG = {
+                username: 'dncltechzoneinc',
+                password: '@Ustvmos817',
+                baseUrl: 'https://api.phonecheck.com'
+            };
+
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const validateIMEI = (imei) => {
+                if (!imei) return false;
+                const cleanIMEI = imei.replace(/\D/g, '');
+                return cleanIMEI.length === 15;
+            };
+
+            const formatDate = (dateString) => {
+                if (!dateString) return 'N/A';
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            };
+
+            const abstractData = (rawData) => {
+                // Always use first object in array
+                const raw = Array.isArray(rawData) ? rawData[0] : rawData;
+
+                if (!raw) {
+                    return null;
+                }
+
+                // Format date helper
+                function formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    const d = new Date(dateStr);
+                    if (isNaN(d)) return dateStr;
+                    return d.toISOString().replace('T', ' ').substring(0, 16);
+                }
+
+                return {
+                    // Basic Device Info
+                    deviceName: ((raw.Model || '') + (raw.Memory ? ' ' + raw.Memory : '')).toUpperCase(),
+                    brand: 'N/A', // Not directly available in this API
+                    model: raw["Model#"] || 'N/A',
+                    modelNumber: raw["Model#"] || 'N/A',
+                    storage: raw.Memory || 'N/A',
+                    color: raw.Color || 'N/A',
+                    carrier: raw.Carrier || 'N/A',
+                    carrierId: 'N/A',
+                    type: 'N/A',
+                    imei: raw.IMEI || 'N/A',
+                    serialNumber: raw.Serial || 'N/A',
+                    condition: raw.Grade || 'N/A',
+
+                    // Status Info
+                    activationStatus: 'N/A',
+                    activationDate: 'N/A',
+                    blacklistStatus: 'N/A',
+                    blacklistReason: 'N/A',
+                    warrantyStatus: 'N/A',
+                    warrantyExpiry: 'N/A',
+                    contractStatus: 'N/A',
+                    contractEndDate: 'N/A',
+
+                    // Technical Details
+                    networkType: 'N/A',
+                    simLock: 'N/A',
+                    esnStatus: 'N/A',
+                    meidStatus: 'N/A',
+                    iccid: 'N/A',
+                    mdn: 'N/A',
+
+                    // Working Status
+                    working: raw.Working || 'N/A',
+                    batteryHealth: raw.BatteryHealthPercentage || 'N/A',
+                    batteryCycle: raw.BatteryCycle || 'N/A',
+                    mdm: raw.MDM || 'N/A',
+                    notes: raw.Notes || 'N/A',
+                    failed: raw.Failed || 'N/A',
+                    testerName: raw.TesterName || 'N/A',
+                    repairNotes: raw.Custom1 || 'N/A',
+
+                    // Additional Info
+                    firstReceived: formatDate(raw.DeviceCreatedDate),
+                    lastUpdate: formatDate(raw.DeviceUpdatedDate),
+                    checkDate: formatDate(new Date()),
+                    source: 'Phonecheck API'
+                };
+            };
+
+            const performLookup = async () => {
+                setLoading(true);
+                setError(null);
+                setDeviceData(null);
+                setLastRawData(null);
+
+                try {
+                    // Step 1: Get authentication token
+                    const authResponse = await fetch(`${PHONECHECK_CONFIG.baseUrl}/v2/auth/master/login`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            username: PHONECHECK_CONFIG.username,
+                            password: PHONECHECK_CONFIG.password
+                        })
+                    });
+
+                    if (!authResponse.ok) {
+                        const errorText = await authResponse.text();
+                        throw new Error(`Authentication failed: ${errorText}`);
+                    }
+
+                    const authData = await authResponse.json();
+                    const token = authData.token;
+
+                    if (!token) {
+                        throw new Error('No authentication token received');
+                    }
+
+                    // Step 2: Perform device lookup
+                    const lookupResponse = await fetch(`${PHONECHECK_CONFIG.baseUrl}/v2/master/imei/device-info-legacy/${imei}?detailed=true`, {
+                        method: 'GET',
+                        headers: {
+                            'token_master': token
+                        }
+                    });
+
+                    if (!lookupResponse.ok) {
+                        const errorText = await lookupResponse.text();
+                        throw new Error(`Device lookup failed: ${errorText}`);
+                    }
+
+                    const rawData = await lookupResponse.json();
+                    setLastRawData(rawData);
+
+                    const abstractedData = abstractData(rawData);
+                    if (abstractedData) {
+                        setDeviceData(abstractedData);
+                        onDataReceived(abstractedData);
+                    } else {
+                        throw new Error('Failed to process device data');
+                    }
+
+                } catch (error) {
+                    console.error('Phonecheck lookup error:', error);
+                    setError(error.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                if (isOpen && imei) {
+                    performLookup();
+                }
+            }, [isOpen, imei]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="bg-white rounded-lg shadow-lg p-8 my-6">
+                    {loading && (
+                        <div className="text-center py-12">
+                            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Fetching Device Information</h3>
+                            <p className="text-gray-600">Looking up IMEI: {imei}</p>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="text-center py-8">
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-4">
+                                <h3 className="text-lg font-semibold text-red-800 mb-2">Error</h3>
+                                <p className="text-red-600 mb-4">{error}</p>
+                                <div className="flex justify-center space-x-3">
+                                    <button 
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                        onClick={performLookup}
+                                    >
+                                        Retry
+                                    </button>
+                                    <button 
+                                        className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+                                        onClick={onClose}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {deviceData && (
+                        <div>
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-2xl font-bold text-gray-900">Device Information Retrieved</h3>
+                                <div className="flex space-x-3">
+                                    <button 
+                                        className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+                                        onClick={onClose}
+                                    >
+                                        Close
+                                    </button>
+                                    <button 
+                                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                                        onClick={() => onDataReceived(deviceData)}
+                                    >
+                                        Use This Data
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Device Information Grid */}
+                            <div className="bg-gray-50 rounded-lg p-6 mb-6">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-4">Device Details</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Device Name</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.deviceName}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Brand</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.brand}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Model</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.model}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Storage</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.storage}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Color</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.color}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Carrier</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.carrier}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">IMEI</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.imei}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Serial Number</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.serialNumber}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Condition</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.condition}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Status Information */}
+                            <div className="bg-gray-50 rounded-lg p-6 mb-6">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-4">Status Information</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Working Status</label>
+                                        <div className="mt-1">
+                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                deviceData.working === 'YES' ? 'bg-green-100 text-green-800' :
+                                                deviceData.working === 'NO' ? 'bg-red-100 text-red-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                                {deviceData.working}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Failed Status</label>
+                                        <div className="mt-1">
+                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                deviceData.failed ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                            }`}>
+                                                {deviceData.failed ? 'FAILED' : 'PASS'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Battery Health</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.batteryHealth}%</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Battery Cycles</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.batteryCycle}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">MDM Status</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.mdm}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Tester Name</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.testerName}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Notes and Defects Section */}
+                            {(deviceData.notes || deviceData.failed || deviceData.repairNotes) && (
+                                <div className="bg-gray-50 rounded-lg p-6 mb-6">
+                                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Notes & Defects</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {deviceData.notes && (
+                                            <div className="bg-white p-4 rounded-lg border">
+                                                <label className="text-sm font-medium text-gray-500">Notes</label>
+                                                <p className="text-gray-900 font-medium">{deviceData.notes}</p>
+                                            </div>
+                                        )}
+                                        {deviceData.failed && (
+                                            <div className="bg-white p-4 rounded-lg border">
+                                                <label className="text-sm font-medium text-gray-500">Defects</label>
+                                                <p className="text-red-600 font-semibold">{deviceData.failed}</p>
+                                            </div>
+                                        )}
+                                        {deviceData.repairNotes && (
+                                            <div className="bg-white p-4 rounded-lg border">
+                                                <label className="text-sm font-medium text-gray-500">Repair Notes</label>
+                                                <p className="text-gray-900 font-medium">{deviceData.repairNotes}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Additional Information */}
+                            <div className="bg-gray-50 rounded-lg p-6">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">First Received</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.firstReceived}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Last Updated</label>
+                                        <p className="text-gray-900 font-medium">{deviceData.lastUpdate}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // IMEI Input Form Component
+        const IMEIInputForm = () => {
+            const [imei, setImei] = useState('');
+            const [showPhonecheck, setShowPhonecheck] = useState(false);
+            const [phonecheckData, setPhonecheckData] = useState(null);
+            const [showConfirmation, setShowConfirmation] = useState(false);
+            const [pendingInventoryData, setPendingInventoryData] = useState(null);
+            const [locations, setLocations] = useState([]);
+            const [selectedLocation, setSelectedLocation] = useState('');
+            const [toast, setToast] = useState(null);
+
+            useEffect(() => {
+                fetchLocations();
+            }, []);
+
+            const fetchLocations = async () => {
+                try {
+                    const response = await fetch('/api/admin/locations');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setLocations(data);
+                        if (data.length > 0) {
+                            setSelectedLocation(data[0].name);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error fetching locations:', error);
+                    setToast({ message: 'Failed to fetch locations', type: 'error' });
+                }
+            };
+
+            const handleIMEIChange = (e) => {
+                const value = e.target.value;
+                setImei(value);
+                
+                // Auto-trigger Phonecheck when IMEI is 15 digits
+                if (value.replace(/\D/g, '').length === 15) {
+                    setShowPhonecheck(true);
+                } else {
+                    setShowPhonecheck(false);
+                    setPhonecheckData(null);
+                }
+            };
+
+            const handlePhonecheckDataReceived = (data) => {
+                console.log('Phonecheck data received:', data);
+                setPhonecheckData(data);
+                setShowPhonecheck(false);
+                
+                // Pre-fill the form with Phonecheck data
+                setPendingInventoryData({
+                    name: data.deviceName,
+                    brand: data.brand || 'Unknown',
+                    model: data.model,
+                    storage: data.storage,
+                    color: data.color,
+                    carrier: data.carrier,
+                    type: 'phone', // Default type
+                    imei: data.imei,
+                    serialNumber: data.serialNumber,
+                    condition: data.condition,
+                    quantity: 1,
+                    location: selectedLocation
+                });
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                
+                if (!phonecheckData) {
+                    setToast({ message: 'Please wait for Phonecheck lookup to complete', type: 'error' });
+                    return;
+                }
+
+                setShowConfirmation(true);
+            };
+
+            const handleConfirmedSubmit = async () => {
+                try {
+                    const response = await fetch('/api/admin/inventory/push', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(pendingInventoryData)
+                    });
+
+                    if (response.ok) {
+                        setToast({ message: 'Inventory added successfully!', type: 'success' });
+                        setImei('');
+                        setPhonecheckData(null);
+                        setPendingInventoryData(null);
+                        setShowConfirmation(false);
+                    } else {
+                        const errorData = await response.json();
+                        setToast({ message: errorData.error || 'Failed to add inventory', type: 'error' });
+                    }
+                } catch (error) {
+                    console.error('Error adding inventory:', error);
+                    setToast({ message: 'Failed to add inventory', type: 'error' });
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-6">Add Device with Phonecheck</h2>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div>
+                                <label htmlFor="imei" className="block text-sm font-medium text-gray-700 mb-2">
+                                    IMEI Number
+                                </label>
+                                <input
+                                    type="text"
+                                    id="imei"
+                                    value={imei}
+                                    onChange={handleIMEIChange}
+                                    placeholder="Enter IMEI number (15 digits)"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                />
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Phonecheck lookup will automatically start when you enter a valid 15-digit IMEI
+                                </p>
+                            </div>
+
+                            <div>
+                                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
+                                    Location
+                                </label>
+                                <select
+                                    id="location"
+                                    value={selectedLocation}
+                                    onChange={(e) => setSelectedLocation(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                >
+                                    {locations.map(location => (
+                                        <option key={location.id} value={location.name}>
+                                            {location.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex space-x-3">
+                                <button
+                                    type="submit"
+                                    className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={!phonecheckData}
+                                >
+                                    Add to Inventory
+                                </button>
+                            </div>
+                        </form>
+
+                        {/* Phonecheck Lookup Area */}
+                        <PhonecheckLookup
+                            isOpen={showPhonecheck}
+                            onClose={() => setShowPhonecheck(false)}
+                            onDataReceived={handlePhonecheckDataReceived}
+                            imei={imei}
+                        />
+
+                        {/* Phonecheck Data Ready Display */}
+                        {phonecheckData && !showPhonecheck && (
+                            <div className="mt-8 bg-green-50 border border-green-200 rounded-lg p-6">
+                                <h3 className="text-lg font-semibold text-green-900 mb-4">Phonecheck Data Ready</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Device</label>
+                                        <p className="text-gray-900 font-medium">{phonecheckData.deviceName}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Brand</label>
+                                        <p className="text-gray-900 font-medium">{phonecheckData.brand}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">Model</label>
+                                        <p className="text-gray-900 font-medium">{phonecheckData.model}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-gray-500">IMEI</label>
+                                        <p className="text-gray-900 font-medium">{phonecheckData.imei}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Confirmation Modal */}
+                    {showConfirmation && (
+                        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+                            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                                <div className="mt-3 text-center">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Inventory Addition</h3>
+                                    <p className="text-sm text-gray-500 mb-6">Are you sure you want to add this device to inventory?</p>
+                                    <div className="flex justify-center space-x-3">
+                                        <button 
+                                            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+                                            onClick={() => setShowConfirmation(false)}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                                            onClick={handleConfirmedSubmit}
+                                        >
+                                            Confirm Add
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {toast && (
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Main App Component
+        const App = () => {
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div className="flex items-center">
+                                    <h1 className="text-2xl font-bold text-gray-900">WMS - Phonecheck Device Lookup</h1>
+                                </div>
+                                <div className="flex space-x-3">
+                                    <a
+                                        href="/phonecheck.html"
+                                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
+                                    >
+                                        Phonecheck
+                                    </a>
+                                    <a
+                                        href="/inventory-manager.html"
+                                        className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                    >
+                                        Inventory Manager
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <IMEIInputForm />
+                    </div>
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

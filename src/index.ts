@@ -2,33 +2,32 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 
 // Import routes
-import itemRoutes from './routes/itemRoutes';
-import inventoryRoutes from './routes/inventoryRoutes';
-import orderRoutes from './routes/orderRoutes';
-import warehouseRoutes from './routes/warehouseRoutes';
-import userRoutes from './routes/userRoutes';
+import itemsRoutes from './routes/items.route';
+import inventoryRoutes from './routes/inventory.route';
+import logsRoutes from './routes/logs.route';
+import adminRoutes from './routes/admin.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
+import prisma from './prisma/client';
 
 // Load environment variables
 dotenv.config();
 
-// Initialize Prisma client
-export const prisma = new PrismaClient();
-
 // Create Express app
 const app = express();
-const PORT = process.env['PORT'] || 3000;
+const PORT = process.env['PORT'] || 3001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files
+app.use(express.static('public'));
 
 // Logging middleware
 app.use(morgan('combined', {
@@ -47,11 +46,10 @@ app.get('/health', (_req, res) => {
 });
 
 // API Routes
-app.use('/api/items', itemRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/warehouses', warehouseRoutes);
-app.use('/api/users', userRoutes);
+app.use('/items', itemsRoutes);
+app.use('/inventory', inventoryRoutes);
+app.use('/logs', logsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Inventory Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Toast notification component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 5000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const getToastStyles = () => {
+                switch (type) {
+                    case 'success': return 'bg-green-500 text-white';
+                    case 'error': return 'bg-red-500 text-white';
+                    case 'pending': return 'bg-yellow-500 text-white';
+                    case 'warning': return 'bg-orange-500 text-white';
+                    default: return 'bg-blue-500 text-white';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'success': return '✓';
+                    case 'error': return '✕';
+                    case 'pending': return '⏳';
+                    case 'warning': return '⚠';
+                    default: return 'ℹ';
+                }
+            };
+
+            return (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${getToastStyles()} min-w-80`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-2 font-bold">{getIcon()}</span>
+                            <span>{message}</span>
+                        </div>
+                        <button onClick={onClose} className="ml-4 text-white hover:text-gray-200 font-bold">×</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Inventory Manager Component
+        const InventoryManager = () => {
+            const [inventory, setInventory] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterBrand, setFilterBrand] = useState('');
+            const [filterCarrier, setFilterCarrier] = useState('');
+            const [filterCondition, setFilterCondition] = useState('');
+            const [sortBy, setSortBy] = useState('createdAt');
+            const [sortOrder, setSortOrder] = useState('desc');
+            const [selectedItems, setSelectedItems] = useState([]);
+            const [showDeleteModal, setShowDeleteModal] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [showEditModal, setShowEditModal] = useState(false);
+            const [stats, setStats] = useState({
+                total: 0,
+                brands: {},
+                carriers: {},
+                conditions: {}
+            });
+
+            // Fetch inventory data
+            const fetchInventory = async () => {
+                try {
+                    setLoading(true);
+                    const response = await fetch('/api/admin/inventory');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setInventory(data);
+                        calculateStats(data);
+                    } else {
+                        throw new Error('Failed to fetch inventory');
+                    }
+                } catch (error) {
+                    console.error('Error fetching inventory:', error);
+                    setToast({ message: 'Failed to load inventory data', type: 'error' });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Calculate statistics
+            const calculateStats = (data) => {
+                const stats = {
+                    total: data.length,
+                    brands: {},
+                    carriers: {},
+                    conditions: {}
+                };
+
+                data.forEach(item => {
+                    // Brand stats
+                    const brand = item.brand || 'Unknown';
+                    stats.brands[brand] = (stats.brands[brand] || 0) + 1;
+
+                    // Carrier stats
+                    const carrier = item.carrier || 'Unknown';
+                    stats.carriers[carrier] = (stats.carriers[carrier] || 0) + 1;
+
+                    // Condition stats
+                    const condition = item.condition || 'Unknown';
+                    stats.conditions[condition] = (stats.conditions[condition] || 0) + 1;
+                });
+
+                setStats(stats);
+            };
+
+            // Filter and sort inventory
+            const getFilteredInventory = () => {
+                let filtered = [...inventory];
+
+                // Search filter
+                if (searchTerm) {
+                    const term = searchTerm.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.name?.toLowerCase().includes(term) ||
+                        item.model?.toLowerCase().includes(term) ||
+                        item.imei?.includes(term) ||
+                        item.serialNumber?.toLowerCase().includes(term) ||
+                        item.brand?.toLowerCase().includes(term)
+                    );
+                }
+
+                // Brand filter
+                if (filterBrand) {
+                    filtered = filtered.filter(item => item.brand === filterBrand);
+                }
+
+                // Carrier filter
+                if (filterCarrier) {
+                    filtered = filtered.filter(item => item.carrier === filterCarrier);
+                }
+
+                // Condition filter
+                if (filterCondition) {
+                    filtered = filtered.filter(item => item.condition === filterCondition);
+                }
+
+                // Sort
+                filtered.sort((a, b) => {
+                    let aVal = a[sortBy];
+                    let bVal = b[sortBy];
+
+                    if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+                        aVal = new Date(aVal || 0);
+                        bVal = new Date(bVal || 0);
+                    } else if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+
+                    if (sortOrder === 'asc') {
+                        return aVal > bVal ? 1 : -1;
+                    } else {
+                        return aVal < bVal ? 1 : -1;
+                    }
+                });
+
+                return filtered;
+            };
+
+            // Delete items
+            const deleteItems = async () => {
+                try {
+                    const response = await fetch('/api/admin/inventory/bulk-delete', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: selectedItems })
+                    });
+
+                    if (response.ok) {
+                        setToast({ message: `${selectedItems.length} items deleted successfully`, type: 'success' });
+                        setSelectedItems([]);
+                        setShowDeleteModal(false);
+                        fetchInventory();
+                    } else {
+                        throw new Error('Failed to delete items');
+                    }
+                } catch (error) {
+                    console.error('Error deleting items:', error);
+                    setToast({ message: 'Failed to delete items', type: 'error' });
+                }
+            };
+
+            // Update item
+            const updateItem = async (itemData) => {
+                try {
+                    const response = await fetch(`/api/admin/inventory/${itemData.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(itemData)
+                    });
+
+                    if (response.ok) {
+                        setToast({ message: 'Item updated successfully', type: 'success' });
+                        setShowEditModal(false);
+                        setEditingItem(null);
+                        fetchInventory();
+                    } else {
+                        throw new Error('Failed to update item');
+                    }
+                } catch (error) {
+                    console.error('Error updating item:', error);
+                    setToast({ message: 'Failed to update item', type: 'error' });
+                }
+            };
+
+            // Export to CSV
+            const exportToCSV = () => {
+                const filteredData = getFilteredInventory();
+                const headers = ['ID', 'Name', 'Brand', 'Model', 'Storage', 'Color', 'Carrier', 'IMEI', 'Serial Number', 'Condition', 'Quantity', 'Location', 'Created At'];
+                
+                const csvContent = [
+                    headers.join(','),
+                    ...filteredData.map(item => [
+                        item.id,
+                        `"${item.name || ''}"`,
+                        `"${item.brand || ''}"`,
+                        `"${item.model || ''}"`,
+                        `"${item.storage || ''}"`,
+                        `"${item.color || ''}"`,
+                        `"${item.carrier || ''}"`,
+                        item.imei || '',
+                        `"${item.serialNumber || ''}"`,
+                        `"${item.condition || ''}"`,
+                        item.quantity || 0,
+                        `"${item.location || ''}"`,
+                        item.createdAt || ''
+                    ].join(','))
+                ].join('\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                setToast({ message: 'Inventory exported to CSV', type: 'success' });
+            };
+
+            // Handle item selection
+            const toggleItemSelection = (itemId) => {
+                setSelectedItems(prev => 
+                    prev.includes(itemId) 
+                        ? prev.filter(id => id !== itemId)
+                        : [...prev, itemId]
+                );
+            };
+
+            const selectAll = () => {
+                const filteredIds = getFilteredInventory().map(item => item.id);
+                setSelectedItems(filteredIds);
+            };
+
+            const clearSelection = () => {
+                setSelectedItems([]);
+            };
+
+            // Initialize
+            useEffect(() => {
+                fetchInventory();
+            }, []);
+
+            const filteredInventory = getFilteredInventory();
+            const uniqueBrands = [...new Set(inventory.map(item => item.brand).filter(Boolean))];
+            const uniqueCarriers = [...new Set(inventory.map(item => item.carrier).filter(Boolean))];
+            const uniqueConditions = [...new Set(inventory.map(item => item.condition).filter(Boolean))];
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-900">Inventory Manager</h1>
+                                    <p className="mt-1 text-sm text-gray-500">Manage and view your device inventory</p>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    {/* Navigation Links */}
+                                    <div className="flex space-x-2">
+                                        <a
+                                            href="/phonecheck.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Phonecheck
+                                        </a>
+                                        <a
+                                            href="/inventory-manager.html"
+                                            className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
+                                        >
+                                            Inventory Manager
+                                        </a>
+                                    </div>
+                                    <div className="flex space-x-3">
+                                        <button
+                                            onClick={() => window.location.href = '/phonecheck.html'}
+                                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                        >
+                                            Add Device
+                                        </button>
+                                        <button
+                                            onClick={exportToCSV}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                                        >
+                                            Export CSV
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Statistics Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <div className="flex items-center">
+                                    <div className="p-2 bg-blue-100 rounded-lg">
+                                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <div className="flex items-center">
+                                    <div className="p-2 bg-green-100 rounded-lg">
+                                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Working Devices</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.conditions['used'] || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <div className="flex items-center">
+                                    <div className="p-2 bg-red-100 rounded-lg">
+                                        <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Damaged Devices</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.conditions['damaged'] || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <div className="flex items-center">
+                                    <div className="p-2 bg-purple-100 rounded-lg">
+                                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Unique Brands</p>
+                                        <p className="text-2xl font-bold text-gray-900">{Object.keys(stats.brands).length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Filters and Search */}
+                        <div className="bg-white rounded-lg shadow mb-6">
+                            <div className="p-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                                    {/* Search */}
+                                    <div className="lg:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Search by name, model, IMEI..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+
+                                    {/* Brand Filter */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                                        <select
+                                            value={filterBrand}
+                                            onChange={(e) => setFilterBrand(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">All Brands</option>
+                                            {uniqueBrands.map(brand => (
+                                                <option key={brand} value={brand}>{brand}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Carrier Filter */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+                                        <select
+                                            value={filterCarrier}
+                                            onChange={(e) => setFilterCarrier(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">All Carriers</option>
+                                            {uniqueCarriers.map(carrier => (
+                                                <option key={carrier} value={carrier}>{carrier}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Condition Filter */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+                                        <select
+                                            value={filterCondition}
+                                            onChange={(e) => setFilterCondition(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">All Conditions</option>
+                                            {uniqueConditions.map(condition => (
+                                                <option key={condition} value={condition}>{condition}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Sort */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => setSortBy(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="createdAt">Date Added</option>
+                                            <option value="name">Name</option>
+                                            <option value="brand">Brand</option>
+                                            <option value="model">Model</option>
+                                            <option value="imei">IMEI</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Sort Order */}
+                                <div className="mt-4 flex items-center space-x-4">
+                                    <label className="flex items-center">
+                                        <input
+                                            type="radio"
+                                            checked={sortOrder === 'desc'}
+                                            onChange={() => setSortOrder('desc')}
+                                            className="mr-2"
+                                        />
+                                        Descending
+                                    </label>
+                                    <label className="flex items-center">
+                                        <input
+                                            type="radio"
+                                            checked={sortOrder === 'asc'}
+                                            onChange={() => setSortOrder('asc')}
+                                            className="mr-2"
+                                        />
+                                        Ascending
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bulk Actions */}
+                        {selectedItems.length > 0 && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                        <span className="text-sm font-medium text-blue-800">
+                                            {selectedItems.length} item(s) selected
+                                        </span>
+                                        <button
+                                            onClick={clearSelection}
+                                            className="text-sm text-blue-600 hover:text-blue-800"
+                                        >
+                                            Clear selection
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowDeleteModal(true)}
+                                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                    >
+                                        Delete Selected
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Inventory Table */}
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-200">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-medium text-gray-900">
+                                        Inventory ({filteredInventory.length} items)
+                                    </h3>
+                                    <div className="flex space-x-2">
+                                        <button
+                                            onClick={selectAll}
+                                            className="text-sm text-blue-600 hover:text-blue-800"
+                                        >
+                                            Select All
+                                        </button>
+                                        <button
+                                            onClick={fetchInventory}
+                                            className="text-sm text-gray-600 hover:text-gray-800"
+                                        >
+                                            Refresh
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {loading ? (
+                                <div className="p-8 text-center">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                                    <p className="mt-2 text-gray-500">Loading inventory...</p>
+                                </div>
+                            ) : filteredInventory.length === 0 ? (
+                                <div className="p-8 text-center">
+                                    <p className="text-gray-500">No items found matching your criteria.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedItems.length === filteredInventory.length}
+                                                        onChange={(e) => e.target.checked ? selectAll() : clearSelection()}
+                                                        className="rounded border-gray-300"
+                                                    />
+                                                </th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {filteredInventory.map((item) => (
+                                                <tr key={item.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedItems.includes(item.id)}
+                                                            onChange={() => toggleItemSelection(item.id)}
+                                                            className="rounded border-gray-300"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div>
+                                                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                                            <div className="text-sm text-gray-500">{item.brand} • {item.model}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="text-sm text-gray-900">
+                                                            <div>IMEI: {item.imei}</div>
+                                                            <div>Storage: {item.storage}</div>
+                                                            <div>Color: {item.color}</div>
+                                                            <div>Carrier: {item.carrier}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                            item.condition === 'used' 
+                                                                ? 'bg-green-100 text-green-800'
+                                                                : 'bg-red-100 text-red-800'
+                                                        }`}>
+                                                            {item.condition}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        {item.location}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingItem(item);
+                                                                setShowEditModal(true);
+                                                            }}
+                                                            className="text-blue-600 hover:text-blue-900 mr-3"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedItems([item.id]);
+                                                                setShowDeleteModal(true);
+                                                            }}
+                                                            className="text-red-600 hover:text-red-900"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Delete Confirmation Modal */}
+                    {showDeleteModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                                <div className="p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Deletion</h3>
+                                    <p className="text-sm text-gray-500 mb-6">
+                                        Are you sure you want to delete {selectedItems.length} item(s)? This action cannot be undone.
+                                    </p>
+                                    <div className="flex justify-end space-x-3">
+                                        <button
+                                            onClick={() => setShowDeleteModal(false)}
+                                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={deleteItems}
+                                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Modal */}
+                    {showEditModal && editingItem && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                                <div className="p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Edit Item</h3>
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        updateItem(editingItem);
+                                    }}>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.name || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, name: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.brand || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, brand: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.model || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, model: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Storage</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.storage || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, storage: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.color || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, color: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.carrier || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, carrier: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+                                                <select
+                                                    value={editingItem.condition || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, condition: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="used">Used</option>
+                                                    <option value="damaged">Damaged</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.location || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, location: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end space-x-3 mt-6">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowEditModal(false);
+                                                    setEditingItem(null);
+                                                }}
+                                                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                            >
+                                                Update
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Toast Notifications */}
+                    {toast && (
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Render the app
+        const App = () => {
+            return <InventoryManager />;
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

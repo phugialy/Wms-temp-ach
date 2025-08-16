@@ -1,42 +1,155 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Item {
+  id              Int               @id @default(autoincrement())
+  sku             String?
+  name            String
+  description     String?
+  upc             String?
+  brand           String?
+  model           String?
+  condition       String            @default("used")
+  cost            Float?
+  price           Float?
+  weightOz        Int?
+  dimensions      String?
+  imageUrl        String?
+  type            String
+  imei            String?           @unique
+  serialNumber    String?           @unique
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  carrier         String?
+  color           String?
+  modelNumber     String?
+  storage         String?
+  carrierId       String?
+  skuGeneratedAt  DateTime?
+  inboundLogs     InboundLog[]      @relation("ItemInboundLogs")
+  inventory       Inventory[]       @relation("ItemInventory")
+  outboundLogs    OutboundLog[]     @relation("ItemOutboundLogs")
+  outboundQueue   OutboundQueue[]   @relation("ItemOutboundQueue")
+  processingQueue ProcessingQueue[] @relation("ItemProcessingQueue")
+  qcApprovals     QCApproval[]      @relation("ItemQCApproval")
+}
+
+model Warehouse {
   id          Int        @id @default(autoincrement())
-  sku         String     @unique
-  name        String
+  name        String     @unique
   description String?
-  upc         String?
-  brand       String?
-  model       String?
-  condition   String     @default("used")
-  cost        Float?
-  price       Float?
-  weightOz    Int?
-  dimensions  String?
-  imageUrl    String?
   isActive    Boolean    @default(true)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  inventory   Inventory[] @relation("ItemInventory")
+  locations   Location[]
+}
+
+model Location {
+  id          Int        @id @default(autoincrement())
+  name        String
+  warehouseId Int
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventory   Inventory[]
+
+  @@unique([warehouseId, name])
 }
 
 model Inventory {
-  id        Int      @id @default(autoincrement())
-  sku       String
+  id         Int      @id @default(autoincrement())
+  itemId     Int
+  locationId Int
+  sku        String
+  quantity   Int
+  updatedAt  DateTime @updatedAt
+  item       Item     @relation("ItemInventory", fields: [itemId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, locationId])
+}
+
+model InboundLog {
+  id              Int               @id @default(autoincrement())
+  itemId          Int
+  quantity        Int
+  location        String
+  receivedBy      String
+  receivedAt      DateTime          @default(now())
+  notes           String?
+  status          String            @default("RECEIVED")
+  item            Item              @relation("ItemInboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
+  processingQueue ProcessingQueue[] @relation("InboundLogProcessingQueue")
+}
+
+model OutboundLog {
+  id        Int            @id @default(autoincrement())
+  itemId    Int
   quantity  Int
   location  String
-  updatedAt DateTime @updatedAt
-  item      Item     @relation("ItemInventory", fields: [sku], references: [sku], onDelete: Cascade)
+  shippedBy String
+  shippedAt DateTime       @default(now())
+  notes     String?
+  status    String         @default("SHIPPED")
+  item      Item           @relation("ItemOutboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
+}
 
-  @@unique([sku, location])
-} 
+model ProcessingQueue {
+  id           Int              @id @default(autoincrement())
+  itemId       Int
+  inboundLogId Int
+  status       String           @default("PENDING")
+  assignedTo   String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  inboundLog   InboundLog       @relation("InboundLogProcessingQueue", fields: [inboundLogId], references: [id], onDelete: Cascade)
+  item         Item             @relation("ItemProcessingQueue", fields: [itemId], references: [id], onDelete: Cascade)
+  qcApprovals  QCApproval[]     @relation("ProcessingQueueQCApproval")
+}
+
+model QCApproval {
+  id                Int             @id @default(autoincrement())
+  itemId            Int
+  processingQueueId Int
+  status            String          @default("PENDING")
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  item              Item            @relation("ItemQCApproval", fields: [itemId], references: [id], onDelete: Cascade)
+  processingQueue   ProcessingQueue @relation("ProcessingQueueQCApproval", fields: [processingQueueId], references: [id], onDelete: Cascade)
+}
+
+model OutboundQueue {
+  id          Int            @id @default(autoincrement())
+  itemId      Int
+  quantity    Int
+  location    String
+  requestedBy String
+  status      String         @default("QUEUED")
+  priority    Int            @default(1)
+  scheduledAt DateTime?
+  shippedAt   DateTime?
+  canceledAt  DateTime?
+  canceledBy  String?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  item        Item           @relation("ItemOutboundQueue", fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+
