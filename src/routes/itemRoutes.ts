@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ItemController } from '../controllers/itemController';
 import { ItemService } from '../services/itemService';
-import prisma from '../lib/prisma';
+import prisma from '../prisma/client';
 
 const router = Router();
 const itemService = new ItemService(prisma);

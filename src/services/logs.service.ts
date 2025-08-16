@@ -16,12 +16,27 @@ export class LogsService {
         throw new Error(`Item with ID ${data.itemId} does not exist`);
       }
 
+      // Find location by name (parse from "DNCL-LocationName" format)
+      const locationName = data.location.replace('DNCL-', '');
+      const location = await tx.location.findFirst({
+        where: { 
+          name: locationName,
+          warehouse: {
+            name: 'DNCL'
+          }
+        }
+      });
+
+      if (!location) {
+        throw new Error(`Location ${data.location} does not exist`);
+      }
+
       // Create inbound log
       const inboundLog = await tx.inboundLog.create({
         data: {
           itemId: data.itemId,
           quantity: data.quantity,
-          location: data.location,
+          location: location.name, // Keep as string for backward compatibility
           receivedBy: data.receivedBy
         },
         include: {
@@ -33,7 +48,7 @@ export class LogsService {
       const existingInventory = await tx.inventory.findFirst({
         where: {
           itemId: data.itemId,
-          location: data.location
+          locationId: location.id
         }
       });
 
@@ -58,7 +73,7 @@ export class LogsService {
             itemId: data.itemId,
             sku: item.sku || 'UNKNOWN', // Provide fallback for optional SKU
             quantity: data.quantity,
-            location: data.location
+            locationId: location.id
           }
         });
         logger.info('New inventory created for inbound', { 
@@ -91,11 +106,26 @@ export class LogsService {
         throw new Error(`Item with ID ${data.itemId} does not exist`);
       }
 
+      // Find location by name (parse from "DNCL-LocationName" format)
+      const locationName = data.location.replace('DNCL-', '');
+      const location = await tx.location.findFirst({
+        where: { 
+          name: locationName,
+          warehouse: {
+            name: 'DNCL'
+          }
+        }
+      });
+
+      if (!location) {
+        throw new Error(`Location ${data.location} does not exist`);
+      }
+
       // Check inventory availability
       const existingInventory = await tx.inventory.findFirst({
         where: {
           itemId: data.itemId,
-          location: data.location
+          locationId: location.id
         }
       });
 
@@ -112,7 +142,7 @@ export class LogsService {
         data: {
           itemId: data.itemId,
           quantity: data.quantity,
-          location: data.location,
+          location: data.location, // Keep as string for backward compatibility
           shippedBy: data.shippedBy
         },
         include: {

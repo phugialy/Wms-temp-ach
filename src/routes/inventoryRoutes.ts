@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { InventoryController } from '../controllers/inventoryController';
 import { InventoryService } from '../services/inventoryService';
-import prisma from '../lib/prisma';
+import prisma from '../prisma/client';
 
 const router = Router();
 const inventoryService = new InventoryService(prisma);

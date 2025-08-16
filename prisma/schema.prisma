@@ -1,151 +1,137 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// Enums for status tracking
-enum ProcessingStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-}
-
-enum QCStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum ShipmentStatus {
-  QUEUED
-  SHIPPED
-  CANCELED
-}
-
-enum InboundStatus {
-  RECEIVED
-  PROCESSING
-  QC_PENDING
-  QC_APPROVED
-  QC_REJECTED
-  INVENTORY_READY
-}
-
-enum OutboundStatus {
-  PLANNED
-  QUEUED
-  SHIPPED
-  CANCELED
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Item {
-  id            Int        @id @default(autoincrement())
-  sku           String?    // Optional SKU; can be generated
-  name          String
-  description   String?
-  upc           String?
-  brand         String?
-  model         String?
-  modelNumber   String?    // NEW - e.g., "GVU6C"
-  storage       String?    // NEW - e.g., "128GB"
-  color         String?    // NEW - e.g., "Obsidian"
-  carrier       String?    // NEW - e.g., "Unlocked"
-  carrierId     String?    // NEW - for internal carrier identification
-  condition     String     @default("used")
-  cost          Float?
-  price         Float?
-  weightOz      Int?
-  dimensions    String?
-  imageUrl      String?
-  type          String     // Required field to categorize items (e.g. phone, tablet, watch, laptop)
-  imei          String?    @unique // Optional unique IMEI for mobile devices
-  serialNumber  String?    @unique // Optional unique serial number for other devices
-  isActive      Boolean    @default(true)
-  skuGeneratedAt DateTime? // NEW - track when SKU was generated
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  inventory     Inventory[] @relation("ItemInventory")
-  inboundLogs   InboundLog[] @relation("ItemInboundLogs")
-  outboundLogs  OutboundLog[] @relation("ItemOutboundLogs")
+  id              Int               @id @default(autoincrement())
+  sku             String?
+  name            String
+  description     String?
+  upc             String?
+  brand           String?
+  model           String?
+  condition       String            @default("used")
+  cost            Float?
+  price           Float?
+  weightOz        Int?
+  dimensions      String?
+  imageUrl        String?
+  type            String
+  imei            String?           @unique
+  serialNumber    String?           @unique
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  carrier         String?
+  color           String?
+  modelNumber     String?
+  storage         String?
+  carrierId       String?
+  skuGeneratedAt  DateTime?
+  inboundLogs     InboundLog[]      @relation("ItemInboundLogs")
+  inventory       Inventory[]       @relation("ItemInventory")
+  outboundLogs    OutboundLog[]     @relation("ItemOutboundLogs")
+  outboundQueue   OutboundQueue[]   @relation("ItemOutboundQueue")
   processingQueue ProcessingQueue[] @relation("ItemProcessingQueue")
-  qcApprovals   QCApproval[] @relation("ItemQCApproval")
-  outboundQueue OutboundQueue[] @relation("ItemOutboundQueue")
+  qcApprovals     QCApproval[]      @relation("ItemQCApproval")
+}
+
+model Warehouse {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  locations   Location[]
+}
+
+model Location {
+  id          Int        @id @default(autoincrement())
+  name        String
+  warehouseId Int
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventory   Inventory[]
+
+  @@unique([warehouseId, name])
 }
 
 model Inventory {
-  id        Int      @id @default(autoincrement())
-  itemId    Int      // Foreign key to Item.id
-  sku       String   // Keep SKU for easy querying
-  quantity  Int
-  location  String
-  updatedAt DateTime @updatedAt
-  item      Item     @relation("ItemInventory", fields: [itemId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  itemId     Int
+  locationId Int
+  sku        String
+  quantity   Int
+  updatedAt  DateTime @updatedAt
+  item       Item     @relation("ItemInventory", fields: [itemId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
-  @@unique([sku, location])
+  @@unique([itemId, locationId])
 }
 
 model InboundLog {
-  id         Int           @id @default(autoincrement())
-  itemId     Int
-  quantity   Int
-  location   String
-  receivedBy String
-  receivedAt DateTime      @default(now())
-  status     InboundStatus @default(RECEIVED)
-  notes      String?
-  item       Item          @relation("ItemInboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
+  id              Int               @id @default(autoincrement())
+  itemId          Int
+  quantity        Int
+  location        String
+  receivedBy      String
+  receivedAt      DateTime          @default(now())
+  notes           String?
+  status          String            @default("RECEIVED")
+  item            Item              @relation("ItemInboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
   processingQueue ProcessingQueue[] @relation("InboundLogProcessingQueue")
 }
 
 model OutboundLog {
-  id        Int           @id @default(autoincrement())
+  id        Int            @id @default(autoincrement())
   itemId    Int
   quantity  Int
   location  String
   shippedBy String
-  shippedAt DateTime      @default(now())
-  status    OutboundStatus @default(SHIPPED)
+  shippedAt DateTime       @default(now())
   notes     String?
-  item      Item          @relation("ItemOutboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
+  status    String         @default("SHIPPED")
+  item      Item           @relation("ItemOutboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
 }
 
 model ProcessingQueue {
-  id          Int             @id @default(autoincrement())
-  itemId      Int
+  id           Int              @id @default(autoincrement())
+  itemId       Int
   inboundLogId Int
-  status      ProcessingStatus @default(PENDING)
-  assignedTo  String?
-  startedAt   DateTime?
-  completedAt DateTime?
-  notes       String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  item        Item            @relation("ItemProcessingQueue", fields: [itemId], references: [id], onDelete: Cascade)
-  inboundLog  InboundLog     @relation("InboundLogProcessingQueue", fields: [inboundLogId], references: [id], onDelete: Cascade)
-  qcApprovals QCApproval[]   @relation("ProcessingQueueQCApproval")
+  status       String           @default("PENDING")
+  assignedTo   String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  inboundLog   InboundLog       @relation("InboundLogProcessingQueue", fields: [inboundLogId], references: [id], onDelete: Cascade)
+  item         Item             @relation("ItemProcessingQueue", fields: [itemId], references: [id], onDelete: Cascade)
+  qcApprovals  QCApproval[]     @relation("ProcessingQueueQCApproval")
 }
 
 model QCApproval {
-  id             Int       @id @default(autoincrement())
-  itemId         Int
+  id                Int             @id @default(autoincrement())
+  itemId            Int
   processingQueueId Int
-  status         QCStatus  @default(PENDING)
-  approvedBy     String?
-  approvedAt     DateTime?
-  rejectionReason String?
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  item           Item      @relation("ItemQCApproval", fields: [itemId], references: [id], onDelete: Cascade)
-  processingQueue ProcessingQueue @relation("ProcessingQueueQCApproval", fields: [processingQueueId], references: [id], onDelete: Cascade)
+  status            String          @default("PENDING")
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  item              Item            @relation("ItemQCApproval", fields: [itemId], references: [id], onDelete: Cascade)
+  processingQueue   ProcessingQueue @relation("ProcessingQueueQCApproval", fields: [processingQueueId], references: [id], onDelete: Cascade)
 }
 
 model OutboundQueue {
@@ -154,7 +140,7 @@ model OutboundQueue {
   quantity    Int
   location    String
   requestedBy String
-  status      ShipmentStatus @default(QUEUED)
+  status      String         @default("QUEUED")
   priority    Int            @default(1)
   scheduledAt DateTime?
   shippedAt   DateTime?
@@ -164,4 +150,6 @@ model OutboundQueue {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   item        Item           @relation("ItemOutboundQueue", fields: [itemId], references: [id], onDelete: Cascade)
-} 
+}
+
+

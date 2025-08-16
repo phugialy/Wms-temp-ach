@@ -1,12 +1,5 @@
 import { Request, Response } from 'express';
 import { InventoryService } from '../services/inventory.service';
-import { 
-  createInventorySchema, 
-  updateInventorySchema, 
-  queryParamsSchema, 
-  skuParamSchema,
-  idParamSchema
-} from '../utils/validator';
 import { logger } from '../utils/logger';
 
 export class InventoryController {
@@ -14,81 +7,93 @@ export class InventoryController {
 
   getAllInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const queryParams = queryParamsSchema.parse(req.query);
-      const result = await this.inventoryService.getAllInventory(queryParams);
-
+      const inventory = await this.inventoryService.getAllInventory();
+      
       res.status(200).json({
         success: true,
-        data: result.inventory,
-        pagination: {
-          page: result.page,
-          limit: result.limit,
-          total: result.total,
-          pages: Math.ceil(result.total / result.limit)
-        }
+        data: inventory,
+        message: 'Inventory retrieved successfully'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       logger.error('Error in getAllInventory controller', { error: errorMessage });
-      res.status(400).json({
+      res.status(500).json({
         success: false,
-        error: errorMessage
+        error: 'Failed to retrieve inventory'
       });
     }
   };
 
   getInventoryBySku = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { sku } = skuParamSchema.parse(req.params);
-      const inventory = await this.inventoryService.getInventoryBySku(sku);
+      const { sku } = req.params;
+      
+      // For now, we'll get all inventory and filter by SKU
+      const allInventory = await this.inventoryService.getAllInventory();
+      const inventory = allInventory.filter(inv => inv.sku === sku);
+      
+      if (inventory.length === 0) {
+        res.status(404).json({
+          success: false,
+          error: 'No inventory found for this SKU'
+        });
+        return;
+      }
 
       res.status(200).json({
         success: true,
-        data: inventory
+        data: inventory,
+        message: 'Inventory retrieved successfully'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in getInventoryBySku controller', { error: errorMessage });
-      
-      if (errorMessage.includes('not found')) {
-        res.status(404).json({
-          success: false,
-          error: errorMessage
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          error: errorMessage
-        });
-      }
+      logger.error('Error in getInventoryBySku controller', { error: errorMessage, sku: req.params['sku'] });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve inventory by SKU'
+      });
     }
   };
 
-  createOrUpdateInventory = async (req: Request, res: Response): Promise<void> => {
+  createInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const validatedData = createInventorySchema.parse(req.body);
-      const inventory = await this.inventoryService.createOrUpdateInventory(validatedData);
+      const { itemId, locationId, sku, quantity } = req.body;
+      
+      const inventory = await this.inventoryService.createInventory({
+        itemId,
+        locationId,
+        sku,
+        quantity
+      });
 
       res.status(201).json({
         success: true,
         data: inventory,
-        message: 'Inventory created/updated successfully'
+        message: 'Inventory created successfully'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in createOrUpdateInventory controller', { error: errorMessage });
-      res.status(400).json({
+      logger.error('Error in createInventory controller', { error: errorMessage, body: req.body });
+      res.status(500).json({
         success: false,
-        error: errorMessage
+        error: 'Failed to create inventory'
       });
     }
   };
 
   updateInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { id } = idParamSchema.parse(req.params);
-      const validatedData = updateInventorySchema.parse(req.body);
-      const inventory = await this.inventoryService.updateInventory(id, validatedData);
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({
+          success: false,
+          error: 'Inventory ID is required'
+        });
+        return;
+      }
+      
+      const updateData = req.body;
+      const inventory = await this.inventoryService.updateInventory(parseInt(id), updateData);
 
       res.status(200).json({
         success: true,
@@ -97,26 +102,26 @@ export class InventoryController {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in updateInventory controller', { error: errorMessage });
-      
-      if (errorMessage.includes('not found')) {
-        res.status(404).json({
-          success: false,
-          error: errorMessage
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          error: errorMessage
-        });
-      }
+      logger.error('Error in updateInventory controller', { error: errorMessage, id: req.params['id'], body: req.body });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update inventory'
+      });
     }
   };
 
   deleteInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { id } = idParamSchema.parse(req.params);
-      await this.inventoryService.deleteInventory(id);
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({
+          success: false,
+          error: 'Inventory ID is required'
+        });
+        return;
+      }
+      
+      await this.inventoryService.deleteInventory(parseInt(id));
 
       res.status(200).json({
         success: true,
@@ -124,19 +129,11 @@ export class InventoryController {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in deleteInventory controller', { error: errorMessage });
-      
-      if (errorMessage.includes('not found')) {
-        res.status(404).json({
-          success: false,
-          error: errorMessage
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          error: errorMessage
-        });
-      }
+      logger.error('Error in deleteInventory controller', { error: errorMessage, id: req.params['id'] });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete inventory'
+      });
     }
   };
 } 

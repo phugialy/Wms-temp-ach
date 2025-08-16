@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+let be clear do not attempt to delete file, unless told to do so or requested to do so, otherwise ask before deletion or avoid deleting files option. 
+
+When necessary to delete be direct and foward on what's wrong and why should it be deleted and provide a solution 
+
+We are window-based development enviroment so be aware of the works related to scripts\commands. 
+

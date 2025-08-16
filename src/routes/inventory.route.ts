@@ -10,7 +10,7 @@ const inventoryController = new InventoryController(inventoryService);
 // Inventory CRUD routes
 router.get('/', inventoryController.getAllInventory);
 router.get('/:sku', inventoryController.getInventoryBySku);
-router.post('/', inventoryController.createOrUpdateInventory);
+router.post('/', inventoryController.createInventory);
 router.put('/:id', inventoryController.updateInventory);
 router.delete('/:id', inventoryController.deleteInventory);
 

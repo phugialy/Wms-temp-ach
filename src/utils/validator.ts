@@ -194,6 +194,28 @@ export const outboundQueueQueryParamsSchema = z.object({
   requestedBy: z.string().optional()
 });
 
+// Admin inventory push validation schema
+export const inventoryPushSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  brand: z.string().min(1, 'Brand is required'),
+  model: z.string().min(1, 'Model is required'),
+  storage: z.string().optional(),
+  color: z.string().optional(),
+  carrier: z.string().optional(),
+  type: z.string().min(1, 'Type is required'),
+  imei: z.string().optional(),
+  serialNumber: z.string().optional(),
+  sku: z.string().optional(),
+  quantity: z.number().int().min(0, 'Quantity must be non-negative'),
+  location: z.string().min(1, 'Location is required')
+}).refine(
+  (data) => data.imei || data.serialNumber || data.sku,
+  {
+    message: 'At least one of imei, serialNumber, or sku must be provided',
+    path: ['imei', 'serialNumber', 'sku']
+  }
+);
+
 // Parameter validation schemas
 export const skuParamSchema = z.object({
   sku: z.string().min(1, 'SKU parameter is required')
@@ -218,6 +240,7 @@ export type CreateQCApprovalInput = z.infer<typeof createQCApprovalSchema>;
 export type UpdateQCApprovalInput = z.infer<typeof updateQCApprovalSchema>;
 export type CreateOutboundQueueInput = z.infer<typeof createOutboundQueueSchema>;
 export type UpdateOutboundQueueInput = z.infer<typeof updateOutboundQueueSchema>;
+export type InventoryPushInput = z.infer<typeof inventoryPushSchema>;
 export type QueryParams = z.infer<typeof queryParamsSchema>;
 export type LogQueryParams = z.infer<typeof logQueryParamsSchema>;
 export type ProcessingQueueQueryParams = z.infer<typeof processingQueueQueryParamsSchema>;
