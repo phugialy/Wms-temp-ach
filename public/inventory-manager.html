@@ -64,6 +64,7 @@
             const [filterBrand, setFilterBrand] = useState('');
             const [filterCarrier, setFilterCarrier] = useState('');
             const [filterCondition, setFilterCondition] = useState('');
+            const [filterWorkingStatus, setFilterWorkingStatus] = useState('');
             const [sortBy, setSortBy] = useState('createdAt');
             const [sortOrder, setSortOrder] = useState('desc');
             const [selectedItems, setSelectedItems] = useState([]);
@@ -103,7 +104,17 @@
                     total: data.length,
                     brands: {},
                     carriers: {},
-                    conditions: {}
+                    conditions: {},
+                    workingStatus: {
+                        YES: 0,
+                        NO: 0,
+                        PENDING: 0
+                    },
+                    phonecheckData: {
+                        withDefects: 0,
+                        withNotes: 0,
+                        withCustom1: 0
+                    }
                 };
 
                 data.forEach(item => {
@@ -118,6 +129,15 @@
                     // Condition stats
                     const condition = item.condition || 'Unknown';
                     stats.conditions[condition] = (stats.conditions[condition] || 0) + 1;
+
+                    // Working status stats
+                    const working = item.working || 'PENDING';
+                    stats.workingStatus[working] = (stats.workingStatus[working] || 0) + 1;
+
+                    // PhoneCheck data stats
+                    if (item.defects) stats.phonecheckData.withDefects++;
+                    if (item.notes) stats.phonecheckData.withNotes++;
+                    if (item.custom1) stats.phonecheckData.withCustom1++;
                 });
 
                 setStats(stats);
@@ -152,6 +172,11 @@
                 // Condition filter
                 if (filterCondition) {
                     filtered = filtered.filter(item => item.condition === filterCondition);
+                }
+
+                // Working status filter
+                if (filterWorkingStatus) {
+                    filtered = filtered.filter(item => item.working === filterWorkingStatus);
                 }
 
                 // Sort
@@ -285,6 +310,7 @@
             const uniqueBrands = [...new Set(inventory.map(item => item.brand).filter(Boolean))];
             const uniqueCarriers = [...new Set(inventory.map(item => item.carrier).filter(Boolean))];
             const uniqueConditions = [...new Set(inventory.map(item => item.condition).filter(Boolean))];
+            const uniqueWorkingStatuses = [...new Set(inventory.map(item => item.working).filter(Boolean))];
 
             return (
                 <div className="min-h-screen bg-gray-50">
@@ -306,6 +332,12 @@
                                             Phonecheck
                                         </a>
                                         <a
+                                            href="/bulk-add.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Bulk Add
+                                        </a>
+                                        <a
                                             href="/inventory-manager.html"
                                             className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
                                         >
@@ -313,12 +345,6 @@
                                         </a>
                                     </div>
                                     <div className="flex space-x-3">
-                                        <button
-                                            onClick={() => window.location.href = '/phonecheck.html'}
-                                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                                        >
-                                            Add Device
-                                        </button>
                                         <button
                                             onClick={exportToCSV}
                                             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
@@ -355,8 +381,8 @@
                                         </svg>
                                     </div>
                                     <div className="ml-4">
-                                        <p className="text-sm font-medium text-gray-500">Working Devices</p>
-                                        <p className="text-2xl font-bold text-gray-900">{stats.conditions['used'] || 0}</p>
+                                        <p className="text-sm font-medium text-gray-500">Passed Tests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.workingStatus?.YES || 0}</p>
                                     </div>
                                 </div>
                             </div>
@@ -368,8 +394,8 @@
                                         </svg>
                                     </div>
                                     <div className="ml-4">
-                                        <p className="text-sm font-medium text-gray-500">Damaged Devices</p>
-                                        <p className="text-2xl font-bold text-gray-900">{stats.conditions['damaged'] || 0}</p>
+                                        <p className="text-sm font-medium text-gray-500">Failed Tests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.workingStatus?.NO || 0}</p>
                                     </div>
                                 </div>
                             </div>
@@ -381,8 +407,8 @@
                                         </svg>
                                     </div>
                                     <div className="ml-4">
-                                        <p className="text-sm font-medium text-gray-500">Unique Brands</p>
-                                        <p className="text-2xl font-bold text-gray-900">{Object.keys(stats.brands).length}</p>
+                                        <p className="text-sm font-medium text-gray-500">PhoneCheck Data</p>
+                                        <p className="text-2xl font-bold text-gray-900">{(stats.phonecheckData?.withDefects || 0) + (stats.phonecheckData?.withNotes || 0) + (stats.phonecheckData?.withCustom1 || 0)}</p>
                                     </div>
                                 </div>
                             </div>
@@ -431,6 +457,21 @@
                                             {uniqueCarriers.map(carrier => (
                                                 <option key={carrier} value={carrier}>{carrier}</option>
                                             ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Working Status Filter */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Working Status</label>
+                                        <select
+                                            value={filterWorkingStatus}
+                                            onChange={(e) => setFilterWorkingStatus(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">All Statuses</option>
+                                            <option value="YES">Passed</option>
+                                            <option value="NO">Failed</option>
+                                            <option value="PENDING">Pending</option>
                                         </select>
                                     </div>
 
@@ -563,7 +604,8 @@
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PhoneCheck Data</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working Status</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                             </tr>
@@ -585,23 +627,37 @@
                                                             <div className="text-sm text-gray-500">{item.brand} • {item.model}</div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <div className="text-sm text-gray-900">
-                                                            <div>IMEI: {item.imei}</div>
-                                                            <div>Storage: {item.storage}</div>
-                                                            <div>Color: {item.color}</div>
-                                                            <div>Carrier: {item.carrier}</div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                            item.condition === 'used' 
-                                                                ? 'bg-green-100 text-green-800'
-                                                                : 'bg-red-100 text-red-800'
-                                                        }`}>
-                                                            {item.condition}
-                                                        </span>
-                                                    </td>
+                                                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm text-gray-900">
+                                            <div>IMEI: {item.imei}</div>
+                                            <div>Storage: {item.storage}</div>
+                                            <div>Color: {item.color}</div>
+                                            <div>Carrier: {item.carrier}</div>
+                                            <div>Condition: {item.condition}</div>
+                                            {item.batteryHealth && <div>Battery: {item.batteryHealth}%</div>}
+                                            {item.screenCondition && <div>Screen: {item.screenCondition}</div>}
+                                            {item.bodyCondition && <div>Body: {item.bodyCondition}</div>}
+                                        </div>
+                                                                        </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm text-gray-900">
+                                            {item.defects && <div className="text-red-600">Defects: {item.defects}</div>}
+                                            {item.notes && <div className="text-blue-600">Notes: {item.notes}</div>}
+                                            {item.custom1 && <div className="text-purple-600">Custom: {item.custom1}</div>}
+                                            {!item.defects && !item.notes && !item.custom1 && <div className="text-gray-400">No PhoneCheck data</div>}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                            item.working === 'YES' 
+                                                ? 'bg-green-100 text-green-800'
+                                                : item.working === 'NO'
+                                                ? 'bg-red-100 text-red-800'
+                                                : 'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                            {item.working === 'YES' ? 'PASS' : item.working === 'NO' ? 'FAILED' : 'PENDING'}
+                                        </span>
+                                    </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                         {item.location}
                                                     </td>

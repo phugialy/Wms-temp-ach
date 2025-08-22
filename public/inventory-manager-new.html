@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Enhanced Inventory Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Enhanced Toast Component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 5000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const getToastStyles = () => {
+                switch (type) {
+                    case 'success': return 'bg-green-500 text-white border-green-600';
+                    case 'error': return 'bg-red-500 text-white border-red-600';
+                    case 'warning': return 'bg-yellow-500 text-white border-yellow-600';
+                    case 'info': return 'bg-blue-500 text-white border-blue-600';
+                    default: return 'bg-gray-500 text-white border-gray-600';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'success': return '✓';
+                    case 'error': return '✕';
+                    case 'warning': return '⚠';
+                    case 'info': return 'ℹ';
+                    default: return '•';
+                }
+            };
+
+            return (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg border-2 ${getToastStyles()} min-w-80 animate-slide-in`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-3 text-lg font-bold">{getIcon()}</span>
+                            <span className="font-medium">{message}</span>
+                        </div>
+                        <button onClick={onClose} className="ml-4 text-white hover:text-gray-200 font-bold text-lg">×</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Working Status Badge Component
+        const WorkingStatusBadge = ({ status }) => {
+            const getStatusConfig = (status) => {
+                switch (status) {
+                    case 'YES':
+                        return { 
+                            bg: 'bg-green-100', 
+                            text: 'text-green-800', 
+                            border: 'border-green-200',
+                            icon: 'fas fa-check-circle',
+                            label: 'PASS'
+                        };
+                    case 'NO':
+                        return { 
+                            bg: 'bg-red-100', 
+                            text: 'text-red-800', 
+                            border: 'border-red-200',
+                            icon: 'fas fa-times-circle',
+                            label: 'FAIL'
+                        };
+                    case 'PENDING':
+                        return { 
+                            bg: 'bg-yellow-100', 
+                            text: 'text-yellow-800', 
+                            border: 'border-yellow-200',
+                            icon: 'fas fa-clock',
+                            label: 'PENDING'
+                        };
+                    default:
+                        return { 
+                            bg: 'bg-gray-100', 
+                            text: 'text-gray-800', 
+                            border: 'border-gray-200',
+                            icon: 'fas fa-question-circle',
+                            label: status || 'UNKNOWN'
+                        };
+                }
+            };
+
+            const config = getStatusConfig(status);
+
+            return (
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${config.bg} ${config.text} ${config.border}`}>
+                    <i className={`${config.icon} mr-1`}></i>
+                    {config.label}
+                </span>
+            );
+        };
+
+        // Inventory Card Component
+        const InventoryCard = ({ item, onEdit, onDelete, isSelected, onToggleSelect }) => {
+            return (
+                <div className={`bg-white rounded-lg shadow-md border-2 transition-all duration-200 hover:shadow-lg ${
+                    isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                    <div className="p-6">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center space-x-3">
+                                <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => onToggleSelect(item.id)}
+                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 truncate">{item.name}</h3>
+                                    <p className="text-sm text-gray-500">{item.brand} • {item.model}</p>
+                                </div>
+                            </div>
+                            <WorkingStatusBadge status={item.working} />
+                        </div>
+
+                        {/* Device Details */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">IMEI</label>
+                                <p className="text-sm font-mono text-gray-900">{item.imei}</p>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Storage</label>
+                                <p className="text-sm text-gray-900">{item.storage || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Color</label>
+                                <p className="text-sm text-gray-900">{item.color || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Carrier</label>
+                                <p className="text-sm text-gray-900">{item.carrier || 'N/A'}</p>
+                            </div>
+                        </div>
+
+                        {/* PhoneCheck Data */}
+                        {(item.defects || item.notes || item.custom1 || item.batteryHealth) && (
+                            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">PhoneCheck Data</h4>
+                                <div className="space-y-1">
+                                    {item.batteryHealth && (
+                                        <div className="flex items-center text-sm">
+                                            <i className="fas fa-battery-three-quarters text-green-600 mr-2"></i>
+                                            <span className="text-gray-700">Battery: {item.batteryHealth}%</span>
+                                        </div>
+                                    )}
+                                    {item.defects && (
+                                        <div className="flex items-center text-sm">
+                                            <i className="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                                            <span className="text-red-700">Defects: {item.defects}</span>
+                                        </div>
+                                    )}
+                                    {item.notes && (
+                                        <div className="flex items-center text-sm">
+                                            <i className="fas fa-sticky-note text-blue-600 mr-2"></i>
+                                            <span className="text-blue-700">Notes: {item.notes}</span>
+                                        </div>
+                                    )}
+                                    {item.custom1 && (
+                                        <div className="flex items-center text-sm">
+                                            <i className="fas fa-tag text-purple-600 mr-2"></i>
+                                            <span className="text-purple-700">Custom: {item.custom1}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Footer */}
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                            <div className="text-sm text-gray-500">
+                                <i className="fas fa-map-marker-alt mr-1"></i>
+                                {item.location}
+                            </div>
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={() => onEdit(item)}
+                                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                >
+                                    <i className="fas fa-edit mr-1"></i>Edit
+                                </button>
+                                <button
+                                    onClick={() => onDelete(item.id)}
+                                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                                >
+                                    <i className="fas fa-trash mr-1"></i>Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Enhanced Inventory Manager Component
+        const InventoryManager = () => {
+            const [inventory, setInventory] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterBrand, setFilterBrand] = useState('');
+            const [filterCarrier, setFilterCarrier] = useState('');
+            const [filterCondition, setFilterCondition] = useState('');
+            const [filterWorkingStatus, setFilterWorkingStatus] = useState('');
+            const [sortBy, setSortBy] = useState('createdAt');
+            const [sortOrder, setSortOrder] = useState('desc');
+            const [selectedItems, setSelectedItems] = useState([]);
+            const [showDeleteModal, setShowDeleteModal] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [showEditModal, setShowEditModal] = useState(false);
+            const [viewMode, setViewMode] = useState('table'); // Changed from 'cards' to 'table'
+            const [showFilters, setShowFilters] = useState(false);
+            const [stats, setStats] = useState({
+                total: 0,
+                brands: {},
+                carriers: {},
+                conditions: {},
+                workingStatus: {
+                    YES: 0,
+                    NO: 0,
+                    PENDING: 0
+                },
+                phonecheckData: {
+                    withDefects: 0,
+                    withNotes: 0,
+                    withCustom1: 0
+                }
+            });
+
+            // Fetch inventory data
+            const fetchInventory = async () => {
+                try {
+                    setLoading(true);
+                    const response = await fetch('/api/admin/inventory');
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Fetched inventory data:', data);
+                        setInventory(data);
+                        calculateStats(data);
+                    } else {
+                        throw new Error('Failed to fetch inventory');
+                    }
+                } catch (error) {
+                    console.error('Error fetching inventory:', error);
+                    setToast({ message: 'Failed to load inventory data', type: 'error' });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Calculate statistics
+            const calculateStats = (data) => {
+                const newStats = {
+                    total: data.length,
+                    brands: {},
+                    carriers: {},
+                    conditions: {},
+                    workingStatus: {
+                        YES: 0,
+                        NO: 0,
+                        PENDING: 0
+                    },
+                    phonecheckData: {
+                        withDefects: 0,
+                        withNotes: 0,
+                        withCustom1: 0
+                    }
+                };
+
+                data.forEach(item => {
+                    // Brand stats
+                    const brand = item.brand || 'Unknown';
+                    newStats.brands[brand] = (newStats.brands[brand] || 0) + 1;
+
+                    // Carrier stats
+                    const carrier = item.carrier || 'Unknown';
+                    newStats.carriers[carrier] = (newStats.carriers[carrier] || 0) + 1;
+
+                    // Condition stats
+                    const condition = item.condition || 'Unknown';
+                    newStats.conditions[condition] = (newStats.conditions[condition] || 0) + 1;
+
+                    // Working status stats - with better handling
+                    const working = item.working || 'PENDING';
+                    console.log(`Item ${item.id} working status:`, working);
+                    if (newStats.workingStatus.hasOwnProperty(working)) {
+                        newStats.workingStatus[working]++;
+                    } else {
+                        newStats.workingStatus[working] = 1;
+                    }
+
+                    // PhoneCheck data stats
+                    if (item.defects) newStats.phonecheckData.withDefects++;
+                    if (item.notes) newStats.phonecheckData.withNotes++;
+                    if (item.custom1) newStats.phonecheckData.withCustom1++;
+                });
+
+                console.log('Calculated stats:', newStats);
+                setStats(newStats);
+            };
+
+            // Filter and sort inventory
+            const getFilteredInventory = () => {
+                let filtered = [...inventory];
+
+                // Search filter
+                if (searchTerm) {
+                    const term = searchTerm.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.name?.toLowerCase().includes(term) ||
+                        item.model?.toLowerCase().includes(term) ||
+                        item.imei?.includes(term) ||
+                        item.serialNumber?.toLowerCase().includes(term) ||
+                        item.brand?.toLowerCase().includes(term)
+                    );
+                }
+
+                // Brand filter
+                if (filterBrand) {
+                    filtered = filtered.filter(item => item.brand === filterBrand);
+                }
+
+                // Carrier filter
+                if (filterCarrier) {
+                    filtered = filtered.filter(item => item.carrier === filterCarrier);
+                }
+
+                // Condition filter
+                if (filterCondition) {
+                    filtered = filtered.filter(item => item.condition === filterCondition);
+                }
+
+                // Working status filter
+                if (filterWorkingStatus) {
+                    filtered = filtered.filter(item => item.working === filterWorkingStatus);
+                }
+
+                // Sort
+                filtered.sort((a, b) => {
+                    let aVal = a[sortBy];
+                    let bVal = b[sortBy];
+
+                    if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+                        aVal = new Date(aVal || 0);
+                        bVal = new Date(bVal || 0);
+                    } else if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+
+                    if (sortOrder === 'asc') {
+                        return aVal > bVal ? 1 : -1;
+                    } else {
+                        return aVal < bVal ? 1 : -1;
+                    }
+                });
+
+                return filtered;
+            };
+
+            // Handle item selection
+            const toggleItemSelection = (itemId) => {
+                setSelectedItems(prev => 
+                    prev.includes(itemId) 
+                        ? prev.filter(id => id !== itemId)
+                        : [...prev, itemId]
+                );
+            };
+
+            const selectAll = () => {
+                const filteredIds = getFilteredInventory().map(item => item.id);
+                setSelectedItems(filteredIds);
+            };
+
+            const clearSelection = () => {
+                setSelectedItems([]);
+            };
+
+            // Delete items
+            const deleteItems = async () => {
+                try {
+                    // Implementation for bulk delete
+                    setToast({ message: 'Bulk delete functionality coming soon', type: 'info' });
+                    setShowDeleteModal(false);
+                    setSelectedItems([]);
+                } catch (error) {
+                    console.error('Error deleting items:', error);
+                    setToast({ message: 'Failed to delete items', type: 'error' });
+                }
+            };
+
+            // Edit item
+            const handleEdit = (item) => {
+                setEditingItem(item);
+                setShowEditModal(true);
+            };
+
+            // Delete single item
+            const handleDelete = (itemId) => {
+                setSelectedItems([itemId]);
+                setShowDeleteModal(true);
+            };
+
+            // Update item
+            const updateItem = async (itemData) => {
+                try {
+                    const response = await fetch(`/api/admin/inventory/${itemData.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(itemData)
+                    });
+
+                    if (response.ok) {
+                        setToast({ message: 'Item updated successfully', type: 'success' });
+                        setShowEditModal(false);
+                        setEditingItem(null);
+                        fetchInventory();
+                    } else {
+                        throw new Error('Failed to update item');
+                    }
+                } catch (error) {
+                    console.error('Error updating item:', error);
+                    setToast({ message: 'Failed to update item', type: 'error' });
+                }
+            };
+
+            // Export to CSV
+            const exportToCSV = () => {
+                const filteredData = getFilteredInventory();
+                const headers = ['ID', 'Name', 'Brand', 'Model', 'Storage', 'Color', 'Carrier', 'IMEI', 'Serial Number', 'Working Status', 'Condition', 'Battery Health', 'Location', 'Created At'];
+                
+                const csvContent = [
+                    headers.join(','),
+                    ...filteredData.map(item => [
+                        item.id,
+                        `"${item.name || ''}"`,
+                        `"${item.brand || ''}"`,
+                        `"${item.model || ''}"`,
+                        `"${item.storage || ''}"`,
+                        `"${item.color || ''}"`,
+                        `"${item.carrier || ''}"`,
+                        item.imei || '',
+                        `"${item.serialNumber || ''}"`,
+                        `"${item.working || 'PENDING'}"`,
+                        `"${item.condition || ''}"`,
+                        item.batteryHealth || '',
+                        `"${item.location || ''}"`,
+                        item.createdAt || ''
+                    ].join(','))
+                ].join('\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                setToast({ message: 'Inventory exported to CSV', type: 'success' });
+            };
+
+            // Initialize
+            useEffect(() => {
+                fetchInventory();
+            }, []);
+
+            const filteredInventory = getFilteredInventory();
+            const uniqueBrands = [...new Set(inventory.map(item => item.brand).filter(Boolean))];
+            const uniqueCarriers = [...new Set(inventory.map(item => item.carrier).filter(Boolean))];
+            const uniqueConditions = [...new Set(inventory.map(item => item.condition).filter(Boolean))];
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow-lg border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-900">Enhanced Inventory Manager</h1>
+                                    <p className="mt-1 text-sm text-gray-500">Comprehensive device inventory management with PhoneCheck integration</p>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    {/* Navigation Links */}
+                                    <div className="flex space-x-2">
+                                        <a
+                                            href="/phonecheck.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            <i className="fas fa-mobile-alt mr-2"></i>Phonecheck
+                                        </a>
+                                        <a
+                                            href="/bulk-add.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            <i className="fas fa-upload mr-2"></i>Bulk Add
+                                        </a>
+                                                                                 <a
+                                             href="/inventory-manager-new.html"
+                                             className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
+                                         >
+                                             <i className="fas fa-boxes mr-2"></i>Inventory Manager
+                                         </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Enhanced Statistics Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-blue-100 rounded-lg">
+                                        <i className="fas fa-boxes text-blue-600 text-xl"></i>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-green-100 rounded-lg">
+                                        <i className="fas fa-check-circle text-green-600 text-xl"></i>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Passed Tests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.workingStatus?.YES || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-red-100 rounded-lg">
+                                        <i className="fas fa-times-circle text-red-600 text-xl"></i>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Failed Tests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.workingStatus?.NO || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-yellow-100 rounded-lg">
+                                        <i className="fas fa-clock text-yellow-600 text-xl"></i>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">Pending Tests</p>
+                                        <p className="text-2xl font-bold text-gray-900">{stats.workingStatus?.PENDING || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-purple-100 rounded-lg">
+                                        <i className="fas fa-mobile-alt text-purple-600 text-xl"></i>
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-500">PhoneCheck Data</p>
+                                        <p className="text-2xl font-bold text-gray-900">
+                                            {(stats.phonecheckData?.withDefects || 0) + (stats.phonecheckData?.withNotes || 0) + (stats.phonecheckData?.withCustom1 || 0)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls Bar */}
+                        <div className="bg-white rounded-lg shadow-md border border-gray-200 mb-6">
+                            <div className="p-6">
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                                    {/* Search and View Controls */}
+                                    <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                                        <div className="flex-1 sm:max-w-xs">
+                                            <div className="relative">
+                                                <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search devices..."
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => setViewMode('table')}
+                                                className="px-4 py-2 rounded-lg transition-colors bg-blue-600 text-white"
+                                            >
+                                                <i className="fas fa-table mr-2"></i>Table View
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex space-x-3">
+                                        <button
+                                            onClick={() => setShowFilters(!showFilters)}
+                                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                                        >
+                                            <i className="fas fa-filter mr-2"></i>Filters
+                                        </button>
+                                        <button
+                                            onClick={exportToCSV}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                                        >
+                                            <i className="fas fa-download mr-2"></i>Export CSV
+                                        </button>
+                                        <button
+                                            onClick={fetchInventory}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        >
+                                            <i className="fas fa-sync-alt mr-2"></i>Refresh
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Filters Panel */}
+                                {showFilters && (
+                                    <div className="mt-6 pt-6 border-t border-gray-200">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                                                <select
+                                                    value={filterBrand}
+                                                    onChange={(e) => setFilterBrand(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="">All Brands</option>
+                                                    {uniqueBrands.map(brand => (
+                                                        <option key={brand} value={brand}>{brand}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+                                                <select
+                                                    value={filterCarrier}
+                                                    onChange={(e) => setFilterCarrier(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="">All Carriers</option>
+                                                    {uniqueCarriers.map(carrier => (
+                                                        <option key={carrier} value={carrier}>{carrier}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Working Status</label>
+                                                <select
+                                                    value={filterWorkingStatus}
+                                                    onChange={(e) => setFilterWorkingStatus(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="">All Statuses</option>
+                                                    <option value="YES">Passed</option>
+                                                    <option value="NO">Failed</option>
+                                                    <option value="PENDING">Pending</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+                                                <select
+                                                    value={filterCondition}
+                                                    onChange={(e) => setFilterCondition(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="">All Conditions</option>
+                                                    {uniqueConditions.map(condition => (
+                                                        <option key={condition} value={condition}>{condition}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                                                <select
+                                                    value={sortBy}
+                                                    onChange={(e) => setSortBy(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="createdAt">Date Created</option>
+                                                    <option value="name">Name</option>
+                                                    <option value="brand">Brand</option>
+                                                    <option value="working">Working Status</option>
+                                                    <option value="condition">Condition</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Selection Controls */}
+                        {selectedItems.length > 0 && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                        <span className="text-sm font-medium text-blue-900">
+                                            {selectedItems.length} item(s) selected
+                                        </span>
+                                        <button
+                                            onClick={clearSelection}
+                                            className="text-sm text-blue-600 hover:text-blue-800"
+                                        >
+                                            Clear selection
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowDeleteModal(true)}
+                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                    >
+                                        <i className="fas fa-trash mr-2"></i>Delete Selected
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Content */}
+                        {loading ? (
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-12 text-center">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                                <p className="text-gray-500 text-lg">Loading inventory...</p>
+                            </div>
+                        ) : filteredInventory.length === 0 ? (
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-12 text-center">
+                                <i className="fas fa-search text-gray-400 text-4xl mb-4"></i>
+                                <p className="text-gray-500 text-lg">No items found matching your criteria.</p>
+                            </div>
+                        ) : (
+                            // Table View (enhanced)
+                            <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedItems.length === filteredInventory.length}
+                                                        onChange={(e) => e.target.checked ? selectAll() : clearSelection()}
+                                                        className="rounded border-gray-300"
+                                                    />
+                                                </th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IMEI/Serial</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Storage/Color</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carrier</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working Status</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Condition</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {filteredInventory.map((item) => (
+                                                <tr key={item.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedItems.includes(item.id)}
+                                                            onChange={() => toggleItemSelection(item.id)}
+                                                            className="rounded border-gray-300"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div>
+                                                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                                            <div className="text-sm text-gray-500">{item.brand} • {item.model}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="text-sm text-gray-900 font-mono">{item.imei || 'N/A'}</div>
+                                                        {item.serialNumber && (
+                                                            <div className="text-xs text-gray-500 font-mono">{item.serialNumber}</div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="text-sm text-gray-900">{item.storage || 'N/A'}</div>
+                                                        <div className="text-sm text-gray-500">{item.color || 'N/A'}</div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        {item.carrier || 'N/A'}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <WorkingStatusBadge status={item.working} />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                            item.condition === 'EXCELLENT' ? 'bg-green-100 text-green-800' :
+                                                            item.condition === 'GOOD' ? 'bg-blue-100 text-blue-800' :
+                                                            item.condition === 'FAIR' ? 'bg-yellow-100 text-yellow-800' :
+                                                            item.condition === 'POOR' ? 'bg-red-100 text-red-800' :
+                                                            'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                            {item.condition || 'UNKNOWN'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        {item.location || 'N/A'}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                        <button
+                                                            onClick={() => handleEdit(item)}
+                                                            className="text-blue-600 hover:text-blue-900 mr-3"
+                                                        >
+                                                            <i className="fas fa-edit mr-1"></i>Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(item.id)}
+                                                            className="text-red-600 hover:text-red-900"
+                                                        >
+                                                            <i className="fas fa-trash mr-1"></i>Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Results Summary */}
+                        <div className="mt-6 text-center text-sm text-gray-500">
+                            Showing {filteredInventory.length} of {inventory.length} items
+                        </div>
+                    </div>
+
+                    {/* Delete Confirmation Modal */}
+                    {showDeleteModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                                <div className="p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Deletion</h3>
+                                    <p className="text-sm text-gray-500 mb-6">
+                                        Are you sure you want to delete {selectedItems.length} item(s)? This action cannot be undone.
+                                    </p>
+                                    <div className="flex justify-end space-x-3">
+                                        <button
+                                            onClick={() => setShowDeleteModal(false)}
+                                            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={deleteItems}
+                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Modal */}
+                    {showEditModal && editingItem && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                                <div className="p-6">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Edit Item</h3>
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        updateItem(editingItem);
+                                    }}>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.name || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, name: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Working Status</label>
+                                                <select
+                                                    value={editingItem.working || 'PENDING'}
+                                                    onChange={(e) => setEditingItem({...editingItem, working: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    <option value="YES">Passed</option>
+                                                    <option value="NO">Failed</option>
+                                                    <option value="PENDING">Pending</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.brand || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, brand: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                                                <input
+                                                    type="text"
+                                                    value={editingItem.model || ''}
+                                                    onChange={(e) => setEditingItem({...editingItem, model: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="mt-6 flex justify-end space-x-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowEditModal(false)}
+                                                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                            >
+                                                Update Item
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {toast && (
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Main App Component
+        const App = () => {
+            return <InventoryManager />;
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+    <style>
+        @keyframes slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+    </style>
+</body>
+</html>

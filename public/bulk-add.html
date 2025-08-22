@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Add Devices - WMS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Toast Component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 5000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const getToastStyles = () => {
+                switch (type) {
+                    case 'success': return 'bg-green-500 text-white';
+                    case 'error': return 'bg-red-500 text-white';
+                    case 'pending': return 'bg-yellow-500 text-white';
+                    case 'warning': return 'bg-orange-500 text-white';
+                    default: return 'bg-blue-500 text-white';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'success': return '✓';
+                    case 'error': return '✕';
+                    case 'pending': return '⏳';
+                    case 'warning': return '⚠';
+                    default: return 'ℹ';
+                }
+            };
+
+            return (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${getToastStyles()} min-w-80`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-2 font-bold">{getIcon()}</span>
+                            <span>{message}</span>
+                        </div>
+                        <button onClick={onClose} className="ml-4 text-white hover:text-gray-200 font-bold">×</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Bulk Add Component
+        const BulkAddForm = () => {
+            const [toast, setToast] = useState(null);
+            const [locations, setLocations] = useState([]);
+            const [selectedLocation, setSelectedLocation] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [stations, setStations] = useState([]);
+            const [selectedStation, setSelectedStation] = useState('');
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
+            const [pulledDevices, setPulledDevices] = useState([]);
+            const [processedData, setProcessedData] = useState([]);
+            const [showResults, setShowResults] = useState(false);
+            const [step, setStep] = useState(1); // 1: Pull IMEIs, 2: Process Devices, 3: Show Results
+
+
+
+            useEffect(() => {
+                fetchLocations();
+                // Set default date range to last 7 days
+                const today = new Date();
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(today.getDate() - 7);
+                
+                setEndDate(today.toISOString().split('T')[0]);
+                setStartDate(sevenDaysAgo.toISOString().split('T')[0]);
+            }, []);
+
+            // Debug useEffect to monitor state changes
+            useEffect(() => {
+                console.log('State changed:', {
+                    step,
+                    pulledDevicesLength: pulledDevices.length,
+                    loading,
+                    selectedStation,
+                    selectedLocation
+                });
+            }, [step, pulledDevices.length, loading, selectedStation, selectedLocation]);
+
+            const fetchLocations = async () => {
+                try {
+                    const response = await fetch('/api/admin/locations');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setLocations(data);
+                        if (data.length > 0) {
+                            setSelectedLocation(data[0].name);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error fetching locations:', error);
+                    setToast({ message: 'Failed to fetch locations', type: 'error' });
+                }
+            };
+
+            // Step 1: Pull all devices from Phonecheck station by date range
+            const pullDevicesFromStation = async () => {
+                if (!selectedStation || !startDate || !endDate) {
+                    setToast({ message: 'Please select station and date range', type: 'error' });
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    // Use backend API to pull devices from Phonecheck
+                    const response = await fetch('/api/phonecheck/pull-devices', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            station: selectedStation,
+                            startDate: startDate,
+                            endDate: endDate
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Failed to pull devices: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (!result.success) {
+                        throw new Error(result.error || 'Failed to pull devices');
+                    }
+
+                    // Handle both old and new API response structures
+                    let devices;
+                    if (result.data && result.data.devices) {
+                        // Old API structure
+                        devices = result.data.devices;
+                    } else if (result.data && Array.isArray(result.data)) {
+                        // New API structure - direct array
+                        devices = result.data;
+                    } else if (Array.isArray(result.data)) {
+                        // Direct array response
+                        devices = result.data;
+                    } else {
+                        // Fallback - try to find devices in the response
+                        devices = result.devices || result.data?.devices || [];
+                    }
+                    
+                    if (!Array.isArray(devices) || devices.length === 0) {
+                        setToast({ message: 'No devices found for selected station and date', type: 'warning' });
+                        setPulledDevices([]);
+                        setLoading(false);
+                        return;
+                    }
+
+                    setPulledDevices(devices);
+                    setToast({ 
+                        message: `Successfully pulled ${devices.length} devices from station ${selectedStation} (${startDate} to ${endDate})`, 
+                        type: 'success' 
+                    });
+
+                    // Proceed to step 2 for configuration
+                    setStep(2);
+                    setLoading(false);
+
+                } catch (error) {
+                    console.error('Error pulling devices:', error);
+                    setToast({ message: `Failed to pull devices: ${error.message}`, type: 'error' });
+                    setLoading(false);
+                }
+            };
+
+            // Step 2: Process pulled devices to get detailed information
+            const processPulledDevices = async (devices) => {
+                if (!selectedLocation) {
+                    setToast({ message: 'Please select a target location', type: 'error' });
+                    return;
+                }
+                
+                try {
+                    // Use backend API to process all devices
+                    const response = await fetch('/api/phonecheck/process-bulk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            station: selectedStation,
+                            startDate: startDate,
+                            endDate: endDate,
+                            location: selectedLocation
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Failed to process devices: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (!result.success) {
+                        throw new Error(result.error || 'Failed to process devices');
+                    }
+
+                    // Handle both old and new API response structures
+                    let processedDevices, successCount, errorCount;
+                    
+                    if (result.data && result.data.processed) {
+                        // Old API structure
+                        processedDevices = result.data.processed;
+                        successCount = result.data.successCount;
+                        errorCount = result.data.errorCount;
+                    } else if (result.data && result.data.devices) {
+                        // New API structure with devices array
+                        processedDevices = result.data.devices;
+                        successCount = result.data.summary?.successCount || result.data.successCount || 0;
+                        errorCount = result.data.summary?.errorCount || result.data.errorCount || 0;
+                    } else if (result.data && Array.isArray(result.data)) {
+                        // Direct array response
+                        processedDevices = result.data;
+                        successCount = processedDevices.filter(item => item.status === 'success').length;
+                        errorCount = processedDevices.filter(item => item.status === 'error').length;
+                    } else {
+                        // Fallback
+                        processedDevices = result.processed || result.devices || [];
+                        successCount = result.successCount || 0;
+                        errorCount = result.errorCount || 0;
+                    }
+
+                    setProcessedData(processedDevices);
+                    setShowResults(true);
+                    setStep(3);
+                    setToast({ 
+                        message: `Processed ${devices.length} devices: ${successCount} success, ${errorCount} errors`, 
+                        type: successCount > 0 ? 'success' : 'warning' 
+                    });
+                    setLoading(false);
+
+                } catch (error) {
+                    console.error('Error processing devices:', error);
+                    setToast({ message: `Failed to process devices: ${error.message}`, type: 'error' });
+                    setLoading(false);
+                }
+            };
+
+
+
+            // Add successful items to inventory
+            const addToInventory = async () => {
+                // Process ALL items that have valid data, not just those with 'success' status
+                const validItems = processedData.filter(item => item && item.imei && item.name);
+                
+                console.log('📊 Processing Summary:');
+                console.log('  - Total processed data:', processedData.length);
+                console.log('  - Valid items found:', validItems.length);
+                console.log('  - Items with success status:', processedData.filter(item => item && item.status === 'success').length);
+                console.log('  - Items with other statuses:', processedData.filter(item => item && item.status && item.status !== 'success').length);
+                console.log('  - Items with no status:', processedData.filter(item => item && !item.status).length);
+                
+                // Debug: Log the first few items to understand the structure
+                console.log('🔍 Sample processed data structure:');
+                processedData.slice(0, 3).forEach((item, index) => {
+                    console.log(`  Item ${index + 1}:`, {
+                        imei: item?.imei,
+                        name: item?.name,
+                        working: item?.working,
+                        workingStatus: item?.workingStatus,
+                        failed: item?.failed,
+                        status: item?.status,
+                        keys: item ? Object.keys(item) : []
+                    });
+                });
+                
+                if (validItems.length === 0) {
+                    setToast({ message: 'No valid items to add', type: 'warning' });
+                    return;
+                }
+
+                setLoading(true);
+                let addedCount = 0;
+                let errorCount = 0;
+
+                for (const item of validItems) {
+                    try {
+                        // Clean the item data to match inventoryPushSchema requirements
+                        const cleanItem = {
+                            name: item.name || 'Unknown Device',
+                            brand: item.brand || 'Unknown',
+                            model: item.model || 'Unknown',
+                            storage: item.storage || 'N/A',
+                            color: item.color || 'N/A',
+                            carrier: item.carrier || 'N/A',
+                            type: item.type || 'phone',
+                            imei: item.imei || '',
+                            serialNumber: item.serialNumber || undefined,
+                            sku: item.sku || undefined,
+                            quantity: parseInt(item.quantity) || 1,
+                            location: item.location || 'DNCL-Inspection',
+                            working: item.working || item.workingStatus || 'PENDING' // Try both working and workingStatus fields
+                        };
+
+                        // Enhanced working status determination with case sensitivity handling
+                        let workingStatus = 'PENDING';
+                        if (item.working) {
+                            const working = item.working.toString().toUpperCase();
+                            if (working === 'YES' || working === 'PASS' || working === 'PASSED' || working === 'TRUE') {
+                                workingStatus = 'YES';
+                            } else if (working === 'NO' || working === 'FAIL' || working === 'FAILED' || working === 'FALSE') {
+                                workingStatus = 'NO';
+                            } else {
+                                workingStatus = working; // Keep as-is if it's PENDING or other
+                            }
+                        } else if (item.workingStatus) {
+                            const workingStatusUpper = item.workingStatus.toString().toUpperCase();
+                            if (workingStatusUpper === 'YES' || workingStatusUpper === 'PASS' || workingStatusUpper === 'PASSED' || workingStatusUpper === 'TRUE') {
+                                workingStatus = 'YES';
+                            } else if (workingStatusUpper === 'NO' || workingStatusUpper === 'FAIL' || workingStatusUpper === 'FAILED' || workingStatusUpper === 'FALSE') {
+                                workingStatus = 'NO';
+                            } else {
+                                workingStatus = workingStatusUpper;
+                            }
+                        } else if (item.failed !== undefined) {
+                            // Handle failed field explicitly
+                            if (item.failed === false || item.failed === 'false' || item.failed === 'PASSED') {
+                                workingStatus = 'YES';
+                            } else if (item.failed === true || item.failed === 'true' || item.failed === 'FAILED') {
+                                workingStatus = 'NO';
+                            }
+                        }
+
+                        cleanItem.working = workingStatus;
+
+                        console.log('📱 PhoneCheck Data Structure:', item);
+                        console.log('📋 Cleaned Item Data:', cleanItem);
+                        console.log('🔧 Working Status Mapping:');
+                        console.log('  - item.working:', item.working);
+                        console.log('  - item.workingStatus:', item.workingStatus);
+                        console.log('  - Final working:', cleanItem.working);
+                        console.log('🔍 RAW PhoneCheck Data Analysis:');
+                        console.log('  - All item keys:', Object.keys(item));
+                        console.log('  - Item values:', JSON.stringify(item, null, 2));
+
+                        // Validate required fields before sending
+                        if (!cleanItem.name || !cleanItem.brand || !cleanItem.model || !cleanItem.imei || !cleanItem.location) {
+                            console.error('Missing required fields for item:', cleanItem);
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Transform data for enhanced inventory API
+                        const enhancedItem = {
+                            name: cleanItem.name,
+                            brand: cleanItem.brand,
+                            model: cleanItem.model,
+                            storage: cleanItem.storage,
+                            color: cleanItem.color,
+                            carrier: cleanItem.carrier,
+                            type: cleanItem.type,
+                            imei: cleanItem.imei,
+                            serialNumber: cleanItem.serialNumber,
+                            condition: cleanItem.condition || item.grade || 'UNKNOWN',
+                            working: cleanItem.working,
+                            quantity: cleanItem.quantity,
+                            location: cleanItem.location,
+                            // Enhanced fields from Phonecheck - preserve ALL original data
+                            batteryHealth: item.batteryHealth,
+                            batteryCycle: item.batteryCycle,
+                            mdm: item.mdm,
+                            notes: item.notes,
+                            failed: item.failed,
+                            workingStatus: item.workingStatus, // Include original workingStatus
+                            testerName: item.testerName,
+                            repairNotes: item.repairNotes,
+                            firstReceived: item.firstReceived,
+                            lastUpdate: item.lastUpdate,
+                            checkDate: item.checkDate,
+                            dataQuality: item.dataQuality,
+                            processingLevel: item.processingLevel,
+                            source: item.source,
+                            // Additional PhoneCheck fields for defects and custom data
+                            defects: item.defects,
+                            custom1: item.custom1,
+                            // Include all raw PhoneCheck data for comprehensive test results
+                            testResults: item,
+                            // CRITICAL: Preserve the original working status from PhoneCheck
+                            // This is what the backend determineWorkingStatus method needs
+                            originalWorking: item.working,
+                            originalWorkingStatus: item.workingStatus,
+                            originalFailed: item.failed
+                        };
+
+                        console.log('🚀 Sending enhanced item to inventory:', {
+                            imei: enhancedItem.imei,
+                            working: enhancedItem.working,
+                            originalWorking: enhancedItem.originalWorking,
+                            originalWorkingStatus: enhancedItem.originalWorkingStatus,
+                            originalFailed: enhancedItem.originalFailed
+                        });
+
+                        const response = await fetch('/api/admin/inventory-push', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(enhancedItem)
+                        });
+
+                        if (response.ok) {
+                            addedCount++;
+                        } else {
+                            const errorData = await response.json();
+                            console.error('Inventory push failed:', errorData);
+                            errorCount++;
+                        }
+                    } catch (error) {
+                        errorCount++;
+                    }
+                }
+
+                setLoading(false);
+                setToast({ 
+                    message: `Processed ${validItems.length} items: ${addedCount} added to inventory${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 
+                    type: addedCount > 0 ? 'success' : 'error' 
+                });
+
+                if (addedCount > 0) {
+                    // Clear data after successful addition
+                    setPulledDevices([]);
+                    setProcessedData([]);
+                    setShowResults(false);
+                    setStep(1);
+                }
+            };
+
+            // Clear all data
+            const clearAll = () => {
+                setPulledDevices([]);
+                setProcessedData([]);
+                setShowResults(false);
+                setStep(1);
+                setToast({ message: 'All data cleared', type: 'success' });
+            };
+
+            // Hardcoded stations from dncltz1 to dncltz10
+            const availableStations = [
+                { id: 'dncltz1', name: 'dncltz1' },
+                { id: 'dncltz2', name: 'dncltz2' },
+                { id: 'dncltz3', name: 'dncltz3' },
+                { id: 'dncltz4', name: 'dncltz4' },
+                { id: 'dncltz5', name: 'dncltz5' },
+                { id: 'dncltz6', name: 'dncltz6' },
+                { id: 'dncltz7', name: 'dncltz7' },
+                { id: 'dncltz8', name: 'dncltz8' },
+                { id: 'dncltz9', name: 'dncltz9' },
+                { id: 'dncltz10', name: 'dncltz10' }
+            ];
+
+            // DNCL-prefixed location options for better organization
+            const availableLocations = [
+                { id: 'inspection', name: 'DNCL-Inspection', description: 'Device inspection area' },
+                { id: 'testing', name: 'DNCL-Testing', description: 'Device testing area' },
+                { id: 'storage', name: 'DNCL-Storage', description: 'General storage area' },
+                { id: 'warehouse-a', name: 'DNCL-Warehouse-A', description: 'Warehouse section A' },
+                { id: 'warehouse-b', name: 'DNCL-Warehouse-B', description: 'Warehouse section B' },
+                { id: 'processing', name: 'DNCL-Processing', description: 'Device processing area' },
+                { id: 'qc', name: 'DNCL-QC', description: 'Quality control area' },
+                { id: 'shipping', name: 'DNCL-Shipping', description: 'Shipping preparation area' }
+            ];
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-6">Bulk Add Devices from Phonecheck Station</h2>
+                        
+                        {/* Progress Steps */}
+                        <div className="mb-6">
+                            <div className="flex items-center space-x-4">
+                                <div className={`flex items-center ${step >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300'}`}>
+                                        1
+                                    </div>
+                                    <span className="ml-2 font-medium">Pull IMEIs</span>
+                                </div>
+                                <div className={`flex-1 h-1 ${step >= 2 ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                <div className={`flex items-center ${step >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300'}`}>
+                                        2
+                                    </div>
+                                    <span className="ml-2 font-medium">Process Devices</span>
+                                </div>
+                                <div className={`flex-1 h-1 ${step >= 3 ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                <div className={`flex items-center ${step >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 3 ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300'}`}>
+                                        3
+                                    </div>
+                                    <span className="ml-2 font-medium">Review & Add</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            {/* Step 1: Station and Date Range Selection */}
+                            {step === 1 && (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label htmlFor="station" className="block text-sm font-medium text-gray-700 mb-2">
+                                                Station
+                                            </label>
+                                            <select
+                                                id="station"
+                                                value={selectedStation}
+                                                onChange={(e) => setSelectedStation(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            >
+                                                <option value="">Select Station</option>
+                                                {availableStations.map(station => (
+                                                    <option key={station.id} value={station.name}>
+                                                        {station.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
+                                                Start Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                id="startDate"
+                                                value={startDate}
+                                                onChange={(e) => setStartDate(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
+                                                End Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                id="endDate"
+                                                value={endDate}
+                                                onChange={(e) => setEndDate(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex space-x-3">
+                                        <button
+                                            type="button"
+                                            onClick={pullDevicesFromStation}
+                                            disabled={loading || !selectedStation || !startDate || !endDate}
+                                            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {loading && step === 1 ? 'Pulling Devices...' : 'Pull Devices from Station'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={clearAll}
+                                            disabled={loading}
+                                            className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Step 2: Processing Configuration */}
+                            {step === 2 && (
+                                <>
+                                    {pulledDevices.length > 0 ? (
+                                        <>
+                                            <div className="bg-green-50 rounded-lg p-4 mb-6">
+                                                <h3 className="text-lg font-semibold text-green-900 mb-2">Step 2: Configure Processing</h3>
+                                                <p className="text-green-700">Successfully pulled {pulledDevices.length} devices. Now configure where to store them.</p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="bg-yellow-50 rounded-lg p-4 mb-6">
+                                            <h3 className="text-lg font-semibold text-yellow-900 mb-2">Step 2: No Devices Found</h3>
+                                            <p className="text-yellow-700">No devices were found for the selected criteria. Please go back to Step 1 and try different parameters.</p>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label htmlFor="targetLocation" className="block text-sm font-medium text-gray-700 mb-2">
+                                                Target Location
+                                            </label>
+                                            <select
+                                                id="targetLocation"
+                                                value={selectedLocation}
+                                                onChange={(e) => setSelectedLocation(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            >
+                                                <option value="">Select Target Location</option>
+                                                {availableLocations.map(location => (
+                                                    <option key={location.id} value={location.name} title={location.description}>
+                                                        {location.name} - {location.description}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="mt-1 text-sm text-gray-500">Choose where the processed devices will be stored in inventory</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Processing Summary
+                                            </label>
+                                            <div className="bg-gray-50 rounded-lg p-4">
+                                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                                    <div>
+                                                        <span className="font-medium text-gray-700">Total Devices:</span>
+                                                        <span className="ml-2 text-gray-600">{pulledDevices.length || 0}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium text-gray-700">Station:</span>
+                                                        <span className="ml-2 text-gray-600">{selectedStation || 'Not selected'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium text-gray-700">Date Range:</span>
+                                                        <span className="ml-2 text-gray-600">{startDate && endDate ? `${startDate} to ${endDate}` : 'Not set'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium text-gray-700">Status:</span>
+                                                        <span className="ml-2 text-gray-600">{pulledDevices.length > 0 ? 'Ready to Process' : 'No devices found'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Processing Action Buttons */}
+                                    <div className="flex space-x-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => processPulledDevices(pulledDevices)}
+                                            disabled={loading || !selectedLocation || pulledDevices.length === 0}
+                                            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {loading ? 'Processing Devices...' : 'Process Devices'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setStep(1)}
+                                            disabled={loading}
+                                            className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Back to Step 1
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Step 1 Results: Pulled Devices Summary */}
+                            {pulledDevices.length > 0 && (
+                                <div className="bg-blue-50 rounded-lg p-4">
+                                    <h3 className="text-lg font-semibold text-blue-900 mb-2">Pulled Devices Summary</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                        <div>
+                                            <span className="font-medium text-blue-800">Total Devices:</span>
+                                            <span className="ml-2 text-blue-600">{pulledDevices.length}</span>
+                                        </div>
+                                        <div>
+                                            <span className="font-medium text-blue-800">Station:</span>
+                                            <span className="ml-2 text-blue-600">{selectedStation}</span>
+                                        </div>
+                                                                                 <div>
+                                             <span className="font-medium text-blue-800">Date Range:</span>
+                                             <span className="ml-2 text-blue-600">{startDate} to {endDate}</span>
+                                         </div>
+                                        <div>
+                                            <span className="font-medium text-blue-800">Status:</span>
+                                            <span className="ml-2 text-blue-600">
+                                                {step >= 2 ? 'Processing...' : 'Ready to Process'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Processing Results */}
+                            {showResults && processedData && processedData.length > 0 && (
+                                <div className="mt-6 bg-gray-50 rounded-lg p-6">
+                                                                            <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-900">Processing Results</h3>
+                                            <div className="flex space-x-2">
+                                                <span className="text-sm text-green-600">
+                                                    ✓ {processedData.filter(item => item && item.status === 'success').length} Ready
+                                                </span>
+                                                <span className="text-sm text-red-600">
+                                                    ✕ {processedData.filter(item => item && item.status === 'error').length} Errors
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                    {/* Enhanced Summary Statistics */}
+                                    <div className="mb-6 bg-white rounded-lg p-4 border">
+                                        <h4 className="text-sm font-semibold text-gray-900 mb-3">Inventory Push Summary</h4>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                            <div>
+                                                <span className="font-medium text-gray-700">Total Items:</span>
+                                                <span className="ml-2 text-gray-600">{processedData.filter(item => item && item.imei).length}</span>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium text-gray-700">Working Status:</span>
+                                                <div className="mt-1 space-y-1">
+                                                    <div className="flex items-center">
+                                                        <span className="inline-block w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                                                        <span className="text-green-700">YES: {processedData.filter(item => {
+                                                            if (!item) return false;
+                                                            const working = (item.working || '').toString().toUpperCase();
+                                                            const workingStatus = (item.workingStatus || '').toString().toUpperCase();
+                                                            const failed = item.failed;
+                                                            return working === 'YES' || working === 'PASS' || working === 'PASSED' || working === 'TRUE' ||
+                                                                   workingStatus === 'YES' || workingStatus === 'PASS' || workingStatus === 'PASSED' || workingStatus === 'TRUE' ||
+                                                                   failed === false || failed === 'false' || failed === 'PASSED';
+                                                        }).length}</span>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <span className="inline-block w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+                                                        <span className="text-red-700">NO: {processedData.filter(item => {
+                                                            if (!item) return false;
+                                                            const working = (item.working || '').toString().toUpperCase();
+                                                            const workingStatus = (item.workingStatus || '').toString().toUpperCase();
+                                                            const failed = item.failed;
+                                                            return working === 'NO' || working === 'FAIL' || working === 'FAILED' || working === 'FALSE' ||
+                                                                   workingStatus === 'NO' || workingStatus === 'FAIL' || workingStatus === 'FAILED' || workingStatus === 'FALSE' ||
+                                                                   failed === true || failed === 'true' || failed === 'FAILED';
+                                                        }).length}</span>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <span className="inline-block w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
+                                                        <span className="text-yellow-700">PENDING: {processedData.filter(item => {
+                                                            if (!item) return false;
+                                                            const working = (item.working || '').toString().toUpperCase();
+                                                            const workingStatus = (item.workingStatus || '').toString().toUpperCase();
+                                                            const failed = item.failed;
+                                                            return !(working === 'YES' || working === 'PASS' || working === 'PASSED' || working === 'TRUE' ||
+                                                                   working === 'NO' || working === 'FAIL' || working === 'FAILED' || working === 'FALSE' ||
+                                                                   workingStatus === 'YES' || workingStatus === 'PASS' || workingStatus === 'PASSED' || workingStatus === 'TRUE' ||
+                                                                   workingStatus === 'NO' || workingStatus === 'FAIL' || workingStatus === 'FAILED' || workingStatus === 'FALSE' ||
+                                                                   failed === false || failed === 'false' || failed === 'PASSED' ||
+                                                                   failed === true || failed === 'true' || failed === 'FAILED');
+                                                        }).length}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium text-gray-700">With Battery Data:</span>
+                                                <span className="ml-2 text-gray-600">{processedData.filter(item => item && item.batteryHealth !== undefined).length}</span>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium text-gray-700">With Defects:</span>
+                                                <span className="ml-2 text-gray-600">{processedData.filter(item => item && item.defects).length}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Enhanced Results Table with Inventory Push Data */}
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-100">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">IMEI</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Device</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Working Status</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">PhoneCheck Data</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Inventory Push Data</th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {processedData.filter(item => item).map((item, index) => {
+                                                    // Calculate working status for display
+                                                    let workingStatus = 'PENDING';
+                                                    let workingStatusColor = 'bg-yellow-100 text-yellow-800';
+                                                    
+                                                    if (item.working) {
+                                                        const working = item.working.toString().toUpperCase();
+                                                        if (working === 'YES' || working === 'PASS' || working === 'PASSED' || working === 'TRUE') {
+                                                            workingStatus = 'YES';
+                                                            workingStatusColor = 'bg-green-100 text-green-800';
+                                                        } else if (working === 'NO' || working === 'FAIL' || working === 'FAILED' || working === 'FALSE') {
+                                                            workingStatus = 'NO';
+                                                            workingStatusColor = 'bg-red-100 text-red-800';
+                                                        } else {
+                                                            workingStatus = working;
+                                                        }
+                                                    } else if (item.workingStatus) {
+                                                        const workingStatusUpper = item.workingStatus.toString().toUpperCase();
+                                                        if (workingStatusUpper === 'YES' || workingStatusUpper === 'PASS' || workingStatusUpper === 'PASSED' || workingStatusUpper === 'TRUE') {
+                                                            workingStatus = 'YES';
+                                                            workingStatusColor = 'bg-green-100 text-green-800';
+                                                        } else if (workingStatusUpper === 'NO' || workingStatusUpper === 'FAIL' || workingStatusUpper === 'FAILED' || workingStatusUpper === 'FALSE') {
+                                                            workingStatus = 'NO';
+                                                            workingStatusColor = 'bg-red-100 text-red-800';
+                                                        } else {
+                                                            workingStatus = workingStatusUpper;
+                                                        }
+                                                    } else if (item.failed !== undefined) {
+                                                        if (item.failed === false || item.failed === 'false' || item.failed === 'PASSED') {
+                                                            workingStatus = 'YES';
+                                                            workingStatusColor = 'bg-green-100 text-green-800';
+                                                        } else if (item.failed === true || item.failed === 'true' || item.failed === 'FAILED') {
+                                                            workingStatus = 'NO';
+                                                            workingStatusColor = 'bg-red-100 text-red-800';
+                                                        }
+                                                    }
+
+                                                    return (
+                                                        <tr key={index} className="hover:bg-gray-50">
+                                                            <td className="px-3 py-2 text-sm font-mono text-gray-900">
+                                                                {item.imei || 'N/A'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-sm">
+                                                                <div className="font-medium text-gray-900">{item.name || 'Unknown'}</div>
+                                                                <div className="text-xs text-gray-500">{item.brand} {item.model}</div>
+                                                                <div className="text-xs text-gray-400">{item.storage} • {item.color}</div>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${workingStatusColor}`}>
+                                                                    {workingStatus}
+                                                                </span>
+                                                                <div className="text-xs text-gray-500 mt-1">
+                                                                    {item.batteryHealth ? `Battery: ${item.batteryHealth}%` : 'No battery data'}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-xs text-gray-600">
+                                                                <div className="space-y-1">
+                                                                    <div><span className="font-medium">Original:</span> {item.working || 'N/A'}</div>
+                                                                    <div><span className="font-medium">Status:</span> {item.workingStatus || 'N/A'}</div>
+                                                                    <div><span className="font-medium">Failed:</span> {item.failed !== undefined ? item.failed.toString() : 'N/A'}</div>
+                                                                    <div><span className="font-medium">Condition:</span> {item.condition || 'N/A'}</div>
+                                                                    {item.defects && <div><span className="font-medium">Defects:</span> {item.defects}</div>}
+                                                                    {item.notes && <div><span className="font-medium">Notes:</span> {item.notes}</div>}
+                                                                    {item.custom1 && <div><span className="font-medium">Custom1:</span> {item.custom1}</div>}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-xs text-gray-600">
+                                                                <div className="space-y-1">
+                                                                    <div><span className="font-medium">Type:</span> {item.type || 'PHONE'}</div>
+                                                                    <div><span className="font-medium">Location:</span> {item.location || 'DNCL-Inspection'}</div>
+                                                                    <div><span className="font-medium">Quantity:</span> {item.quantity || 1}</div>
+                                                                    <div><span className="font-medium">Carrier:</span> {item.carrier || 'N/A'}</div>
+                                                                    <div><span className="font-medium">Serial:</span> {item.serialNumber || 'N/A'}</div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                                    item.status === 'success' 
+                                                                        ? 'bg-green-100 text-green-800' 
+                                                                        : 'bg-red-100 text-red-800'
+                                                                }`}>
+                                                                    {item.status === 'success' ? 'Ready' : 'Error'}
+                                                                </span>
+                                                                {item.status !== 'success' && (
+                                                                    <div className="text-xs text-red-600 mt-1">
+                                                                        {item.error || 'Unknown error'}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Add to Inventory Button */}
+                                    {processedData.filter(item => item && item.imei).length > 0 && (
+                                        <div className="mt-4 flex justify-center space-x-3">
+                                            <button
+                                                onClick={addToInventory}
+                                                disabled={loading}
+                                                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {loading ? 'Adding to Inventory...' : `Add ${processedData.filter(item => item && item.imei).length} Items to Inventory`}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    console.log('🔍 DEBUG: Raw processed data:', processedData);
+                                                    console.log('🔍 DEBUG: Sample item data structure:', processedData[0]);
+                                                    alert('Check browser console for detailed debug information');
+                                                }}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                            >
+                                                Debug Data
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Loading Indicator */}
+                            {loading && (
+                                <div className="text-center py-8">
+                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                                    <p className="text-gray-600">
+                                        {step === 1 ? 'Pulling devices from Phonecheck station...' : 
+                                         step === 2 && loading ? 'Processing device details...' : 
+                                         step === 3 && loading ? 'Adding to inventory...' :
+                                         'Processing...'}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {toast && (
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Main App Component
+        const App = () => {
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div className="flex items-center">
+                                    <h1 className="text-2xl font-bold text-gray-900">WMS - Bulk Add Devices</h1>
+                                </div>
+                                <div className="flex space-x-3">
+                                    <a
+                                        href="/phonecheck.html"
+                                        className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                    >
+                                        Phonecheck
+                                    </a>
+                                    <a
+                                        href="/bulk-add.html"
+                                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
+                                    >
+                                        Bulk Add
+                                    </a>
+                                    <a
+                                        href="/inventory-manager.html"
+                                        className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                    >
+                                        Inventory Manager
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <BulkAddForm />
+                    </div>
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

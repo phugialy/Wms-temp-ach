@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // Phonecheck API credentials - should be moved to environment variables
 const PHONECHECK_USERNAME = process.env['REACT_APP_PHONECHECK_USERNAME'] || 'dncltechzoneinc';
@@ -48,6 +48,15 @@ interface PhonecheckLookupProps {
 // API response types
 interface AuthResponse {
   token: string;
+}
+
+// Performance metrics interface
+interface PerformanceMetrics {
+  startTime: number;
+  authTime: number;
+  lookupTime: number;
+  totalTime: number;
+  cacheHit?: boolean;
 }
 
 // Enhanced Toast notification component
@@ -107,6 +116,25 @@ const Toast: React.FC<{
   );
 };
 
+// Performance display component
+const PerformanceDisplay: React.FC<{ metrics: PerformanceMetrics | null }> = ({ metrics }) => {
+  if (!metrics) return null;
+
+  return (
+    <div className="bg-gray-100 border border-gray-300 rounded-lg p-3 mb-4">
+      <h5 className="font-medium text-gray-900 mb-2">Performance Metrics</h5>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div><span className="font-medium">Total Time:</span> {metrics.totalTime}ms</div>
+        <div><span className="font-medium">Auth Time:</span> {metrics.authTime}ms</div>
+        <div><span className="font-medium">Lookup Time:</span> {metrics.lookupTime}ms</div>
+        {metrics.cacheHit !== undefined && (
+          <div><span className="font-medium">Cache:</span> {metrics.cacheHit ? 'Hit' : 'Miss'}</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Utility functions
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -139,6 +167,24 @@ const PhonecheckLookup: React.FC<PhonecheckLookupProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastRawData, setLastRawData] = useState<any>(null);
+  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics | null>(null);
+  const [cacheStats, setCacheStats] = useState<{ size: number; hitRate: string } | null>(null);
+
+  // Get cache statistics
+  const fetchCacheStats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/phonecheck/cache/stats');
+      if (response.ok) {
+        const data = await response.json() as { data: { size: number } };
+        setCacheStats({
+          size: data.data.size,
+          hitRate: 'N/A' // Will be calculated from performance metrics
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to fetch cache stats:', error);
+    }
+  }, []);
 
   // Get authentication token from Phonecheck API with retry logic
   const getAuthToken = async (username: string, password: string, attempt = 1): Promise<string> => {

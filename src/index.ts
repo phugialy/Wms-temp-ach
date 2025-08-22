@@ -8,6 +8,8 @@ import itemsRoutes from './routes/items.route';
 import inventoryRoutes from './routes/inventory.route';
 import logsRoutes from './routes/logs.route';
 import adminRoutes from './routes/admin.route';
+import phonecheckRoutes from './routes/phonecheck.route';
+import enhancedInventoryRoutes from './routes/enhanced-inventory.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -50,6 +52,8 @@ app.use('/items', itemsRoutes);
 app.use('/inventory', inventoryRoutes);
 app.use('/logs', logsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/phonecheck', phonecheckRoutes);
+app.use('/api/enhanced-inventory', enhancedInventoryRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

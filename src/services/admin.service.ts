@@ -58,6 +58,7 @@ export class AdminService {
             sku: finalSku,
             skuGeneratedAt: data.sku ? null : new Date(), // Only set if SKU was auto-generated
             condition: 'used', // Default condition
+            working: data.working || 'PENDING', // Use provided working status or default to PENDING
             isActive: true
           }
         });
@@ -100,21 +101,37 @@ export class AdminService {
           updateData.skuGeneratedAt = data.sku ? null : new Date();
           needsUpdate = true;
         }
+        if (item.working !== data.working && data.working) {
+          updateData.working = data.working;
+          needsUpdate = true;
+        }
 
         if (needsUpdate) {
+          // Remove id and handle JSON fields properly
+          const { id, testResults, ...updateDataWithoutId } = updateData;
+          const updatePayload: any = { ...updateDataWithoutId };
+          
+          // Handle testResults JSON field properly if it exists
+          if (testResults !== undefined) {
+            updatePayload.testResults = testResults === null ? null : testResults;
+          }
+          
           item = await this.prisma.item.update({
             where: { id: item.id },
-            data: updateData
+            data: updatePayload
           });
           logger.info('Item updated', { itemId: item.id, sku: finalSku });
         }
       }
 
-      // Parse location name from "DNCL-LocationName" format
-      const locationName = data.location.replace('DNCL-', '');
+      // Parse location name - support both "DNCL-LocationName" and plain "LocationName" formats
+      let locationName = data.location;
+      if (data.location.startsWith('DNCL-')) {
+        locationName = data.location.replace('DNCL-', '');
+      }
       
       // Find the location by name
-      const location = await this.prisma.location.findFirst({
+      let location = await this.prisma.location.findFirst({
         where: {
           name: locationName,
           warehouse: {
@@ -126,8 +143,35 @@ export class AdminService {
         }
       });
 
+      // If location doesn't exist, try to create it
       if (!location) {
-        throw new Error(`Location '${data.location}' not found in DNCL warehouse`);
+        // First ensure DNCL warehouse exists
+        let warehouse = await this.prisma.warehouse.findUnique({
+          where: { name: 'DNCL' }
+        });
+
+        if (!warehouse) {
+          warehouse = await this.prisma.warehouse.create({
+            data: {
+              name: 'DNCL',
+              description: 'DNCL Main Warehouse'
+            }
+          });
+          logger.info('Created DNCL warehouse', { warehouseId: warehouse.id });
+        }
+
+        // Create the location
+        location = await this.prisma.location.create({
+          data: {
+            name: locationName,
+            warehouseId: warehouse.id,
+            description: `Location: ${locationName}`
+          },
+          include: {
+            warehouse: true
+          }
+        });
+        logger.info('Created new location', { locationId: location.id, locationName });
       }
 
       // Check if item already exists in any location and remove it (one location per item)
@@ -216,6 +260,7 @@ export class AdminService {
         imei: inv.item.imei,
         serialNumber: inv.item.serialNumber,
         condition: inv.item.condition,
+        working: inv.item.working,
         quantity: inv.quantity,
         location: `${inv.location.warehouse.name}-${inv.location.name}`,
         sku: inv.sku,

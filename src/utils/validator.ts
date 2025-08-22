@@ -203,18 +203,52 @@ export const inventoryPushSchema = z.object({
   color: z.string().optional(),
   carrier: z.string().optional(),
   type: z.string().min(1, 'Type is required'),
-  imei: z.string().optional(),
+  imei: z.string().min(1, 'IMEI is required'),
   serialNumber: z.string().optional(),
   sku: z.string().optional(),
   quantity: z.number().int().min(0, 'Quantity must be non-negative'),
-  location: z.string().min(1, 'Location is required')
-}).refine(
-  (data) => data.imei || data.serialNumber || data.sku,
-  {
-    message: 'At least one of imei, serialNumber, or sku must be provided',
-    path: ['imei', 'serialNumber', 'sku']
-  }
-);
+  location: z.string().min(1, 'Location is required'),
+  working: z.string().optional(),
+  workingStatus: z.string().optional(),
+  // New PhoneCheck fields
+  batteryHealth: z.union([
+    z.string().transform(val => {
+      const num = parseInt(val, 10);
+      return isNaN(num) ? undefined : num;
+    }).pipe(z.number().int().min(0).max(100)),
+    z.number().int().min(0).max(100)
+  ]).optional(),
+  screenCondition: z.string().optional(),
+  bodyCondition: z.string().optional(),
+  condition: z.string().optional(),
+  testResults: z.any().optional(),
+  // Additional PhoneCheck fields
+  failed: z.boolean().optional(),
+  batteryCycle: z.union([
+    z.string().transform(val => {
+      const num = parseInt(val, 10);
+      return isNaN(num) ? undefined : num;
+    }).pipe(z.number().int().min(0)),
+    z.number().int().min(0)
+  ]).optional(),
+  mdm: z.string().optional(),
+  notes: z.string().optional(),
+  testerName: z.string().optional(),
+  repairNotes: z.string().optional(),
+  firstReceived: z.string().optional(),
+  lastUpdate: z.string().optional(),
+  checkDate: z.string().optional(),
+  dataQuality: z.string().optional(),
+  processingLevel: z.string().optional(),
+  source: z.string().optional(),
+  // Additional PhoneCheck fields for defects and custom data
+  defects: z.string().optional(),
+  custom1: z.string().optional(),
+  // Original PhoneCheck data fields (for debugging and fallback)
+  originalWorking: z.string().optional(),
+  originalWorkingStatus: z.string().optional(),
+  originalFailed: z.boolean().optional()
+});
 
 // Parameter validation schemas
 export const skuParamSchema = z.object({
