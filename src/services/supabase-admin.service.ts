@@ -15,6 +15,7 @@ export class SupabaseAdminService {
         originalWorking: (data as any).originalWorking,
         originalWorkingStatus: (data as any).originalWorkingStatus,
         originalFailed: (data as any).originalFailed,
+        originalFailedType: typeof (data as any).originalFailed,
         batteryHealth: data.batteryHealth
       });
       // Generate SKU if not provided
@@ -31,8 +32,9 @@ export class SupabaseAdminService {
 
       // Find or create the Item record using Supabase API
       let item: any = null;
+      let foundBy = null;
       
-      // Try to find by IMEI first
+      // ONLY check for existing IMEI (each IMEI should be a unique row)
       if (data.imei) {
         const { data: itemData, error } = await supabase
           .from('Item')
@@ -42,33 +44,22 @@ export class SupabaseAdminService {
         
         if (!error && itemData) {
           item = itemData;
+          foundBy = 'IMEI';
+          logger.info('Found existing item by IMEI', { 
+            itemId: item.id, 
+            imei: data.imei,
+            action: 'will update existing item'
+          });
         }
       }
       
-      // Try to find by serial number if IMEI not found
-      if (!item && data.serialNumber) {
-        const { data: itemData, error } = await supabase
-          .from('Item')
-          .select('*')
-          .eq('serialNumber', data.serialNumber)
-          .single();
-        
-        if (!error && itemData) {
-          item = itemData;
-        }
-      }
-      
-      // Try to find by SKU as fallback
       if (!item) {
-        const { data: itemData, error } = await supabase
-          .from('Item')
-          .select('*')
-          .eq('sku', finalSku)
-          .single();
-        
-        if (!error && itemData) {
-          item = itemData;
-        }
+        logger.info('No existing item found with this IMEI, will create new item', { 
+          imei: data.imei,
+          serialNumber: data.serialNumber,
+          sku: finalSku,
+          action: 'will create new item'
+        });
       }
 
       // Create item if not found
@@ -88,13 +79,10 @@ export class SupabaseAdminService {
             sku: finalSku,
             skuGeneratedAt: data.sku ? null : new Date().toISOString(),
             condition: data.condition || 'UNKNOWN',
-            batteryHealth: data.batteryHealth ? parseInt(data.batteryHealth.toString(), 10) : null,
+            batteryHealth: data.batteryHealth && data.batteryHealth.toString() !== 'Health not supported' ? parseInt(data.batteryHealth.toString(), 10) : null,
             screenCondition: data.screenCondition,
             bodyCondition: data.bodyCondition,
-            testResults: data.testResults,
-            defects: data.defects,
-            notes: data.notes,
-            custom1: data.custom1,
+            testResults: data.testResults, // Store all PhoneCheck data in testResults JSON
             working: this.determineWorkingStatus(data),
             isActive: true
           })
@@ -145,13 +133,9 @@ export class SupabaseAdminService {
           updateData.sku = finalSku;
           needsUpdate = true;
         }
-        // Also update PhoneCheck related fields on existing item if provided
-        if (data.batteryHealth !== undefined && item.batteryHealth !== parseInt(data.batteryHealth.toString(), 10)) { 
+        // Also update PhoneCheck related fields on existing item if provided (only use existing columns)
+        if (data.batteryHealth !== undefined && data.batteryHealth.toString() !== 'Health not supported' && item.batteryHealth !== parseInt(data.batteryHealth.toString(), 10)) { 
           updateData.batteryHealth = parseInt(data.batteryHealth.toString(), 10); 
-          needsUpdate = true; 
-        }
-        if (data.batteryCycle !== undefined && item.batteryCycle !== parseInt(data.batteryCycle.toString(), 10)) { 
-          updateData.batteryCycle = parseInt(data.batteryCycle.toString(), 10); 
           needsUpdate = true; 
         }
         if (data.screenCondition !== undefined && item.screenCondition !== data.screenCondition) { 
@@ -168,18 +152,6 @@ export class SupabaseAdminService {
         }
         if (data.working !== undefined && item.working !== this.determineWorkingStatus(data)) { 
           updateData.working = this.determineWorkingStatus(data); 
-          needsUpdate = true; 
-        }
-        if (data.defects !== undefined && item.defects !== data.defects) { 
-          updateData.defects = data.defects; 
-          needsUpdate = true; 
-        }
-        if (data.notes !== undefined && item.notes !== data.notes) { 
-          updateData.notes = data.notes; 
-          needsUpdate = true; 
-        }
-        if (data.custom1 !== undefined && item.custom1 !== data.custom1) { 
-          updateData.custom1 = data.custom1; 
           needsUpdate = true; 
         }
         // Merge testResults if new data is more comprehensive
@@ -324,36 +296,36 @@ export class SupabaseAdminService {
         });
       }
 
-       // Create DeviceTest record (always create one for tracking)
-       const testResults = {
-         // Raw PhoneCheck status
-         rawStatus: {
-           failed: data.failed,
-           working: data.working,
-           status: data.failed === true ? 'FAILED' : data.failed === false ? 'PASSED' : 'PENDING'
-         },
-         // Device condition data
-         batteryHealth: data.batteryHealth ? parseInt(data.batteryHealth.toString(), 10) : null,
-         screenCondition: data.screenCondition,
-         bodyCondition: data.bodyCondition,
-         // Additional PhoneCheck fields
-         batteryCycle: data.batteryCycle ? parseInt(data.batteryCycle.toString(), 10) : null,
-         mdm: data.mdm,
-         notes: data.notes,
-         testerName: data.testerName,
-         repairNotes: data.repairNotes,
-         firstReceived: data.firstReceived,
-         lastUpdate: data.lastUpdate,
-         checkDate: data.checkDate,
-         dataQuality: data.dataQuality,
-         processingLevel: data.processingLevel,
-         source: data.source,
-         // Additional PhoneCheck fields for defects and custom data
-         defects: data.defects,
-         custom1: data.custom1,
-         // Merge with existing testResults if provided
-         ...(data.testResults || {})
-       };
+               // Create DeviceTest record (always create one for tracking)
+        const testResults = {
+          // Raw PhoneCheck status
+          rawStatus: {
+            failed: data.failed,
+            working: data.working,
+            status: data.failed === true ? 'FAILED' : data.failed === false ? 'PASSED' : 'PENDING'
+          },
+          // Device condition data
+                     batteryHealth: data.batteryHealth && data.batteryHealth.toString() !== 'Health not supported' ? parseInt(data.batteryHealth.toString(), 10) : null,
+          screenCondition: data.screenCondition,
+          bodyCondition: data.bodyCondition,
+          // Additional PhoneCheck fields (store in testResults since columns don't exist)
+          batteryCycle: data.batteryCycle ? parseInt(data.batteryCycle.toString(), 10) : null,
+          mdm: data.mdm,
+          notes: data.notes,
+          testerName: data.testerName,
+          repairNotes: data.repairNotes,
+          firstReceived: data.firstReceived,
+          lastUpdate: data.lastUpdate,
+          checkDate: data.checkDate,
+          dataQuality: data.dataQuality,
+          processingLevel: data.processingLevel,
+          source: data.source,
+          // Additional PhoneCheck fields for defects and custom data
+          defects: data.defects,
+          custom1: data.custom1,
+          // Merge with existing testResults if provided
+          ...(data.testResults || {})
+        };
 
        const { error: deviceTestError } = await supabase
          .from('DeviceTest')
@@ -537,8 +509,8 @@ export class SupabaseAdminService {
       }
     }
     
-    // Default to PENDING if no clear indication
-    logger.info('🔧 No clear indication, returning PENDING');
-    return 'PENDING';
+    // Default to YES if no clear indication (safer than PENDING)
+    logger.info('🔧 No clear indication, returning YES (default)');
+    return 'YES';
   }
 }

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Toast notification component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 5000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const getToastStyles = () => {
+                switch (type) {
+                    case 'success': return 'bg-green-500 text-white';
+                    case 'error': return 'bg-red-500 text-white';
+                    case 'warning': return 'bg-yellow-500 text-white';
+                    case 'info': return 'bg-blue-500 text-white';
+                    default: return 'bg-blue-500 text-white';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'success': return '✓';
+                    case 'error': return '✕';
+                    case 'warning': return '⚠';
+                    case 'info': return 'ℹ';
+                    default: return 'ℹ';
+                }
+            };
+
+            return (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${getToastStyles()} min-w-80`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-2 font-bold">{getIcon()}</span>
+                            <span>{message}</span>
+                        </div>
+                        <button onClick={onClose} className="ml-4 text-white hover:text-gray-200 font-bold">×</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Alert component
+        const Alert = ({ type, title, message, count }) => {
+            const getAlertStyles = () => {
+                switch (type) {
+                    case 'critical': return 'bg-red-50 border-red-200 text-red-800';
+                    case 'warning': return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+                    case 'info': return 'bg-blue-50 border-blue-200 text-blue-800';
+                    default: return 'bg-gray-50 border-gray-200 text-gray-800';
+                }
+            };
+
+            const getIcon = () => {
+                switch (type) {
+                    case 'critical': return '🚨';
+                    case 'warning': return '⚠️';
+                    case 'info': return 'ℹ️';
+                    default: return '📊';
+                }
+            };
+
+            return (
+                <div className={`border rounded-lg p-4 ${getAlertStyles()}`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <span className="mr-2 text-lg">{getIcon()}</span>
+                            <div>
+                                <h4 className="font-semibold">{title}</h4>
+                                <p className="text-sm opacity-90">{message}</p>
+                            </div>
+                        </div>
+                        {count && (
+                            <div className="bg-white bg-opacity-50 rounded-full px-3 py-1 text-sm font-bold">
+                                {count}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Metric Card component
+        const MetricCard = ({ title, value, change, changeType, icon, color = 'blue' }) => {
+            const getColorClasses = () => {
+                switch (color) {
+                    case 'green': return 'bg-green-100 text-green-600';
+                    case 'red': return 'bg-red-100 text-red-600';
+                    case 'yellow': return 'bg-yellow-100 text-yellow-600';
+                    case 'purple': return 'bg-purple-100 text-purple-600';
+                    default: return 'bg-blue-100 text-blue-600';
+                }
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">{title}</p>
+                            <p className="text-2xl font-bold text-gray-900">{value}</p>
+                            {change && (
+                                <div className={`flex items-center text-sm ${changeType === 'positive' ? 'text-green-600' : 'text-red-600'}`}>
+                                    <span>{changeType === 'positive' ? '↗' : '↘'}</span>
+                                    <span className="ml-1">{change}</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className={`p-3 rounded-lg ${getColorClasses()}`}>
+                            <span className="text-2xl">{icon}</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Chart component
+        const Chart = ({ type, data, options, className = '' }) => {
+            const canvasRef = React.useRef(null);
+            const chartRef = React.useRef(null);
+
+            React.useEffect(() => {
+                if (canvasRef.current && window.Chart) {
+                    if (chartRef.current) {
+                        chartRef.current.destroy();
+                    }
+                    
+                    const ctx = canvasRef.current.getContext('2d');
+                    chartRef.current = new window.Chart(ctx, {
+                        type: type,
+                        data: data,
+                        options: options
+                    });
+                }
+
+                return () => {
+                    if (chartRef.current) {
+                        chartRef.current.destroy();
+                    }
+                };
+            }, [type, data, options]);
+
+            return <canvas ref={canvasRef} className={className} />;
+        };
+
+        // Admin Dashboard Component
+        const AdminDashboard = () => {
+            const [inventory, setInventory] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+            const [timeRange, setTimeRange] = useState('7d'); // 7d, 30d, 90d
+            const [refreshInterval, setRefreshInterval] = useState(null);
+
+            // Fetch inventory data
+            const fetchInventory = async () => {
+                try {
+                    setLoading(true);
+                    const response = await fetch('/api/admin/inventory');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setInventory(data);
+                    } else {
+                        throw new Error('Failed to fetch inventory');
+                    }
+                } catch (error) {
+                    console.error('Error fetching inventory:', error);
+                    setToast({ message: 'Failed to load dashboard data', type: 'error' });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Calculate business metrics
+            const calculateBusinessMetrics = () => {
+                const totalItems = inventory.length;
+                const availableItems = inventory.filter(item => 
+                    item.inventory && item.inventory.some(inv => inv.available > 0)
+                ).length;
+                const reservedItems = inventory.filter(item => 
+                    item.inventory && item.inventory.some(inv => inv.reserved > 0)
+                ).length;
+                const failedItems = inventory.filter(item => item.working === 'NO').length;
+                const passedItems = inventory.filter(item => item.working === 'YES').length;
+                const pendingItems = inventory.filter(item => item.working === 'PENDING').length;
+
+                // Calculate pass rate
+                const totalTested = passedItems + failedItems;
+                const passRate = totalTested > 0 ? ((passedItems / totalTested) * 100).toFixed(1) : 0;
+
+                // Estimate stock value (rough calculation)
+                const estimatedValue = inventory.reduce((total, item) => {
+                    let baseValue = 0;
+                    if (item.brand === 'Samsung') {
+                        if (item.model?.includes('Fold')) baseValue = 800;
+                        else if (item.model?.includes('Galaxy')) baseValue = 400;
+                    } else if (item.brand === 'Google') {
+                        if (item.model?.includes('Pixel')) baseValue = 500;
+                    }
+                    
+                    // Adjust for condition and battery health
+                    const conditionMultiplier = item.condition === 'EIGHT' ? 1.2 : 
+                                              item.condition === 'SEVEN' ? 1.0 :
+                                              item.condition === 'SIX' ? 0.8 : 0.6;
+                    
+                    const batteryMultiplier = item.batteryHealth ? (item.batteryHealth / 100) : 0.8;
+                    
+                    return total + (baseValue * conditionMultiplier * batteryMultiplier);
+                }, 0);
+
+                return {
+                    totalItems,
+                    availableItems,
+                    reservedItems,
+                    failedItems,
+                    passedItems,
+                    pendingItems,
+                    passRate,
+                    estimatedValue: Math.round(estimatedValue)
+                };
+            };
+
+            // Calculate operational metrics
+            const calculateOperationalMetrics = () => {
+                const now = new Date();
+                const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+
+                // Devices processed in last 7 days
+                const recentItems = inventory.filter(item => 
+                    new Date(item.createdAt) >= sevenDaysAgo
+                );
+
+                // Devices processed in last 30 days
+                const monthlyItems = inventory.filter(item => 
+                    new Date(item.createdAt) >= thirtyDaysAgo
+                );
+
+                // Calculate average processing time (simplified)
+                const processingTimes = inventory
+                    .filter(item => item.createdAt && item.updatedAt)
+                    .map(item => {
+                        const created = new Date(item.createdAt);
+                        const updated = new Date(item.updatedAt);
+                        return (updated - created) / (1000 * 60 * 60); // hours
+                    });
+
+                const avgProcessingTime = processingTimes.length > 0 
+                    ? (processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length).toFixed(1)
+                    : 0;
+
+                return {
+                    processedLast7Days: recentItems.length,
+                    processedLast30Days: monthlyItems.length,
+                    avgProcessingTime,
+                    dailyAverage: Math.round(monthlyItems.length / 30)
+                };
+            };
+
+            // Generate alerts
+            const generateAlerts = () => {
+                const alerts = [];
+                const metrics = calculateBusinessMetrics();
+
+                // Low stock alerts
+                const lowStockItems = inventory.filter(item => 
+                    item.inventory && item.inventory.some(inv => inv.available <= 2)
+                );
+                if (lowStockItems.length > 0) {
+                    alerts.push({
+                        type: 'warning',
+                        title: 'Low Stock Alert',
+                        message: `${lowStockItems.length} items have low stock (≤2 available)`,
+                        count: lowStockItems.length
+                    });
+                }
+
+                // Failed devices alert
+                if (metrics.failedItems > 0) {
+                    alerts.push({
+                        type: 'critical',
+                        title: 'Failed Devices',
+                        message: `${metrics.failedItems} devices failed quality tests`,
+                        count: metrics.failedItems
+                    });
+                }
+
+                // Low pass rate alert
+                if (parseFloat(metrics.passRate) < 80) {
+                    alerts.push({
+                        type: 'warning',
+                        title: 'Low Pass Rate',
+                        message: `Current pass rate is ${metrics.passRate}% (below 80% threshold)`,
+                        count: metrics.passRate + '%'
+                    });
+                }
+
+                // Pending tests alert
+                if (metrics.pendingItems > 0) {
+                    alerts.push({
+                        type: 'info',
+                        title: 'Pending Tests',
+                        message: `${metrics.pendingItems} devices awaiting quality tests`,
+                        count: metrics.pendingItems
+                    });
+                }
+
+                return alerts;
+            };
+
+            // Prepare chart data
+            const prepareChartData = () => {
+                // Brand breakdown
+                const brandData = {};
+                inventory.forEach(item => {
+                    const brand = item.brand || 'Unknown';
+                    brandData[brand] = (brandData[brand] || 0) + 1;
+                });
+
+                // Condition breakdown
+                const conditionData = {};
+                inventory.forEach(item => {
+                    const condition = item.condition || 'Unknown';
+                    conditionData[condition] = (conditionData[condition] || 0) + 1;
+                });
+
+                // Battery health distribution
+                const batteryRanges = {
+                    '90-100%': 0,
+                    '80-89%': 0,
+                    '70-79%': 0,
+                    '60-69%': 0,
+                    '<60%': 0
+                };
+
+                inventory.forEach(item => {
+                    const health = item.batteryHealth;
+                    if (health >= 90) batteryRanges['90-100%']++;
+                    else if (health >= 80) batteryRanges['80-89%']++;
+                    else if (health >= 70) batteryRanges['70-79%']++;
+                    else if (health >= 60) batteryRanges['60-69%']++;
+                    else batteryRanges['<60%']++;
+                });
+
+                return { brandData, conditionData, batteryRanges };
+            };
+
+            // Initialize
+            useEffect(() => {
+                fetchInventory();
+                
+                // Set up auto-refresh every 5 minutes
+                const interval = setInterval(fetchInventory, 5 * 60 * 1000);
+                setRefreshInterval(interval);
+
+                return () => {
+                    if (interval) clearInterval(interval);
+                };
+            }, []);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                            <p className="mt-4 text-gray-500">Loading Admin Dashboard...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            const businessMetrics = calculateBusinessMetrics();
+            const operationalMetrics = calculateOperationalMetrics();
+            const alerts = generateAlerts();
+            const chartData = prepareChartData();
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+                                    <p className="mt-1 text-sm text-gray-500">Executive overview of warehouse operations</p>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    {/* Navigation Links */}
+                                    <div className="flex space-x-2">
+                                        <a
+                                            href="/phonecheck.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Phonecheck
+                                        </a>
+                                        <a
+                                            href="/bulk-add.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Bulk Add
+                                        </a>
+                                        <a
+                                            href="/inventory-manager.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Inventory Manager
+                                        </a>
+                                        <a
+                                            href="/admin-dashboard.html"
+                                            className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium"
+                                        >
+                                            Admin Dashboard
+                                        </a>
+                                    </div>
+                                    <div className="flex space-x-3">
+                                        <select
+                                            value={timeRange}
+                                            onChange={(e) => setTimeRange(e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                                        >
+                                            <option value="7d">Last 7 Days</option>
+                                            <option value="30d">Last 30 Days</option>
+                                            <option value="90d">Last 90 Days</option>
+                                        </select>
+                                        <button
+                                            onClick={fetchInventory}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                                        >
+                                            Refresh
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Alerts Section */}
+                        {alerts.length > 0 && (
+                            <div className="mb-8">
+                                <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Alerts</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {alerts.map((alert, index) => (
+                                        <Alert key={index} {...alert} />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Key Business Metrics */}
+                        <div className="mb-8">
+                            <h2 className="text-lg font-semibold text-gray-900 mb-4">Business Overview</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MetricCard
+                                    title="Total Stock"
+                                    value={businessMetrics.totalItems}
+                                    icon="📦"
+                                    color="blue"
+                                />
+                                <MetricCard
+                                    title="Available Devices"
+                                    value={businessMetrics.availableItems}
+                                    icon="✅"
+                                    color="green"
+                                />
+                                <MetricCard
+                                    title="Failed Devices"
+                                    value={businessMetrics.failedItems}
+                                    icon="❌"
+                                    color="red"
+                                />
+                                <MetricCard
+                                    title="Pass Rate"
+                                    value={`${businessMetrics.passRate}%`}
+                                    icon="📊"
+                                    color="purple"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Financial & Operational Metrics */}
+                        <div className="mb-8">
+                            <h2 className="text-lg font-semibold text-gray-900 mb-4">Financial & Operations</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MetricCard
+                                    title="Estimated Stock Value"
+                                    value={`$${businessMetrics.estimatedValue.toLocaleString()}`}
+                                    icon="💰"
+                                    color="green"
+                                />
+                                <MetricCard
+                                    title="Reserved Devices"
+                                    value={businessMetrics.reservedItems}
+                                    icon="🔒"
+                                    color="yellow"
+                                />
+                                <MetricCard
+                                    title="Processed (7 days)"
+                                    value={operationalMetrics.processedLast7Days}
+                                    icon="⚡"
+                                    color="blue"
+                                />
+                                <MetricCard
+                                    title="Avg Processing Time"
+                                    value={`${operationalMetrics.avgProcessingTime}h`}
+                                    icon="⏱️"
+                                    color="purple"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Charts Section */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                            {/* Brand Distribution */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Brand Distribution</h3>
+                                <Chart
+                                    type="doughnut"
+                                    data={{
+                                        labels: Object.keys(chartData.brandData),
+                                        datasets: [{
+                                            data: Object.values(chartData.brandData),
+                                            backgroundColor: [
+                                                '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'
+                                            ]
+                                        }]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        plugins: {
+                                            legend: {
+                                                position: 'bottom'
+                                            }
+                                        }
+                                    }}
+                                    className="h-64"
+                                />
+                            </div>
+
+                            {/* Condition Distribution */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Condition Distribution</h3>
+                                <Chart
+                                    type="bar"
+                                    data={{
+                                        labels: Object.keys(chartData.conditionData),
+                                        datasets: [{
+                                            label: 'Devices',
+                                            data: Object.values(chartData.conditionData),
+                                            backgroundColor: '#3B82F6'
+                                        }]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        plugins: {
+                                            legend: {
+                                                display: false
+                                            }
+                                        },
+                                        scales: {
+                                            y: {
+                                                beginAtZero: true
+                                            }
+                                        }
+                                    }}
+                                    className="h-64"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Battery Health & Detailed Metrics */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Battery Health Distribution */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Battery Health Distribution</h3>
+                                <Chart
+                                    type="pie"
+                                    data={{
+                                        labels: Object.keys(chartData.batteryRanges),
+                                        datasets: [{
+                                            data: Object.values(chartData.batteryRanges),
+                                            backgroundColor: [
+                                                '#10B981', '#34D399', '#F59E0B', '#F97316', '#EF4444'
+                                            ]
+                                        }]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        plugins: {
+                                            legend: {
+                                                position: 'bottom'
+                                            }
+                                        }
+                                    }}
+                                    className="h-64"
+                                />
+                            </div>
+
+                            {/* Detailed Metrics Table */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Detailed Metrics</h3>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Pending Tests</span>
+                                        <span className="font-semibold">{businessMetrics.pendingItems}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Daily Average Processing</span>
+                                        <span className="font-semibold">{operationalMetrics.dailyAverage} devices</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Monthly Processing</span>
+                                        <span className="font-semibold">{operationalMetrics.processedLast30Days} devices</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Stock Utilization</span>
+                                        <span className="font-semibold">
+                                            {businessMetrics.totalItems > 0 
+                                                ? Math.round((businessMetrics.availableItems / businessMetrics.totalItems) * 100)
+                                                : 0}%
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2">
+                                        <span className="text-gray-600">Quality Score</span>
+                                        <span className="font-semibold">
+                                            {businessMetrics.totalItems > 0 
+                                                ? Math.round((businessMetrics.passedItems / businessMetrics.totalItems) * 100)
+                                                : 0}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Toast notifications */}
+                    {toast && (
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AdminDashboard />);
+    </script>
+</body>
+</html>

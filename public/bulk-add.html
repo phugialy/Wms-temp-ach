@@ -70,6 +70,45 @@
             const [showResults, setShowResults] = useState(false);
             const [step, setStep] = useState(1); // 1: Pull IMEIs, 2: Process Devices, 3: Show Results
 
+            // Helper function to convert various formats to boolean
+            const convertToBoolean = (value) => {
+                if (value === undefined || value === null) return undefined;
+                if (typeof value === 'boolean') return value;
+                if (typeof value === 'string') {
+                    const lower = value.toLowerCase();
+                    // Handle "N/A" and other non-boolean strings
+                    if (lower === 'n/a' || lower === 'na' || lower === 'unknown' || lower === '') return undefined;
+                    if (lower === 'true' || lower === 'yes' || lower === 'pass' || lower === 'passed') return true;
+                    if (lower === 'false' || lower === 'no' || lower === 'fail' || lower === 'failed') return false;
+                }
+                if (typeof value === 'number') {
+                    return value === 1;
+                }
+                return undefined;
+            };
+
+            // Helper function to clean up condition field
+            const cleanCondition = (value) => {
+                if (!value || value === 'N/A' || value === 'n/a') return 'UNKNOWN';
+                if (typeof value === 'string') {
+                    const lower = value.toLowerCase();
+                    // Map common condition values
+                    if (lower === 'seven' || lower === '7') return 'SEVEN';
+                    if (lower === 'six' || lower === '6') return 'SIX';
+                    if (lower === 'five' || lower === '5') return 'FIVE';
+                    if (lower === 'four' || lower === '4') return 'FOUR';
+                    if (lower === 'three' || lower === '3') return 'THREE';
+                    if (lower === 'two' || lower === '2') return 'TWO';
+                    if (lower === 'one' || lower === '1') return 'ONE';
+                    if (lower === 'new' || lower === 'brand new') return 'NEW';
+                    if (lower === 'used' || lower === 'pre-owned') return 'USED';
+                    if (lower === 'refurbished' || lower === 'refurb') return 'REFURBISHED';
+                    if (lower === 'damaged' || lower === 'broken') return 'DAMAGED';
+                    return value.toUpperCase();
+                }
+                return 'UNKNOWN';
+            };
+
 
 
             useEffect(() => {
@@ -350,6 +389,13 @@
                         console.log('🔍 RAW PhoneCheck Data Analysis:');
                         console.log('  - All item keys:', Object.keys(item));
                         console.log('  - Item values:', JSON.stringify(item, null, 2));
+                        console.log('🔧 Data Transformation Debug:');
+                        console.log('  - Original failed value:', item.failed, 'Type:', typeof item.failed);
+                        console.log('  - Converted failed value:', convertToBoolean(item.failed), 'Type:', typeof convertToBoolean(item.failed));
+                        console.log('  - Original working value:', item.working, 'Type:', typeof item.working);
+                        console.log('  - String working value:', item.working ? String(item.working) : undefined, 'Type:', typeof (item.working ? String(item.working) : undefined));
+                        console.log('  - Original condition value:', item.condition, 'Type:', typeof item.condition);
+                        console.log('  - Cleaned condition value:', cleanCondition(item.condition), 'Type:', typeof cleanCondition(item.condition));
 
                         // Validate required fields before sending
                         if (!cleanItem.name || !cleanItem.brand || !cleanItem.model || !cleanItem.imei || !cleanItem.location) {
@@ -358,7 +404,7 @@
                             continue;
                         }
 
-                        // Transform data for enhanced inventory API
+                        // Transform data for enhanced inventory API with proper type conversion
                         const enhancedItem = {
                             name: cleanItem.name,
                             brand: cleanItem.brand,
@@ -367,9 +413,10 @@
                             color: cleanItem.color,
                             carrier: cleanItem.carrier,
                             type: cleanItem.type,
-                            imei: cleanItem.imei,
+                            // CRITICAL: Use the PhoneCheck IMEI if available, otherwise use the original IMEI
+                            imei: item.imei || cleanItem.imei,
                             serialNumber: cleanItem.serialNumber,
-                            condition: cleanItem.condition || item.grade || 'UNKNOWN',
+                            condition: cleanCondition(item.condition || item.grade || cleanItem.condition),
                             working: cleanItem.working,
                             quantity: cleanItem.quantity,
                             location: cleanItem.location,
@@ -378,7 +425,7 @@
                             batteryCycle: item.batteryCycle,
                             mdm: item.mdm,
                             notes: item.notes,
-                            failed: item.failed,
+                            failed: convertToBoolean(item.failed), // Convert to proper boolean
                             workingStatus: item.workingStatus, // Include original workingStatus
                             testerName: item.testerName,
                             repairNotes: item.repairNotes,
@@ -393,19 +440,40 @@
                             custom1: item.custom1,
                             // Include all raw PhoneCheck data for comprehensive test results
                             testResults: item,
-                            // CRITICAL: Preserve the original working status from PhoneCheck
+                            // CRITICAL: Preserve the original working status from PhoneCheck with proper type conversion
                             // This is what the backend determineWorkingStatus method needs
-                            originalWorking: item.working,
-                            originalWorkingStatus: item.workingStatus,
-                            originalFailed: item.failed
+                            originalWorking: item.working ? String(item.working) : undefined,
+                            originalWorkingStatus: item.workingStatus ? String(item.workingStatus) : undefined,
+                            originalFailed: convertToBoolean(item.failed)
                         };
+
+                        // Validate data types for critical fields AFTER enhancedItem is created
+                        if (enhancedItem.originalFailed !== undefined && typeof enhancedItem.originalFailed !== 'boolean') {
+                            console.error('Invalid originalFailed type:', typeof enhancedItem.originalFailed, 'Value:', enhancedItem.originalFailed);
+                            errorCount++;
+                            continue;
+                        }
+
+                        if (enhancedItem.originalWorking !== undefined && typeof enhancedItem.originalWorking !== 'string') {
+                            console.error('Invalid originalWorking type:', typeof enhancedItem.originalWorking, 'Value:', enhancedItem.originalWorking);
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Validate condition field
+                        if (enhancedItem.condition === 'UNKNOWN' && item.condition && item.condition !== 'N/A') {
+                            console.warn('⚠️ Condition value not recognized:', item.condition, 'Using UNKNOWN');
+                        }
 
                         console.log('🚀 Sending enhanced item to inventory:', {
                             imei: enhancedItem.imei,
+                            originalImei: cleanItem.imei,
+                            phonecheckImei: item.imei,
                             working: enhancedItem.working,
                             originalWorking: enhancedItem.originalWorking,
                             originalWorkingStatus: enhancedItem.originalWorkingStatus,
-                            originalFailed: enhancedItem.originalFailed
+                            originalFailed: enhancedItem.originalFailed,
+                            type: typeof enhancedItem.originalFailed
                         });
 
                         const response = await fetch('/api/admin/inventory-push', {
@@ -415,11 +483,28 @@
                         });
 
                         if (response.ok) {
+                            const result = await response.json();
+                            console.log('✅ Item added successfully:', result);
                             addedCount++;
                         } else {
                             const errorData = await response.json();
-                            console.error('Inventory push failed:', errorData);
-                            errorCount++;
+                            console.error('❌ Inventory push failed:', {
+                                status: response.status,
+                                statusText: response.statusText,
+                                error: errorData,
+                                itemData: {
+                                    imei: enhancedItem.imei,
+                                    name: enhancedItem.name,
+                                    working: enhancedItem.working
+                                }
+                            });
+                            failedCount++;
+                        }
+
+                                                // Add delay between requests to avoid overwhelming connection pool
+                        if (index < validItems.length - 1) {
+                            console.log('⏳ Waiting 500ms before next item...');
+                            await new Promise(resolve => setTimeout(resolve, 500));
                         }
                     } catch (error) {
                         errorCount++;
@@ -961,12 +1046,18 @@
                                     >
                                         Bulk Add
                                     </a>
-                                    <a
-                                        href="/inventory-manager.html"
-                                        className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                                    >
-                                        Inventory Manager
-                                    </a>
+                                                                            <a
+                                            href="/inventory-manager.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Inventory Manager
+                                        </a>
+                                        <a
+                                            href="/admin-dashboard.html"
+                                            className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                        >
+                                            Admin Dashboard
+                                        </a>
                                 </div>
                             </div>
                         </div>

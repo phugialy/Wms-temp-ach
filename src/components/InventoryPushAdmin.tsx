@@ -28,25 +28,45 @@ interface DeviceInfo {
   condition: string;
 }
 
-// Mock function for fetching device info by IMEI
-const mockFetchDeviceInfo = async (imei: string): Promise<DeviceInfo> => {
-  // TODO: Replace mockFetchDeviceInfo with real API
-  console.log('Mock API call for IMEI:', imei);
+// Real function for fetching device info by IMEI
+const fetchDeviceInfo = async (imei: string): Promise<DeviceInfo> => {
+  console.log('Fetching device info for IMEI:', imei);
   
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Return mock data
-  return {
-    name: 'iPhone 14 Pro',
-    brand: 'Apple',
-    model: 'iPhone 14 Pro',
-    storage: '256GB',
-    color: 'Deep Purple',
-    carrier: 'Unlocked',
-    type: 'phone',
-    condition: 'used'
-  };
+  try {
+    // Call the PhoneCheck API to get real device data
+    const response = await fetch(`/api/phonecheck/device/${imei}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch device info: ${response.status}`);
+    }
+    
+    const deviceData = await response.json();
+    
+    // Convert PhoneCheck data to DeviceInfo format
+    return {
+      name: deviceData.title || deviceData.name || 'Unknown Device',
+      brand: deviceData.make || deviceData.brand || 'Unknown',
+      model: deviceData.model || deviceData.model_name || 'Unknown',
+      storage: deviceData.memory || deviceData.storage || '',
+      color: deviceData.color || '',
+      carrier: deviceData.carrier || 'Unlocked',
+      type: 'phone',
+      condition: deviceData.working?.toLowerCase() === 'yes' ? 'used' : 'damaged'
+    };
+  } catch (error) {
+    console.error('Error fetching device info:', error);
+    // Return minimal data instead of mock data
+    return {
+      name: 'Device Info Unavailable',
+      brand: 'Unknown',
+      model: 'Unknown',
+      storage: '',
+      color: '',
+      carrier: 'Unknown',
+      type: 'phone',
+      condition: 'unknown'
+    };
+  }
 };
 
 // Toast notification component
@@ -109,7 +129,7 @@ const InventoryPushAdmin: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const deviceData = await mockFetchDeviceInfo(formData.imei);
+      const deviceData = await fetchDeviceInfo(formData.imei);
       setDeviceInfo(deviceData);
       setIsModalOpen(true);
       

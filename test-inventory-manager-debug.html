@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Manager Debug</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Inventory Manager Debug</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Raw API Data</h2>
+            <div id="raw-data" class="text-sm bg-gray-100 p-4 rounded overflow-auto max-h-96"></div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Filtered Data</h2>
+            <div id="filtered-data" class="text-sm bg-gray-100 p-4 rounded overflow-auto max-h-96"></div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Statistics</h2>
+            <div id="stats" class="text-sm bg-gray-100 p-4 rounded"></div>
+        </div>
+    </div>
+
+    <script>
+        async function debugInventory() {
+            try {
+                // Fetch raw data
+                const response = await fetch('/api/admin/inventory');
+                const inventory = await response.json();
+                
+                // Display raw data
+                document.getElementById('raw-data').innerHTML = `
+                    <div class="mb-2"><strong>Total items: ${inventory.length}</strong></div>
+                    <pre>${JSON.stringify(inventory.slice(0, 3), null, 2)}</pre>
+                    <div class="mt-2 text-gray-600">Showing first 3 items...</div>
+                `;
+                
+                // Simulate the filtering logic from inventory manager
+                let filtered = [...inventory];
+                const searchTerm = '';
+                const filterBrand = '';
+                const filterCarrier = '';
+                const filterCondition = '';
+                const filterWorkingStatus = '';
+                const sortBy = 'createdAt';
+                const sortOrder = 'desc';
+                
+                // Search filter
+                if (searchTerm) {
+                    const term = searchTerm.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.name?.toLowerCase().includes(term) ||
+                        item.model?.toLowerCase().includes(term) ||
+                        item.imei?.includes(term) ||
+                        item.serialNumber?.toLowerCase().includes(term) ||
+                        item.brand?.toLowerCase().includes(term)
+                    );
+                }
+
+                // Brand filter
+                if (filterBrand) {
+                    filtered = filtered.filter(item => item.brand === filterBrand);
+                }
+
+                // Carrier filter
+                if (filterCarrier) {
+                    filtered = filtered.filter(item => item.carrier === filterCarrier);
+                }
+
+                // Condition filter
+                if (filterCondition) {
+                    filtered = filtered.filter(item => item.condition === filterCondition);
+                }
+
+                // Working status filter
+                if (filterWorkingStatus) {
+                    filtered = filtered.filter(item => item.working === filterWorkingStatus);
+                }
+
+                // Sort
+                filtered.sort((a, b) => {
+                    let aVal = a[sortBy];
+                    let bVal = b[sortBy];
+
+                    if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+                        aVal = new Date(aVal || 0);
+                        bVal = new Date(bVal || 0);
+                    } else if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+
+                    if (sortOrder === 'asc') {
+                        return aVal > bVal ? 1 : -1;
+                    } else {
+                        return aVal < bVal ? 1 : -1;
+                    }
+                });
+                
+                // Display filtered data
+                document.getElementById('filtered-data').innerHTML = `
+                    <div class="mb-2"><strong>Filtered items: ${filtered.length}</strong></div>
+                    <pre>${JSON.stringify(filtered.slice(0, 3), null, 2)}</pre>
+                    <div class="mt-2 text-gray-600">Showing first 3 items...</div>
+                `;
+                
+                // Calculate stats
+                const stats = {
+                    total: inventory.length,
+                    brands: {},
+                    carriers: {},
+                    conditions: {},
+                    workingStatus: {
+                        YES: 0,
+                        NO: 0,
+                        PENDING: 0
+                    },
+                    phonecheckData: {
+                        withDefects: 0,
+                        withNotes: 0,
+                        withCustom1: 0
+                    }
+                };
+
+                inventory.forEach(item => {
+                    // Brand stats
+                    const brand = item.brand || 'Unknown';
+                    stats.brands[brand] = (stats.brands[brand] || 0) + 1;
+
+                    // Carrier stats
+                    const carrier = item.carrier || 'Unknown';
+                    stats.carriers[carrier] = (stats.carriers[carrier] || 0) + 1;
+
+                    // Condition stats
+                    const condition = item.condition || 'Unknown';
+                    stats.conditions[condition] = (stats.conditions[condition] || 0) + 1;
+
+                    // Working status stats
+                    const working = item.working || 'PENDING';
+                    stats.workingStatus[working] = (stats.workingStatus[working] || 0) + 1;
+
+                    // PhoneCheck data stats
+                    const hasPhoneCheckData = item.testResults || item.defects || item.notes || item.custom1;
+                    if (hasPhoneCheckData) {
+                        if (item.testResults?.defects || item.defects) stats.phonecheckData.withDefects++;
+                        if (item.testResults?.notes || item.notes) stats.phonecheckData.withNotes++;
+                        if (item.testResults?.custom1 || item.custom1) stats.phonecheckData.withCustom1++;
+                    }
+                });
+                
+                // Display stats
+                document.getElementById('stats').innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <strong>Total Items:</strong> ${stats.total}<br>
+                            <strong>Working Status:</strong><br>
+                            - YES: ${stats.workingStatus.YES}<br>
+                            - NO: ${stats.workingStatus.NO}<br>
+                            - PENDING: ${stats.workingStatus.PENDING}<br>
+                        </div>
+                        <div>
+                            <strong>PhoneCheck Data:</strong> ${inventory.filter(item => item.testResults || item.defects || item.notes || item.custom1).length}<br>
+                            <strong>With Notes:</strong> ${stats.phonecheckData.withNotes}<br>
+                            <strong>With Defects:</strong> ${stats.phonecheckData.withDefects}<br>
+                            <strong>With Custom1:</strong> ${stats.phonecheckData.withCustom1}<br>
+                        </div>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('raw-data').innerHTML = `<div class="text-red-600">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Run debug on page load
+        debugInventory();
+    </script>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="bg-white shadow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+                    <p class="mt-1 text-sm text-gray-500">Executive overview of warehouse operations</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Navigation Links -->
+                    <div class="flex space-x-2">
+                        <a href="/phonecheck.html" class="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            Phonecheck
+                        </a>
+                        <a href="/bulk-add.html" class="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            Bulk Add
+                        </a>
+                        <a href="/inventory-manager.html" class="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            Inventory Manager
+                        </a>
+                        <a href="/admin-dashboard-simple.html" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-md font-medium">
+                            Admin Dashboard
+                        </a>
+                    </div>
+                    <button onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="mt-4 text-gray-500">Loading Admin Dashboard...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden text-center py-12">
+            <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+                <h3 class="text-lg font-semibold text-red-800 mb-2">Error Loading Data</h3>
+                <p class="text-red-600 mb-4" id="error-message">Failed to load dashboard data</p>
+                <button onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    Retry
+                </button>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboard-content" class="hidden">
+            <!-- Alerts Section -->
+            <div id="alerts-section" class="mb-8"></div>
+
+            <!-- Key Business Metrics -->
+            <div class="mb-8">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Business Overview</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="business-metrics">
+                    <!-- Metrics will be populated here -->
+                </div>
+            </div>
+
+            <!-- Financial & Operational Metrics -->
+            <div class="mb-8">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Financial & Operations</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="operational-metrics">
+                    <!-- Metrics will be populated here -->
+                </div>
+            </div>
+
+            <!-- Simple Data Tables -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <!-- Brand Distribution -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Brand Distribution</h3>
+                    <div id="brand-table" class="space-y-2">
+                        <!-- Brand data will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Condition Distribution -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Condition Distribution</h3>
+                    <div id="condition-table" class="space-y-2">
+                        <!-- Condition data will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Metrics -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Detailed Metrics</h3>
+                <div id="detailed-metrics" class="space-y-4">
+                    <!-- Detailed metrics will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let inventoryData = [];
+
+        // Fetch inventory data
+        async function fetchInventory() {
+            try {
+                showLoading();
+                const response = await fetch('/api/admin/inventory');
+                if (response.ok) {
+                    inventoryData = await response.json();
+                    renderDashboard();
+                } else {
+                    throw new Error('Failed to fetch inventory');
+                }
+            } catch (error) {
+                console.error('Error fetching inventory:', error);
+                showError('Failed to load dashboard data: ' + error.message);
+            }
+        }
+
+        // Show loading state
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('dashboard-content').classList.add('hidden');
+        }
+
+        // Show error state
+        function showError(message) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('dashboard-content').classList.add('hidden');
+            document.getElementById('error-message').textContent = message;
+        }
+
+        // Show dashboard content
+        function showDashboard() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('dashboard-content').classList.remove('hidden');
+        }
+
+        // Calculate business metrics
+        function calculateBusinessMetrics() {
+            const totalItems = inventoryData.length;
+            const availableItems = inventoryData.filter(item => 
+                item.inventory && item.inventory.some(inv => inv.available > 0)
+            ).length;
+            const reservedItems = inventoryData.filter(item => 
+                item.inventory && item.inventory.some(inv => inv.reserved > 0)
+            ).length;
+            const failedItems = inventoryData.filter(item => item.working === 'NO').length;
+            const passedItems = inventoryData.filter(item => item.working === 'YES').length;
+            const pendingItems = inventoryData.filter(item => item.working === 'PENDING').length;
+
+            // Calculate pass rate
+            const totalTested = passedItems + failedItems;
+            const passRate = totalTested > 0 ? ((passedItems / totalTested) * 100).toFixed(1) : 0;
+
+            // Estimate stock value (rough calculation)
+            const estimatedValue = inventoryData.reduce((total, item) => {
+                let baseValue = 0;
+                if (item.brand === 'Samsung') {
+                    if (item.model?.includes('Fold')) baseValue = 800;
+                    else if (item.model?.includes('Galaxy')) baseValue = 400;
+                } else if (item.brand === 'Google') {
+                    if (item.model?.includes('Pixel')) baseValue = 500;
+                }
+                
+                // Adjust for condition and battery health
+                const conditionMultiplier = item.condition === 'EIGHT' ? 1.2 : 
+                                          item.condition === 'SEVEN' ? 1.0 :
+                                          item.condition === 'SIX' ? 0.8 : 0.6;
+                
+                const batteryMultiplier = item.batteryHealth ? (item.batteryHealth / 100) : 0.8;
+                
+                return total + (baseValue * conditionMultiplier * batteryMultiplier);
+            }, 0);
+
+            return {
+                totalItems,
+                availableItems,
+                reservedItems,
+                failedItems,
+                passedItems,
+                pendingItems,
+                passRate,
+                estimatedValue: Math.round(estimatedValue)
+            };
+        }
+
+        // Calculate operational metrics
+        function calculateOperationalMetrics() {
+            const now = new Date();
+            const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+            const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+
+            // Devices processed in last 7 days
+            const recentItems = inventoryData.filter(item => 
+                new Date(item.createdAt) >= sevenDaysAgo
+            );
+
+            // Devices processed in last 30 days
+            const monthlyItems = inventoryData.filter(item => 
+                new Date(item.createdAt) >= thirtyDaysAgo
+            );
+
+            // Calculate average processing time (simplified)
+            const processingTimes = inventoryData
+                .filter(item => item.createdAt && item.updatedAt)
+                .map(item => {
+                    const created = new Date(item.createdAt);
+                    const updated = new Date(item.updatedAt);
+                    return (updated - created) / (1000 * 60 * 60); // hours
+                });
+
+            const avgProcessingTime = processingTimes.length > 0 
+                ? (processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length).toFixed(1)
+                : 0;
+
+            return {
+                processedLast7Days: recentItems.length,
+                processedLast30Days: monthlyItems.length,
+                avgProcessingTime,
+                dailyAverage: Math.round(monthlyItems.length / 30)
+            };
+        }
+
+        // Generate alerts
+        function generateAlerts() {
+            const alerts = [];
+            const metrics = calculateBusinessMetrics();
+
+            // Low stock alerts
+            const lowStockItems = inventoryData.filter(item => 
+                item.inventory && item.inventory.some(inv => inv.available <= 2)
+            );
+            if (lowStockItems.length > 0) {
+                alerts.push({
+                    type: 'warning',
+                    title: 'Low Stock Alert',
+                    message: `${lowStockItems.length} items have low stock (≤2 available)`,
+                    count: lowStockItems.length
+                });
+            }
+
+            // Failed devices alert
+            if (metrics.failedItems > 0) {
+                alerts.push({
+                    type: 'critical',
+                    title: 'Failed Devices',
+                    message: `${metrics.failedItems} devices failed quality tests`,
+                    count: metrics.failedItems
+                });
+            }
+
+            // Low pass rate alert
+            if (parseFloat(metrics.passRate) < 80) {
+                alerts.push({
+                    type: 'warning',
+                    title: 'Low Pass Rate',
+                    message: `Current pass rate is ${metrics.passRate}% (below 80% threshold)`,
+                    count: metrics.passRate + '%'
+                });
+            }
+
+            // Pending tests alert
+            if (metrics.pendingItems > 0) {
+                alerts.push({
+                    type: 'info',
+                    title: 'Pending Tests',
+                    message: `${metrics.pendingItems} devices awaiting quality tests`,
+                    count: metrics.pendingItems
+                });
+            }
+
+            return alerts;
+        }
+
+        // Prepare chart data
+        function prepareChartData() {
+            // Brand breakdown
+            const brandData = {};
+            inventoryData.forEach(item => {
+                const brand = item.brand || 'Unknown';
+                brandData[brand] = (brandData[brand] || 0) + 1;
+            });
+
+            // Condition breakdown
+            const conditionData = {};
+            inventoryData.forEach(item => {
+                const condition = item.condition || 'Unknown';
+                conditionData[condition] = (conditionData[condition] || 0) + 1;
+            });
+
+            return { brandData, conditionData };
+        }
+
+        // Render metric card
+        function renderMetricCard(title, value, icon, color = 'blue') {
+            const colorClasses = {
+                green: 'bg-green-100 text-green-600',
+                red: 'bg-red-100 text-red-600',
+                yellow: 'bg-yellow-100 text-yellow-600',
+                purple: 'bg-purple-100 text-purple-600',
+                blue: 'bg-blue-100 text-blue-600'
+            };
+
+            return `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500">${title}</p>
+                            <p class="text-2xl font-bold text-gray-900">${value}</p>
+                        </div>
+                        <div class="p-3 rounded-lg ${colorClasses[color]}">
+                            <span class="text-2xl">${icon}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render alert
+        function renderAlert(alert) {
+            const alertStyles = {
+                critical: 'bg-red-50 border-red-200 text-red-800',
+                warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+                info: 'bg-blue-50 border-blue-200 text-blue-800'
+            };
+
+            const icons = {
+                critical: '🚨',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            return `
+                <div class="border rounded-lg p-4 ${alertStyles[alert.type]}">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <span class="mr-2 text-lg">${icons[alert.type]}</span>
+                            <div>
+                                <h4 class="font-semibold">${alert.title}</h4>
+                                <p class="text-sm opacity-90">${alert.message}</p>
+                            </div>
+                        </div>
+                        <div class="bg-white bg-opacity-50 rounded-full px-3 py-1 text-sm font-bold">
+                            ${alert.count}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render dashboard
+        function renderDashboard() {
+            const businessMetrics = calculateBusinessMetrics();
+            const operationalMetrics = calculateOperationalMetrics();
+            const alerts = generateAlerts();
+            const chartData = prepareChartData();
+
+            // Render alerts
+            const alertsSection = document.getElementById('alerts-section');
+            if (alerts.length > 0) {
+                alertsSection.innerHTML = `
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Active Alerts</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${alerts.map(alert => renderAlert(alert)).join('')}
+                    </div>
+                `;
+            } else {
+                alertsSection.innerHTML = '';
+            }
+
+            // Render business metrics
+            document.getElementById('business-metrics').innerHTML = `
+                ${renderMetricCard('Total Stock', businessMetrics.totalItems, '📦', 'blue')}
+                ${renderMetricCard('Available Devices', businessMetrics.availableItems, '✅', 'green')}
+                ${renderMetricCard('Failed Devices', businessMetrics.failedItems, '❌', 'red')}
+                ${renderMetricCard('Pass Rate', businessMetrics.passRate + '%', '📊', 'purple')}
+            `;
+
+            // Render operational metrics
+            document.getElementById('operational-metrics').innerHTML = `
+                ${renderMetricCard('Estimated Stock Value', '$' + businessMetrics.estimatedValue.toLocaleString(), '💰', 'green')}
+                ${renderMetricCard('Reserved Devices', businessMetrics.reservedItems, '🔒', 'yellow')}
+                ${renderMetricCard('Processed (7 days)', operationalMetrics.processedLast7Days, '⚡', 'blue')}
+                ${renderMetricCard('Avg Processing Time', operationalMetrics.avgProcessingTime + 'h', '⏱️', 'purple')}
+            `;
+
+            // Render brand distribution
+            const brandTable = document.getElementById('brand-table');
+            brandTable.innerHTML = Object.entries(chartData.brandData)
+                .map(([brand, count]) => `
+                    <div class="flex justify-between items-center py-2 border-b">
+                        <span class="text-gray-600">${brand}</span>
+                        <span class="font-semibold">${count} devices</span>
+                    </div>
+                `).join('');
+
+            // Render condition distribution
+            const conditionTable = document.getElementById('condition-table');
+            conditionTable.innerHTML = Object.entries(chartData.conditionData)
+                .map(([condition, count]) => `
+                    <div class="flex justify-between items-center py-2 border-b">
+                        <span class="text-gray-600">${condition}</span>
+                        <span class="font-semibold">${count} devices</span>
+                    </div>
+                `).join('');
+
+            // Render detailed metrics
+            document.getElementById('detailed-metrics').innerHTML = `
+                <div class="flex justify-between items-center py-2 border-b">
+                    <span class="text-gray-600">Pending Tests</span>
+                    <span class="font-semibold">${businessMetrics.pendingItems}</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b">
+                    <span class="text-gray-600">Daily Average Processing</span>
+                    <span class="font-semibold">${operationalMetrics.dailyAverage} devices</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b">
+                    <span class="text-gray-600">Monthly Processing</span>
+                    <span class="font-semibold">${operationalMetrics.processedLast30Days} devices</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b">
+                    <span class="text-gray-600">Stock Utilization</span>
+                    <span class="font-semibold">
+                        ${businessMetrics.totalItems > 0 
+                            ? Math.round((businessMetrics.availableItems / businessMetrics.totalItems) * 100)
+                            : 0}%
+                    </span>
+                </div>
+                <div class="flex justify-between items-center py-2">
+                    <span class="text-gray-600">Quality Score</span>
+                    <span class="font-semibold">
+                        ${businessMetrics.totalItems > 0 
+                            ? Math.round((businessMetrics.passedItems / businessMetrics.totalItems) * 100)
+                            : 0}%
+                    </span>
+                </div>
+            `;
+
+            showDashboard();
+        }
+
+        // Refresh data function
+        function refreshData() {
+            fetchInventory();
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchInventory();
+        });
+    </script>
+</body>
+</html>

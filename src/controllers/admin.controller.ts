@@ -8,7 +8,22 @@ export class AdminController {
 
   pushInventory = async (req: Request, res: Response): Promise<void> => {
     try {
+      logger.info('📥 pushInventory received request:', {
+        bodyKeys: Object.keys(req.body),
+        imei: req.body.imei,
+        originalFailed: req.body.originalFailed,
+        originalFailedType: typeof req.body.originalFailed,
+        originalWorking: req.body.originalWorking,
+        originalWorkingType: typeof req.body.originalWorking
+      });
+
       const validatedData = inventoryPushSchema.parse(req.body);
+      logger.info('✅ Validation passed:', {
+        validatedKeys: Object.keys(validatedData),
+        originalFailed: validatedData.originalFailed,
+        originalFailedType: typeof validatedData.originalFailed
+      });
+
       const result = await this.adminService.pushInventory(validatedData);
 
       res.status(200).json({
@@ -18,13 +33,24 @@ export class AdminController {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in pushInventory controller', { error: errorMessage, body: req.body });
+      logger.error('❌ Error in pushInventory controller', { 
+        error: errorMessage, 
+        body: req.body,
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
       
       // Handle validation errors specifically
       if (errorMessage.includes('At least one of imei, serialNumber, or sku must be provided')) {
         res.status(400).json({
           success: false,
           error: errorMessage
+        });
+      } else if (errorMessage.includes('Expected')) {
+        // Zod validation error
+        res.status(400).json({
+          success: false,
+          error: `Validation error: ${errorMessage}`,
+          details: error instanceof Error ? error.stack : undefined
         });
       } else {
         res.status(500).json({
