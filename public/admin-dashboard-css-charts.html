@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Charts Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* CSS-only charts */
+        .progress-bar {
+            background: linear-gradient(90deg, #3B82F6 0%, #3B82F6 75%, #E5E7EB 75%, #E5E7EB 100%);
+        }
+        
+        .bar-chart {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            height: 120px;
+            align-items: end;
+        }
+        
+        .bar {
+            background: linear-gradient(to top, #3B82F6, #60A5FA);
+            border-radius: 4px 4px 0 0;
+            transition: height 0.3s ease;
+        }
+        
+        .pie-chart {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #3B82F6 0deg 120deg,
+                #10B981 120deg 240deg,
+                #F59E0B 240deg 360deg
+            );
+        }
+        
+        .gauge {
+            width: 120px;
+            height: 60px;
+            border-radius: 60px 60px 0 0;
+            background: conic-gradient(
+                #10B981 0deg 180deg,
+                #E5E7EB 180deg 360deg
+            );
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-4xl mx-auto space-y-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">CSS-Only Charts Demo</h1>
+        
+        <!-- Progress Bar Chart -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Pass Rate Progress Bar</h3>
+            <div class="progress-bar h-6 rounded-full"></div>
+            <p class="text-sm text-gray-600 mt-2">75% Pass Rate</p>
+        </div>
+        
+        <!-- Bar Chart -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Brand Distribution</h3>
+            <div class="bar-chart">
+                <div class="bar" style="height: 80%"></div>
+                <div class="bar" style="height: 60%"></div>
+                <div class="bar" style="height: 40%"></div>
+                <div class="bar" style="height: 90%"></div>
+                <div class="bar" style="height: 70%"></div>
+            </div>
+            <div class="flex justify-between text-sm text-gray-600 mt-2">
+                <span>Samsung</span>
+                <span>Apple</span>
+                <span>Google</span>
+                <span>Other</span>
+                <span>Unknown</span>
+            </div>
+        </div>
+        
+        <!-- Pie Chart -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Condition Distribution</h3>
+            <div class="flex items-center justify-center">
+                <div class="pie-chart"></div>
+            </div>
+            <div class="flex justify-center space-x-4 mt-4 text-sm">
+                <span class="flex items-center">
+                    <div class="w-3 h-3 bg-blue-500 rounded mr-1"></div>
+                    Excellent (33%)
+                </span>
+                <span class="flex items-center">
+                    <div class="w-3 h-3 bg-green-500 rounded mr-1"></div>
+                    Good (33%)
+                </span>
+                <span class="flex items-center">
+                    <div class="w-3 h-3 bg-yellow-500 rounded mr-1"></div>
+                    Fair (34%)
+                </span>
+            </div>
+        </div>
+        
+        <!-- Gauge Chart -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Quality Score Gauge</h3>
+            <div class="flex items-center justify-center">
+                <div class="gauge"></div>
+            </div>
+            <p class="text-center text-sm text-gray-600 mt-2">50% Quality Score</p>
+        </div>
+        
+        <!-- Comparison Table -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Chart Options Comparison</h3>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-2">Option</th>
+                        <th class="text-left py-2">Dependencies</th>
+                        <th class="text-left py-2">Reliability</th>
+                        <th class="text-left py-2">Complexity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b">
+                        <td class="py-2 font-medium">Pure CSS Charts</td>
+                        <td class="py-2 text-green-600">✅ None</td>
+                        <td class="py-2 text-green-600">✅ Always works</td>
+                        <td class="py-2 text-green-600">✅ Simple</td>
+                    </tr>
+                    <tr class="border-b">
+                        <td class="py-2 font-medium">SVG Charts</td>
+                        <td class="py-2 text-green-600">✅ None</td>
+                        <td class="py-2 text-green-600">✅ Always works</td>
+                        <td class="py-2 text-yellow-600">⚠️ Medium</td>
+                    </tr>
+                    <tr class="border-b">
+                        <td class="py-2 font-medium">Chart.js</td>
+                        <td class="py-2 text-red-600">❌ External CDN</td>
+                        <td class="py-2 text-red-600">❌ Can fail</td>
+                        <td class="py-2 text-green-600">✅ Easy</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 font-medium">D3.js</td>
+                        <td class="py-2 text-red-600">❌ Large library</td>
+                        <td class="py-2 text-red-600">❌ Can fail</td>
+                        <td class="py-2 text-red-600">❌ Complex</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

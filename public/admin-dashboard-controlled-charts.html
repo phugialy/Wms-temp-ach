@@ -105,14 +105,14 @@
                     </div>
                 </div>
 
-                <!-- Test Status Distribution Chart -->
+                <!-- Model Distribution Chart -->
                 <div class="bg-white rounded-lg shadow p-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">
-                        <i class="fas fa-clipboard-check mr-2 text-purple-600"></i>Test Status Distribution
+                        <i class="fas fa-mobile-alt mr-2 text-purple-600"></i>Model Distribution
                     </h3>
                     <div class="relative">
-                        <canvas id="testStatusChart" width="400" height="200"></canvas>
-                        <div id="testStatusChartFallback" class="hidden">
+                        <canvas id="modelChart" width="400" height="200"></canvas>
+                        <div id="modelChartFallback" class="hidden">
                             <!-- Fallback content will be populated here -->
                         </div>
                     </div>
@@ -428,26 +428,14 @@
                 brandData[brand] = (brandData[brand] || 0) + 1;
             });
 
-            // Test Status breakdown
-            const testStatusData = {};
+            // Model breakdown
+            const modelData = {};
             inventoryData.forEach(item => {
-                let status = 'PENDING';
-                
-                // Determine test status based on working field and test results
-                if (item.working === 'YES') {
-                    status = 'PASS';
-                } else if (item.working === 'NO') {
-                    status = 'FAILED';
-                } else if (item.working === 'PENDING') {
-                    status = 'PENDING';
-                } else if (item.testResults && item.testResults.status) {
-                    status = item.testResults.status.toUpperCase();
-                }
-                
-                testStatusData[status] = (testStatusData[status] || 0) + 1;
+                const model = item.model || 'Unknown';
+                modelData[model] = (modelData[model] || 0) + 1;
             });
 
-            return { brandData, testStatusData };
+            return { brandData, modelData };
         }
 
         // Create fallback content for charts
@@ -467,29 +455,16 @@
                 </div>
             `;
 
-            // Test Status fallback
-            const testStatusFallback = document.getElementById('testStatusChartFallback');
-            testStatusFallback.innerHTML = `
+            // Model fallback
+            const modelFallback = document.getElementById('modelChartFallback');
+            modelFallback.innerHTML = `
                 <div class="space-y-2">
-                    ${Object.entries(chartData.testStatusData).map(([status, count]) => {
-                        const statusColors = {
-                            'PASS': 'bg-green-100 text-green-800',
-                            'FAILED': 'bg-red-100 text-red-800',
-                            'PENDING': 'bg-yellow-100 text-yellow-800'
-                        };
-                        const colorClass = statusColors[status] || 'bg-gray-100 text-gray-800';
-                        
-                        return `
-                            <div class="flex justify-between items-center py-3 border-b">
-                                <div class="flex items-center">
-                                    <span class="px-3 py-1 rounded-full text-sm font-medium ${colorClass}">
-                                        ${status}
-                                    </span>
-                                </div>
-                                <span class="font-semibold text-lg">${count} devices</span>
-                            </div>
-                        `;
-                    }).join('')}
+                    ${Object.entries(chartData.modelData).map(([model, count]) => `
+                        <div class="flex justify-between items-center py-2 border-b">
+                            <span class="text-gray-600">${model}</span>
+                            <span class="font-semibold">${count} devices</span>
+                        </div>
+                    `).join('')}
                 </div>
             `;
 
@@ -547,49 +522,27 @@
                     });
                 }
 
-                // Test Status Chart
-                const testStatusCtx = document.getElementById('testStatusChart');
-                if (testStatusCtx && charts.testStatusChart) charts.testStatusChart.destroy();
+                // Model Chart
+                const modelCtx = document.getElementById('modelChart');
+                if (modelCtx && charts.modelChart) charts.modelChart.destroy();
                 
-                if (testStatusCtx) {
-                    const statusColors = {
-                        'PASS': '#10B981',
-                        'FAILED': '#EF4444',
-                        'PENDING': '#F59E0B'
-                    };
-                    
-                    charts.testStatusChart = new Chart(testStatusCtx, {
-                        type: 'doughnut',
+                if (modelCtx) {
+                    charts.modelChart = new Chart(modelCtx, {
+                        type: 'bar',
                         data: {
-                            labels: Object.keys(chartData.testStatusData),
+                            labels: Object.keys(chartData.modelData),
                             datasets: [{
-                                data: Object.values(chartData.testStatusData),
-                                backgroundColor: Object.keys(chartData.testStatusData).map(status => 
-                                    statusColors[status] || '#6B7280'
-                                ),
-                                borderWidth: 2,
-                                borderColor: '#ffffff'
+                                label: 'Devices',
+                                data: Object.values(chartData.modelData),
+                                backgroundColor: '#8B5CF6'
                             }]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    position: 'bottom',
-                                    labels: {
-                                        padding: 20,
-                                        usePointStyle: true
-                                    }
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                            const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                            return `${context.label}: ${context.parsed} devices (${percentage}%)`;
-                                        }
-                                    }
+                            scales: {
+                                y: {
+                                    beginAtZero: true
                                 }
                             }
                         }

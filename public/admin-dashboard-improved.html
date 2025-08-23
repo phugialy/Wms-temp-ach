@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WMS - Admin Dashboard (Controlled Charts)</title>
+    <title>WMS - Admin Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -40,8 +40,8 @@
                         <button onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
                             <i class="fas fa-sync-alt mr-1"></i>Refresh
                         </button>
-                        <button onclick="toggleCharts()" id="charts-toggle" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
-                            <i class="fas fa-chart-bar mr-1"></i>Charts
+                        <button onclick="toggleAutoRefresh()" id="auto-refresh-btn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                            <i class="fas fa-clock mr-1"></i>Auto
                         </button>
                     </div>
                 </div>
@@ -90,32 +90,22 @@
                 </div>
             </div>
 
-            <!-- Charts Section (Controlled) -->
-            <div id="charts-section" class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <!-- Brand Distribution Chart -->
                 <div class="bg-white rounded-lg shadow p-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">
                         <i class="fas fa-chart-doughnut mr-2 text-green-600"></i>Brand Distribution
                     </h3>
-                    <div class="relative">
-                        <canvas id="brandChart" width="400" height="200"></canvas>
-                        <div id="brandChartFallback" class="hidden">
-                            <!-- Fallback content will be populated here -->
-                        </div>
-                    </div>
+                    <canvas id="brandChart" width="400" height="200"></canvas>
                 </div>
 
-                <!-- Test Status Distribution Chart -->
+                <!-- Condition Distribution Chart -->
                 <div class="bg-white rounded-lg shadow p-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">
-                        <i class="fas fa-clipboard-check mr-2 text-purple-600"></i>Test Status Distribution
+                        <i class="fas fa-chart-bar mr-2 text-purple-600"></i>Condition Distribution
                     </h3>
-                    <div class="relative">
-                        <canvas id="testStatusChart" width="400" height="200"></canvas>
-                        <div id="testStatusChartFallback" class="hidden">
-                            <!-- Fallback content will be populated here -->
-                        </div>
-                    </div>
+                    <canvas id="conditionChart" width="400" height="200"></canvas>
                 </div>
             </div>
 
@@ -136,12 +126,7 @@
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">
                         <i class="fas fa-chart-line mr-2 text-blue-600"></i>Processing Trends (Last 7 Days)
                     </h3>
-                    <div class="relative">
-                        <canvas id="trendChart" width="400" height="200"></canvas>
-                        <div id="trendChartFallback" class="hidden">
-                            <!-- Fallback content will be populated here -->
-                        </div>
-                    </div>
+                    <canvas id="trendChart" width="400" height="200"></canvas>
                 </div>
 
                 <!-- Quality Metrics -->
@@ -169,62 +154,8 @@
 
     <script>
         let inventoryData = [];
+        let autoRefreshInterval = null;
         let charts = {};
-        let chartsEnabled = true;
-        let chartJsLoaded = false;
-
-        // Check if Chart.js loaded successfully
-        function checkChartJs() {
-            chartJsLoaded = typeof Chart !== 'undefined';
-            console.log('Chart.js loaded:', chartJsLoaded);
-            return chartJsLoaded;
-        }
-
-        // Toggle charts on/off
-        function toggleCharts() {
-            chartsEnabled = !chartsEnabled;
-            const btn = document.getElementById('charts-toggle');
-            
-            if (chartsEnabled) {
-                btn.innerHTML = '<i class="fas fa-chart-bar mr-1"></i>Charts';
-                btn.className = 'px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm';
-                showCharts();
-            } else {
-                btn.innerHTML = '<i class="fas fa-table mr-1"></i>Tables';
-                btn.className = 'px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm';
-                hideCharts();
-            }
-        }
-
-        // Show charts
-        function showCharts() {
-            const chartElements = document.querySelectorAll('canvas');
-            const fallbackElements = document.querySelectorAll('[id$="Fallback"]');
-            
-            chartElements.forEach(canvas => canvas.classList.remove('hidden'));
-            fallbackElements.forEach(fallback => fallback.classList.add('hidden'));
-            
-            if (chartJsLoaded && inventoryData.length > 0) {
-                createCharts();
-            }
-        }
-
-        // Hide charts and show fallbacks
-        function hideCharts() {
-            const chartElements = document.querySelectorAll('canvas');
-            const fallbackElements = document.querySelectorAll('[id$="Fallback"]');
-            
-            chartElements.forEach(canvas => canvas.classList.add('hidden'));
-            fallbackElements.forEach(fallback => fallback.classList.remove('hidden'));
-            
-            // Destroy existing charts
-            Object.values(charts).forEach(chart => {
-                if (chart && typeof chart.destroy === 'function') {
-                    chart.destroy();
-                }
-            });
-            charts = {};
-        }
 
         // Fetch inventory data
         async function fetchInventory() {
@@ -248,6 +179,21 @@
         function updateLastUpdated() {
             const now = new Date();
             document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+        }
+
+        // Toggle auto refresh
+        function toggleAutoRefresh() {
+            const btn = document.getElementById('auto-refresh-btn');
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                btn.innerHTML = '<i class="fas fa-clock mr-1"></i>Auto';
+                btn.className = 'px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm';
+            } else {
+                autoRefreshInterval = setInterval(fetchInventory, 30000); // 30 seconds
+                btn.innerHTML = '<i class="fas fa-stop mr-1"></i>Stop';
+                btn.className = 'px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm';
+            }
         }
 
         // Show loading state
@@ -428,208 +374,99 @@
                 brandData[brand] = (brandData[brand] || 0) + 1;
             });
 
-            // Test Status breakdown
-            const testStatusData = {};
+            // Condition breakdown
+            const conditionData = {};
             inventoryData.forEach(item => {
-                let status = 'PENDING';
-                
-                // Determine test status based on working field and test results
-                if (item.working === 'YES') {
-                    status = 'PASS';
-                } else if (item.working === 'NO') {
-                    status = 'FAILED';
-                } else if (item.working === 'PENDING') {
-                    status = 'PENDING';
-                } else if (item.testResults && item.testResults.status) {
-                    status = item.testResults.status.toUpperCase();
-                }
-                
-                testStatusData[status] = (testStatusData[status] || 0) + 1;
+                const condition = item.condition || 'Unknown';
+                conditionData[condition] = (conditionData[condition] || 0) + 1;
             });
 
-            return { brandData, testStatusData };
+            return { brandData, conditionData };
         }
 
-        // Create fallback content for charts
-        function createFallbackContent() {
+        // Create charts
+        function createCharts() {
             const chartData = prepareChartData();
 
-            // Brand fallback
-            const brandFallback = document.getElementById('brandChartFallback');
-            brandFallback.innerHTML = `
-                <div class="space-y-2">
-                    ${Object.entries(chartData.brandData).map(([brand, count]) => `
-                        <div class="flex justify-between items-center py-2 border-b">
-                            <span class="text-gray-600">${brand}</span>
-                            <span class="font-semibold">${count} devices</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
+            // Brand Chart
+            const brandCtx = document.getElementById('brandChart').getContext('2d');
+            if (charts.brandChart) charts.brandChart.destroy();
+            
+            charts.brandChart = new Chart(brandCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(chartData.brandData),
+                    datasets: [{
+                        data: Object.values(chartData.brandData),
+                        backgroundColor: [
+                            '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+                            '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
 
-            // Test Status fallback
-            const testStatusFallback = document.getElementById('testStatusChartFallback');
-            testStatusFallback.innerHTML = `
-                <div class="space-y-2">
-                    ${Object.entries(chartData.testStatusData).map(([status, count]) => {
-                        const statusColors = {
-                            'PASS': 'bg-green-100 text-green-800',
-                            'FAILED': 'bg-red-100 text-red-800',
-                            'PENDING': 'bg-yellow-100 text-yellow-800'
-                        };
-                        const colorClass = statusColors[status] || 'bg-gray-100 text-gray-800';
-                        
-                        return `
-                            <div class="flex justify-between items-center py-3 border-b">
-                                <div class="flex items-center">
-                                    <span class="px-3 py-1 rounded-full text-sm font-medium ${colorClass}">
-                                        ${status}
-                                    </span>
-                                </div>
-                                <span class="font-semibold text-lg">${count} devices</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
+            // Condition Chart
+            const conditionCtx = document.getElementById('conditionChart').getContext('2d');
+            if (charts.conditionChart) charts.conditionChart.destroy();
+            
+            charts.conditionChart = new Chart(conditionCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(chartData.conditionData),
+                    datasets: [{
+                        label: 'Devices',
+                        data: Object.values(chartData.conditionData),
+                        backgroundColor: '#3B82F6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
 
-            // Trend fallback
-            const trendFallback = document.getElementById('trendChartFallback');
+            // Trend Chart (Last 7 days)
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            if (charts.trendChart) charts.trendChart.destroy();
+            
             const trendData = getTrendData();
-            trendFallback.innerHTML = `
-                <div class="space-y-2">
-                    ${trendData.labels.map((label, index) => `
-                        <div class="flex justify-between items-center py-2 border-b">
-                            <span class="text-gray-600">${label}</span>
-                            <span class="font-semibold">${trendData.data[index]} devices</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Create charts (only if Chart.js is loaded and enabled)
-        function createCharts() {
-            if (!chartJsLoaded || !chartsEnabled) {
-                createFallbackContent();
-                return;
-            }
-
-            try {
-                const chartData = prepareChartData();
-
-                // Brand Chart
-                const brandCtx = document.getElementById('brandChart');
-                if (brandCtx && charts.brandChart) charts.brandChart.destroy();
-                
-                if (brandCtx) {
-                    charts.brandChart = new Chart(brandCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: Object.keys(chartData.brandData),
-                            datasets: [{
-                                data: Object.values(chartData.brandData),
-                                backgroundColor: [
-                                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-                                    '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280'
-                                ]
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    position: 'bottom'
-                                }
-                            }
+            charts.trendChart = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: trendData.labels,
+                    datasets: [{
+                        label: 'Devices Processed',
+                        data: trendData.data,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
                         }
-                    });
+                    }
                 }
-
-                // Test Status Chart
-                const testStatusCtx = document.getElementById('testStatusChart');
-                if (testStatusCtx && charts.testStatusChart) charts.testStatusChart.destroy();
-                
-                if (testStatusCtx) {
-                    const statusColors = {
-                        'PASS': '#10B981',
-                        'FAILED': '#EF4444',
-                        'PENDING': '#F59E0B'
-                    };
-                    
-                    charts.testStatusChart = new Chart(testStatusCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: Object.keys(chartData.testStatusData),
-                            datasets: [{
-                                data: Object.values(chartData.testStatusData),
-                                backgroundColor: Object.keys(chartData.testStatusData).map(status => 
-                                    statusColors[status] || '#6B7280'
-                                ),
-                                borderWidth: 2,
-                                borderColor: '#ffffff'
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    position: 'bottom',
-                                    labels: {
-                                        padding: 20,
-                                        usePointStyle: true
-                                    }
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                            const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                            return `${context.label}: ${context.parsed} devices (${percentage}%)`;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                // Trend Chart (Last 7 days)
-                const trendCtx = document.getElementById('trendChart');
-                if (trendCtx && charts.trendChart) charts.trendChart.destroy();
-                
-                if (trendCtx) {
-                    const trendData = getTrendData();
-                    charts.trendChart = new Chart(trendCtx, {
-                        type: 'line',
-                        data: {
-                            labels: trendData.labels,
-                            datasets: [{
-                                label: 'Devices Processed',
-                                data: trendData.data,
-                                borderColor: '#3B82F6',
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                tension: 0.4
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: {
-                                y: {
-                                    beginAtZero: true
-                                }
-                            }
-                        }
-                    });
-                }
-
-            } catch (error) {
-                console.error('Error creating charts:', error);
-                createFallbackContent();
-            }
+            });
         }
 
         // Get trend data for last 7 days
@@ -813,7 +650,7 @@
                 </div>
             `;
 
-            // Create charts or fallbacks
+            // Create charts
             createCharts();
 
             showDashboard();
@@ -826,27 +663,14 @@
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
-            // Check if Chart.js loaded
-            checkChartJs();
-            
-            // If Chart.js didn't load, disable charts by default
-            if (!chartJsLoaded) {
-                chartsEnabled = false;
-                const btn = document.getElementById('charts-toggle');
-                btn.innerHTML = '<i class="fas fa-table mr-1"></i>Tables';
-                btn.className = 'px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm';
-            }
-            
             fetchInventory();
         });
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', function() {
-            Object.values(charts).forEach(chart => {
-                if (chart && typeof chart.destroy === 'function') {
-                    chart.destroy();
-                }
-            });
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
         });
     </script>
 </body>

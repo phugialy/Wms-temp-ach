@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ========================================
+// CORE WMS TABLES (Legacy Support)
+// ========================================
+
 model Item {
   id              Int               @id @default(autoincrement())
   sku             String?
@@ -39,6 +43,8 @@ model Item {
   screenCondition String?           // EXCELLENT, GOOD, FAIR, POOR
   bodyCondition   String?           // EXCELLENT, GOOD, FAIR, POOR
   testResults     Json?             // Store detailed test results
+  
+  // Relations
   inboundLogs     InboundLog[]      @relation("ItemInboundLogs")
   inventory       Inventory[]       @relation("ItemInventory")
   outboundLogs    OutboundLog[]     @relation("ItemOutboundLogs")
@@ -46,6 +52,9 @@ model Item {
   processingQueue ProcessingQueue[] @relation("ItemProcessingQueue")
   qcApprovals     QCApproval[]      @relation("ItemQCApproval")
   deviceTests     DeviceTest[]      @relation("ItemDeviceTests")
+  
+  // New IMEI relation
+  imeiSkuInfo     ImeiSkuInfo?      @relation("ItemImeiSkuInfo")
 
   @@index([sku])
   @@index([imei])
@@ -107,127 +116,237 @@ model Inventory {
   @@index([available])
 }
 
-model InboundLog {
-  id              Int               @id @default(autoincrement())
-  itemId          Int
-  quantity        Int
-  location        String
-  receivedBy      String
-  receivedAt      DateTime          @default(now())
-  notes           String?
-  status          String            @default("RECEIVED")
-  source          String?           // SUPPLIER, TRANSFER, RETURN
-  trackingNumber  String?
-  item            Item              @relation("ItemInboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
-  processingQueue ProcessingQueue[] @relation("InboundLogProcessingQueue")
+// ========================================
+// NEW IMEI-BASED SYSTEM
+// ========================================
+
+model ImeiDataQueue {
+  id            Int      @id @default(autoincrement())
+  rawData       Json     @map("raw_data")
+  source        String
+  status        String   @default("pending")
+  errorMessage  String?  @map("error_message")
+  createdAt     DateTime @default(now()) @map("created_at")
+  processedAt   DateTime? @map("processed_at")
+  retryCount    Int      @default(0) @map("retry_count")
 
   @@index([status])
-  @@index([receivedAt])
-  @@index([source])
+  @@index([createdAt])
+  @@map("imei_data_queue")
+}
+
+model ImeiSkuInfo {
+  id          Int      @id @default(autoincrement())
+  imei        String   @unique @db.VarChar(15)
+  brand       String?
+  model       String?
+  modelNumber String?  @map("model_number")
+  storage     String?
+  color       String?
+  carrier     String?
+  sku         String?  @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  item        Item?    @relation("ItemImeiSkuInfo", fields: [imei], references: [imei])
+  inspectData ImeiInspectData[]
+  units       ImeiUnit[]
+
+  @@index([imei])
+  @@index([sku])
+  @@map("imei_sku_info")
+}
+
+model ImeiInspectData {
+  id            Int      @id @default(autoincrement())
+  imei          String   @db.VarChar(15)
+  testType      String   @default("PHONECHECK") @map("test_type")
+  testResults   Json     @map("test_results")
+  passed        Boolean?
+  batteryHealth Int?     @map("battery_health")
+  batteryCycle  Int?     @map("battery_cycle")
+  notes         String?
+  testerName    String?  @map("tester_name")
+  repairNotes   String?  @map("repair_notes")
+  createdAt     DateTime @default(now()) @map("created_at")
+  checkDate     DateTime? @map("check_date")
+  
+  // Relations
+  skuInfo       ImeiSkuInfo @relation(fields: [imei], references: [imei], onDelete: Cascade)
+
+  @@index([imei])
+  @@map("imei_inspect_data")
+}
+
+model ImeiUnit {
+  id           Int      @id @default(autoincrement())
+  sku          String   @db.VarChar(200)
+  imei         String   @unique @db.VarChar(15)
+  serialNumber String?  @map("serial_number")
+  condition    String?
+  location     String?
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  skuInfo      ImeiSkuInfo @relation(fields: [imei], references: [imei], onDelete: Cascade)
+
+  @@index([imei])
+  @@index([sku])
+  @@map("imei_units")
+}
+
+// ========================================
+// ARCHIVAL SYSTEM
+// ========================================
+
+model ImeiArchived {
+  id           Int      @id @default(autoincrement())
+  originalTable String  @map("original_table")
+  originalId   Int?     @map("original_id")
+  imei         String   @db.VarChar(15)
+  archivedData Json     @map("archived_data")
+  archivedAt   DateTime @default(now()) @map("archived_at")
+  archivedBy   String?  @map("archived_by")
+  archiveReason String? @map("archive_reason")
+
+  @@index([imei])
+  @@index([originalTable])
+  @@index([archivedAt])
+  @@map("imei_archived")
+}
+
+model ImeiDataLog {
+  id                Int      @id @default(autoincrement())
+  queueId           Int?     @map("queue_id")
+  imei              String   @db.VarChar(15)
+  source            String
+  rawData           Json     @map("raw_data")
+  processedData     Json?    @map("processed_data")
+  processingStatus  String   @map("processing_status")
+  errorMessage      String?  @map("error_message")
+  processingTimeMs  Int?     @map("processing_time_ms")
+  createdAt         DateTime @default(now()) @map("created_at")
+  processedAt       DateTime @default(now()) @map("processed_at")
+
+  @@index([imei])
+  @@index([processingStatus])
+  @@index([processedAt])
+  @@map("imei_data_log")
+}
+
+// ========================================
+// LEGACY WMS TABLES (for backward compatibility)
+// ========================================
+
+model InboundLog {
+  id            Int      @id @default(autoincrement())
+  itemId        Int      @map("itemId")
+  quantity      Int
+  location      String
+  receivedBy    String   @map("receivedBy")
+  receivedAt    DateTime @default(now()) @map("receivedAt")
+  notes         String?
+  status        String   @default("RECEIVED")
+  source        String?
+  trackingNumber String? @map("trackingNumber")
+  item          Item     @relation("ItemInboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@index([status])
+  @@map("InboundLog")
 }
 
 model OutboundLog {
   id            Int      @id @default(autoincrement())
-  itemId        Int
+  itemId        Int      @map("itemId")
   quantity      Int
   location      String
-  shippedBy     String
-  shippedAt     DateTime @default(now())
+  shippedBy     String   @map("shippedBy")
+  shippedAt     DateTime @default(now()) @map("shippedAt")
   notes         String?
   status        String   @default("SHIPPED")
   destination   String?
-  trackingNumber String?
-  orderNumber   String?
+  trackingNumber String? @map("trackingNumber")
   item          Item     @relation("ItemOutboundLogs", fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@index([itemId])
   @@index([status])
-  @@index([shippedAt])
-  @@index([orderNumber])
+  @@map("OutboundLog")
 }
 
 model ProcessingQueue {
-  id           Int              @id @default(autoincrement())
-  itemId       Int
-  inboundLogId Int
-  status       String           @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, FAILED
-  assignedTo   String?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  notes        String?
-  priority     Int              @default(1) // 1-5, 5 being highest
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  inboundLog   InboundLog       @relation("InboundLogProcessingQueue", fields: [inboundLogId], references: [id], onDelete: Cascade)
-  item         Item             @relation("ItemProcessingQueue", fields: [itemId], references: [id], onDelete: Cascade)
-  qcApprovals  QCApproval[]     @relation("ProcessingQueueQCApproval")
+  id            Int      @id @default(autoincrement())
+  itemId        Int      @map("itemId")
+  priority      Int      @default(1)
+  status        String   @default("QUEUED")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("createdAt")
+  updatedAt     DateTime @updatedAt @map("updatedAt")
+  item          Item     @relation("ItemProcessingQueue", fields: [itemId], references: [id], onDelete: Cascade)
 
-  @@index([status])
+  @@index([itemId])
   @@index([priority])
-  @@index([assignedTo])
-  @@index([createdAt])
+  @@index([status])
+  @@map("ProcessingQueue")
 }
 
 model QCApproval {
-  id                Int             @id @default(autoincrement())
-  itemId            Int
-  processingQueueId Int
-  status            String          @default("PENDING") // PENDING, APPROVED, REJECTED
-  approvedBy        String?
-  approvedAt        DateTime?
-  rejectionReason   String?
-  notes             String?
-  qcScore           Int?            // 0-100 quality score
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  item              Item            @relation("ItemQCApproval", fields: [itemId], references: [id], onDelete: Cascade)
-  processingQueue   ProcessingQueue @relation("ProcessingQueueQCApproval", fields: [processingQueueId], references: [id], onDelete: Cascade)
+  id            Int      @id @default(autoincrement())
+  itemId        Int      @map("itemId")
+  approvedBy    String   @map("approvedBy")
+  approvedAt    DateTime @default(now()) @map("approvedAt")
+  status        String   @default("PENDING")
+  notes         String?
+  item          Item     @relation("ItemQCApproval", fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@index([itemId])
   @@index([status])
-  @@index([qcScore])
-  @@index([approvedBy])
+  @@map("QCApproval")
 }
 
 model OutboundQueue {
-  id          Int            @id @default(autoincrement())
-  itemId      Int
-  quantity    Int
-  location    String
-  requestedBy String
-  status      String         @default("QUEUED") // QUEUED, PROCESSING, SHIPPED, CANCELLED
-  priority    Int            @default(1)
-  scheduledAt DateTime?
-  shippedAt   DateTime?
-  canceledAt  DateTime?
-  canceledBy  String?
-  notes       String?
-  orderNumber String?
-  customerInfo Json?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  item        Item           @relation("ItemOutboundQueue", fields: [itemId], references: [id], onDelete: Cascade)
+  id            Int      @id @default(autoincrement())
+  itemId        Int      @map("itemId")
+  quantity      Int
+  location      String
+  requestedBy   String   @map("requestedBy")
+  status        String   @default("QUEUED")
+  priority      Int      @default(1)
+  scheduledAt   DateTime? @map("scheduledAt")
+  shippedAt     DateTime? @map("shippedAt")
+  canceledAt    DateTime? @map("canceledAt")
+  canceledBy    String?  @map("canceledBy")
+  notes         String?
+  orderNumber   String?  @map("orderNumber")
+  customerInfo  Json?    @map("customerInfo")
+  createdAt     DateTime @default(now()) @map("createdAt")
+  updatedAt     DateTime @updatedAt @map("updatedAt")
+  item          Item     @relation("ItemOutboundQueue", fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@index([itemId])
   @@index([status])
   @@index([priority])
-  @@index([orderNumber])
-  @@index([scheduledAt])
+  @@map("OutboundQueue")
 }
 
-// New model for tracking device testing results
 model DeviceTest {
-  id          Int      @id @default(autoincrement())
-  itemId      Int
-  testType    String   // PHONECHECK, MANUAL, AUTOMATED
-  testDate    DateTime @default(now())
-  testResults Json     // Detailed test results
-  passed      Boolean
-  notes       String?
-  testedBy    String?
-  item        Item     @relation("ItemDeviceTests", fields: [itemId], references: [id], onDelete: Cascade)
+  id            Int      @id @default(autoincrement())
+  itemId        Int      @map("itemId")
+  testType      String   @map("testType")
+  testDate      DateTime @default(now()) @map("testDate")
+  testResults   Json     @map("testResults")
+  passed        Boolean
+  notes         String?
+  testedBy      String?  @map("testedBy")
+  item          Item     @relation("ItemDeviceTests", fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@index([itemId])
   @@index([testType])
-  @@index([testDate])
   @@index([passed])
-  @@index([testedBy])
+  @@map("DeviceTest")
 }
 
 

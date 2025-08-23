@@ -330,6 +330,9 @@
                 let addedCount = 0;
                 let errorCount = 0;
 
+                // Prepare all items for batch processing
+                const itemsToProcess = [];
+                
                 for (const item of validItems) {
                     try {
                         // Clean the item data to match inventoryPushSchema requirements
@@ -465,7 +468,10 @@
                             console.warn('⚠️ Condition value not recognized:', item.condition, 'Using UNKNOWN');
                         }
 
-                        console.log('🚀 Sending enhanced item to inventory:', {
+                        // Add the enhanced item to the batch processing array
+                        itemsToProcess.push(enhancedItem);
+                        
+                        console.log('📦 Added item to batch:', {
                             imei: enhancedItem.imei,
                             originalImei: cleanItem.imei,
                             phonecheckImei: item.imei,
@@ -475,45 +481,58 @@
                             originalFailed: enhancedItem.originalFailed,
                             type: typeof enhancedItem.originalFailed
                         });
+                    } catch (error) {
+                        console.error('❌ Error preparing item for batch:', error);
+                        errorCount++;
+                    }
+                }
 
-                        const response = await fetch('/api/admin/inventory-push', {
+                // Process all items through the new queue system
+                if (itemsToProcess.length > 0) {
+                    console.log(`🚀 Adding ${itemsToProcess.length} items to processing queue...`);
+                    
+                    try {
+                        const response = await fetch('/api/imei-queue/add', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(enhancedItem)
+                            body: JSON.stringify({
+                                items: itemsToProcess,
+                                source: 'bulk-add'
+                            })
                         });
 
                         if (response.ok) {
                             const result = await response.json();
-                            console.log('✅ Item added successfully:', result);
-                            addedCount++;
+                            console.log('✅ Items processed by queue:', result);
+                            
+                            addedCount = result.added;
+                            errorCount = result.errors.length;
+                            
+                            if (result.added > 0) {
+                                console.log(`✅ Successfully processed ${result.added} items in ${result.chunks} chunks`);
+                            }
+                            
+                            if (result.errors && result.errors.length > 0) {
+                                console.log('⚠️ Processing errors:', result.errors);
+                            }
                         } else {
                             const errorData = await response.json();
-                            console.error('❌ Inventory push failed:', {
+                            console.error('❌ Failed to process items:', {
                                 status: response.status,
                                 statusText: response.statusText,
-                                error: errorData,
-                                itemData: {
-                                    imei: enhancedItem.imei,
-                                    name: enhancedItem.name,
-                                    working: enhancedItem.working
-                                }
+                                error: errorData
                             });
-                            failedCount++;
-                        }
-
-                                                // Add delay between requests to avoid overwhelming connection pool
-                        if (index < validItems.length - 1) {
-                            console.log('⏳ Waiting 500ms before next item...');
-                            await new Promise(resolve => setTimeout(resolve, 500));
+                            errorCount = itemsToProcess.length;
                         }
                     } catch (error) {
-                        errorCount++;
+                        console.error('❌ Batch processing error:', error);
+                        errorCount = itemsToProcess.length;
                     }
                 }
 
                 setLoading(false);
                 setToast({ 
-                    message: `Processed ${validItems.length} items: ${addedCount} added to inventory${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 
+                    message: `Processed ${validItems.length} items: ${addedCount} added to queue${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 
                     type: addedCount > 0 ? 'success' : 'error' 
                 });
 
