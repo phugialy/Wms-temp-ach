@@ -6,6 +6,9 @@ const router = Router();
 const phonecheckService = new PhonecheckService();
 const phonecheckController = new PhonecheckController(phonecheckService);
 
+// Phonecheck lookup route (for single-add functionality)
+router.post('/lookup', phonecheckController.lookupDevice);
+
 // Phonecheck bulk operations routes
 router.post('/pull-devices', phonecheckController.pullDevicesFromStation);
 router.get('/device/:imei', phonecheckController.getDeviceDetails);

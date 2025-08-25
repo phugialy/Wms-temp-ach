@@ -426,4 +426,25 @@ export class AdminService {
       throw error;
     }
   }
+
+  async cleanupImeiData(imei: string): Promise<{ archivedCount: number }> {
+    try {
+      const result = await this.prisma.$queryRaw<[{ archived_count: number }]>`
+        SELECT cleanup_imei_data(${imei}) as archived_count
+      `;
+
+      const archivedCount = result[0]?.archived_count || 0;
+
+      logger.info('IMEI cleanup completed', { 
+        imei, 
+        archivedCount 
+      });
+
+      return { archivedCount };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      logger.error('Error in cleanupImeiData service', { error: errorMessage, imei });
+      throw error;
+    }
+  }
 } 

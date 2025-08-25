@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import ImeiQueueService from '../services/imei-queue.service';
+import { queueProcessorService } from '../services/queue-processor.service';
 
 export class ImeiQueueController {
   
@@ -42,8 +43,7 @@ export class ImeiQueueController {
         
         try {
           const queueItems = chunk.map(item => ({
-            raw_data: item,
-            source: source as 'bulk-add' | 'single-phonecheck' | 'api'
+            raw_data: item
           }));
           
           const result = await ImeiQueueService.addToQueue(queueItems);
@@ -146,18 +146,20 @@ export class ImeiQueueController {
   }
   
   /**
-   * Process all pending queue items
+   * Process all pending queue items using JavaScript-based processor
    */
   async processAllPending(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('Processing all pending queue items');
+      logger.info('Processing all pending queue items using JavaScript processor');
+      console.log('🚀 Controller: Starting queue processing...');
       
-      const result = await ImeiQueueService.processAllPending();
+      const result = await queueProcessorService.processPendingItems();
+      console.log('✅ Controller: Queue processing completed:', result);
       
       res.status(200).json({
         success: true,
-        data: result,
-        message: `Processed ${result.processed} items`
+        data: { processed: result.processed },
+        message: `Processed ${result.processed} items${result.errors.length > 0 ? ` with ${result.errors.length} errors` : ''}`
       });
       
     } catch (error) {

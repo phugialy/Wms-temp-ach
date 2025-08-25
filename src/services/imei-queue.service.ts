@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 
 export interface QueueItem {
   raw_data: any;
-  source: 'bulk-add' | 'single-phonecheck' | 'api';
+  source?: 'bulk-add' | 'single-phonecheck' | 'api';  // Made optional since not used in new schema
 }
 
 export interface QueueStats {
@@ -20,7 +20,6 @@ export interface QueueItemStatus {
   error_message?: string;
   created_at: string;
   processed_at?: string;
-  retry_count: number;
 }
 
 export class ImeiQueueService {
@@ -41,7 +40,7 @@ export class ImeiQueueService {
             .from('imei_data_queue')
             .insert({
               raw_data: item.raw_data,
-              source: item.source
+              status: 'pending'
             });
           
           if (error) {
@@ -105,7 +104,7 @@ export class ImeiQueueService {
     try {
       let query = supabase
         .from('imei_data_queue')
-        .select('id, status, error_message, created_at, processed_at, retry_count')
+        .select('id, status, error_message, created_at, processed_at')
         .order('created_at', { ascending: false })
         .limit(limit);
       

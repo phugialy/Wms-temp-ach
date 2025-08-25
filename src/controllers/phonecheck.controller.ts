@@ -44,6 +44,48 @@ export class PhonecheckController {
     }
   };
 
+  // Lookup device by IMEI (POST endpoint for single-add functionality)
+  lookupDevice = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { imei } = req.body;
+
+      if (!imei) {
+        res.status(400).json({
+          success: false,
+          error: 'IMEI is required'
+        });
+        return;
+      }
+
+      logger.info('Looking up device from Phonecheck', { imei });
+
+      const rawData = await this.phonecheckService.getDeviceDetails(imei);
+      const abstractedData = this.phonecheckService.abstractDeviceData(rawData);
+
+      if (!abstractedData) {
+        res.status(404).json({
+          success: false,
+          error: 'Device not found or could not be processed'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: abstractedData,
+        message: 'Device lookup successful'
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      logger.error('Error in lookupDevice controller', { error: errorMessage, body: req.body });
+      
+      res.status(500).json({
+        success: false,
+        error: `Failed to lookup device: ${errorMessage}`
+      });
+    }
+  };
+
   // Get detailed information for a specific device
   getDeviceDetails = async (req: Request, res: Response): Promise<void> => {
     try {

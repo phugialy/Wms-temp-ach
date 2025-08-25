@@ -7,7 +7,7 @@ import {
   queryParamsSchema, 
   idParamSchema 
 } from '../utils/validation';
-import { prisma } from '../index';
+import prisma from '../prisma/client';
 import { logger } from '../utils/logger';
 
 export class ProductController {

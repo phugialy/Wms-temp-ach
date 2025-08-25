@@ -208,7 +208,13 @@ export const inventoryPushSchema = z.object({
   sku: z.string().optional(),
   quantity: z.number().int().min(0, 'Quantity must be non-negative'),
   location: z.string().min(1, 'Location is required'),
-  working: z.string().optional(),
+  // Handle working status - convert boolean to string format
+  working: z.union([
+    z.boolean().transform(val => val ? 'YES' : 'NO'),
+    z.string().refine(val => ['YES', 'NO', 'PENDING'].includes(val), {
+      message: 'Working status must be YES, NO, or PENDING'
+    })
+  ]).optional(),
   workingStatus: z.string().optional(),
   // New PhoneCheck fields
   batteryHealth: z.union([
@@ -222,8 +228,13 @@ export const inventoryPushSchema = z.object({
   bodyCondition: z.string().optional(),
   condition: z.string().optional(),
   testResults: z.any().optional(),
-  // Additional PhoneCheck fields
-  failed: z.boolean().optional(),
+  // Handle failed status - convert boolean to string format
+  failed: z.union([
+    z.boolean().transform(val => val ? 'YES' : 'NO'),
+    z.string().refine(val => ['YES', 'NO', 'PENDING'].includes(val), {
+      message: 'Failed status must be YES, NO, or PENDING'
+    })
+  ]).optional(),
   batteryCycle: z.union([
     z.string().transform(val => {
       const num = parseInt(val, 10);

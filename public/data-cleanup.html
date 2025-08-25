@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Cleanup - WMS</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const DataCleanupApp = () => {
+            const [activeTab, setActiveTab] = useState('search');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [searchResults, setSearchResults] = useState(null);
+            const [allDataResults, setAllDataResults] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [loadingAllData, setLoadingAllData] = useState(false);
+            const [error, setError] = useState('');
+            const [success, setSuccess] = useState('');
+            const [selectedRecords, setSelectedRecords] = useState(new Set());
+            const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+            const [filterType, setFilterType] = useState('all');
+            const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+            const [deleteTarget, setDeleteTarget] = useState(null);
+            const [nuclearDeleteLoading, setNuclearDeleteLoading] = useState(false);
+
+            const tableTypes = {
+                imeiSkuInfo: 'IMEI SKU Info',
+                imeiInspectData: 'IMEI Inspect Data',
+                imeiUnits: 'IMEI Units',
+                imeiDataQueue: 'IMEI Data Queue',
+                items: 'Items'
+            };
+
+            const searchImeiData = async () => {
+                if (!searchTerm.trim()) {
+                    setError('Please enter a search term');
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+                setSearchResults(null);
+
+                try {
+                    const response = await fetch(`/api/admin/search-imei?searchTerm=${encodeURIComponent(searchTerm.trim())}`);
+                    const result = await response.json();
+
+                    if (result.success) {
+                        setSearchResults(result.data);
+                        setSuccess(`Found ${result.data.totalRecords} records`);
+                    } else {
+                        setError(result.error || 'Search failed');
+                    }
+                } catch (err) {
+                    setError('Failed to search data: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadAllData = async () => {
+                setLoadingAllData(true);
+                setError('');
+                setAllDataResults(null);
+
+                try {
+                    const response = await fetch('/api/admin/all-imei-data');
+                    const result = await response.json();
+
+                    if (result.success) {
+                        setAllDataResults(result.data);
+                        setSuccess(`Loaded ${result.data.totalRecords} total records from database`);
+                    } else {
+                        setError(result.error || 'Failed to load all data');
+                    }
+                } catch (err) {
+                    setError('Failed to load all data: ' + err.message);
+                } finally {
+                    setLoadingAllData(false);
+                }
+            };
+
+            const cleanupImeiData = async (imei) => {
+                setLoading(true);
+                setError('');
+                setSuccess('');
+
+                try {
+                    const response = await fetch('/api/admin/cleanup-imei', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ imei })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        setSuccess(`Successfully cleaned up ${result.archivedCount} records for IMEI: ${imei}`);
+                        // Refresh search results
+                        if (searchResults) {
+                            searchImeiData();
+                        }
+                        if (allDataResults) {
+                            loadAllData();
+                        }
+                    } else {
+                        setError(result.error || 'Cleanup failed');
+                    }
+                } catch (err) {
+                    setError('Failed to cleanup data: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleRecordSelect = (recordId, tableType) => {
+                const key = `${tableType}-${recordId}`;
+                const newSelected = new Set(selectedRecords);
+                
+                if (newSelected.has(key)) {
+                    newSelected.delete(key);
+                } else {
+                    newSelected.add(key);
+                }
+                
+                setSelectedRecords(newSelected);
+            };
+
+            const handleSelectAll = () => {
+                const currentResults = activeTab === 'search' ? searchResults : allDataResults;
+                if (!currentResults) return;
+
+                const allRecords = [];
+                Object.entries(currentResults).forEach(([tableType, records]) => {
+                    if (Array.isArray(records) && tableType !== 'totalRecords') {
+                        records.forEach(record => {
+                            allRecords.push(`${tableType}-${record.id || record.imei}`);
+                        });
+                    }
+                });
+
+                setSelectedRecords(new Set(allRecords));
+            };
+
+            const handleDeselectAll = () => {
+                setSelectedRecords(new Set());
+            };
+
+            const handleBulkDelete = async () => {
+                if (selectedRecords.size === 0) {
+                    setError('Please select records to delete');
+                    return;
+                }
+
+                setDeleteTarget({
+                    type: 'bulk',
+                    count: selectedRecords.size,
+                    records: Array.from(selectedRecords)
+                });
+                setShowConfirmDelete(true);
+            };
+
+            const handleNuclearDelete = () => {
+                setDeleteTarget({
+                    type: 'nuclear'
+                });
+                setShowConfirmDelete(true);
+            };
+
+            const handleSingleDelete = (imei) => {
+                setDeleteTarget({
+                    type: 'single',
+                    imei: imei
+                });
+                setShowConfirmDelete(true);
+            };
+
+            const confirmDelete = async () => {
+                if (!deleteTarget) return;
+
+                setBulkDeleteLoading(true);
+                setError('');
+                setSuccess('');
+
+                try {
+                    if (deleteTarget.type === 'single') {
+                        await cleanupImeiData(deleteTarget.imei);
+                    } else if (deleteTarget.type === 'nuclear') {
+                        // Use the nuclear delete endpoint
+                        const response = await fetch('/api/admin/cleanup-all-imei', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            setSuccess(`Nuclear deletion completed: ${result.data.total_deleted} records deleted`);
+                            setSearchResults(null);
+                            setAllDataResults(null);
+                            setSelectedRecords(new Set());
+                        } else {
+                            setError(result.error || 'Nuclear deletion failed');
+                        }
+                    } else {
+                        // For bulk delete, extract IMEIs and use the bulk delete endpoint
+                        const currentResults = activeTab === 'search' ? searchResults : allDataResults;
+                        const imeis = new Set();
+                        deleteTarget.records.forEach(recordKey => {
+                            const [tableType, recordId] = recordKey.split('-');
+                            // Extract IMEI from the record
+                            const tableData = currentResults[tableType];
+                            const record = tableData.find(r => (r.id || r.imei) == recordId);
+                            if (record && record.imei) {
+                                imeis.add(record.imei);
+                            }
+                        });
+
+                        // Use the bulk delete endpoint
+                        const response = await fetch('/api/admin/cleanup-multiple-imei', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ imeiList: Array.from(imeis) })
+                        });
+                        const result = await response.json();
+
+                        if (result.success) {
+                            setSuccess(`Bulk deletion completed: ${result.data.success_count} IMEIs processed, ${result.data.total_deleted} records deleted`);
+                            setSelectedRecords(new Set());
+                            
+                            // Refresh results
+                            if (searchResults) {
+                                searchImeiData();
+                            }
+                            if (allDataResults) {
+                                loadAllData();
+                            }
+                        } else {
+                            setError(result.error || 'Bulk deletion failed');
+                        }
+                    }
+                } catch (err) {
+                    setError('Failed to delete records: ' + err.message);
+                } finally {
+                    setBulkDeleteLoading(false);
+                    setShowConfirmDelete(false);
+                    setDeleteTarget(null);
+                }
+            };
+
+            const getFilteredResults = () => {
+                const currentResults = activeTab === 'search' ? searchResults : allDataResults;
+                if (!currentResults) return {};
+
+                if (filterType === 'all') {
+                    return currentResults;
+                }
+
+                return {
+                    [filterType]: currentResults[filterType] || [],
+                    totalRecords: currentResults[filterType]?.length || 0
+                };
+            };
+
+            const renderTable = (tableType, records) => {
+                if (!records || records.length === 0) return null;
+
+                const isSelected = (record) => {
+                    const key = `${tableType}-${record.id || record.imei}`;
+                    return selectedRecords.has(key);
+                };
+
+                return (
+                    <div key={tableType} className="mb-8">
+                        <h3 className="text-lg font-semibold mb-4 text-gray-800">
+                            {tableTypes[tableType]} ({records.length} records)
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <input
+                                                type="checkbox"
+                                                checked={records.every(r => isSelected(r))}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        records.forEach(record => {
+                                                            const key = `${tableType}-${record.id || record.imei}`;
+                                                            selectedRecords.add(key);
+                                                        });
+                                                        setSelectedRecords(new Set(selectedRecords));
+                                                    } else {
+                                                        records.forEach(record => {
+                                                            const key = `${tableType}-${record.id || record.imei}`;
+                                                            selectedRecords.delete(key);
+                                                        });
+                                                        setSelectedRecords(new Set(selectedRecords));
+                                                    }
+                                                }}
+                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            IMEI
+                                        </th>
+                                        {tableType === 'imeiSkuInfo' && (
+                                            <>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            </>
+                                        )}
+                                        {tableType === 'imeiInspectData' && (
+                                            <>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Test Type</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            </>
+                                        )}
+                                        {tableType === 'imeiUnits' && (
+                                            <>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Name</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            </>
+                                        )}
+                                        {tableType === 'imeiDataQueue' && (
+                                            <>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            </>
+                                        )}
+                                        {tableType === 'items' && (
+                                            <>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            </>
+                                        )}
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {records.map((record, index) => (
+                                        <tr key={`${tableType}-${record.id || record.imei}-${index}`} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected(record)}
+                                                    onChange={() => handleRecordSelect(record.id || record.imei, tableType)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                {record.imei || 'N/A'}
+                                            </td>
+                                            {tableType === 'imeiSkuInfo' && (
+                                                <>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.sku || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                </>
+                                            )}
+                                            {tableType === 'imeiInspectData' && (
+                                                <>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.test_type || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                </>
+                                            )}
+                                            {tableType === 'imeiUnits' && (
+                                                <>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.unit_name || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                </>
+                                            )}
+                                            {tableType === 'imeiDataQueue' && (
+                                                <>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.status || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                </>
+                                            )}
+                                            {tableType === 'items' && (
+                                                <>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.name || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.sku || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                        {record.status || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                </>
+                                            )}
+                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                {record.imei && (
+                                                    <button
+                                                        onClick={() => handleSingleDelete(record.imei)}
+                                                        className="text-red-600 hover:text-red-900 font-medium"
+                                                        disabled={loading}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow-sm border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-900">Data Cleanup</h1>
+                                    <p className="text-sm text-gray-600">Manage and clean up IMEI data across all tables</p>
+                                </div>
+                                <div className="flex space-x-3">
+                                    <a href="/inventory-manager-new.html" className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700">
+                                        Inventory Manager
+                                    </a>
+                                    <a href="/admin-dashboard-controlled-charts.html" className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700">
+                                        Admin Dashboard
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Alert Messages */}
+                        {error && (
+                            <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <i className="fas fa-exclamation-triangle text-red-400"></i>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-red-800">{error}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {success && (
+                            <div className="mb-6 bg-green-50 border border-green-200 rounded-md p-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <i className="fas fa-check-circle text-green-400"></i>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-green-800">{success}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Tabs */}
+                        <div className="mb-6">
+                            <div className="border-b border-gray-200">
+                                <nav className="-mb-px flex space-x-8">
+                                    <button
+                                        onClick={() => setActiveTab('search')}
+                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                                            activeTab === 'search'
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        Search Data
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('all')}
+                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                                            activeTab === 'all'
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        Load All Data
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
+
+                        {/* Search Tab */}
+                        {activeTab === 'search' && (
+                            <div className="bg-white rounded-lg shadow p-6 mb-6">
+                                <h2 className="text-lg font-semibold mb-4">Search IMEI Data</h2>
+                                <div className="flex space-x-4 mb-4">
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        placeholder="Enter IMEI, SKU, or search term..."
+                                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                    <button
+                                        onClick={searchImeiData}
+                                        disabled={loading}
+                                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                        {loading ? 'Searching...' : 'Search'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Load All Data Tab */}
+                        {activeTab === 'all' && (
+                            <div className="bg-white rounded-lg shadow p-6 mb-6">
+                                <h2 className="text-lg font-semibold mb-4">Load All Data</h2>
+                                <p className="text-gray-600 mb-4">Load all IMEI-related data from the database for bulk operations.</p>
+                                <button
+                                    onClick={loadAllData}
+                                    disabled={loadingAllData}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+                                >
+                                    {loadingAllData ? 'Loading...' : 'Load All Data'}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Results */}
+                        {(searchResults || allDataResults) && (
+                            <div className="bg-white rounded-lg shadow">
+                                <div className="px-6 py-4 border-b border-gray-200">
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-lg font-semibold">Results</h2>
+                                        <div className="flex space-x-3">
+                                            <select
+                                                value={filterType}
+                                                onChange={(e) => setFilterType(e.target.value)}
+                                                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                            >
+                                                <option value="all">All Tables</option>
+                                                {Object.entries(tableTypes).map(([key, label]) => (
+                                                    <option key={key} value={key}>{label}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={handleSelectAll}
+                                                className="bg-blue-600 text-white px-3 py-2 rounded-md text-sm hover:bg-blue-700"
+                                            >
+                                                Select All
+                                            </button>
+                                            <button
+                                                onClick={handleDeselectAll}
+                                                className="bg-gray-600 text-white px-3 py-2 rounded-md text-sm hover:bg-gray-700"
+                                            >
+                                                Deselect All
+                                            </button>
+                                            <button
+                                                onClick={handleBulkDelete}
+                                                disabled={selectedRecords.size === 0 || bulkDeleteLoading}
+                                                className="bg-red-600 text-white px-3 py-2 rounded-md text-sm hover:bg-red-700 disabled:opacity-50"
+                                            >
+                                                {bulkDeleteLoading ? 'Deleting...' : `Delete Selected (${selectedRecords.size})`}
+                                            </button>
+                                            <button
+                                                onClick={handleNuclearDelete}
+                                                disabled={bulkDeleteLoading}
+                                                className="bg-red-800 text-white px-3 py-2 rounded-md text-sm hover:bg-red-900 disabled:opacity-50"
+                                                title="Delete ALL data from the database"
+                                            >
+                                                Nuclear Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    {Object.entries(getFilteredResults()).map(([tableType, records]) => {
+                                        if (tableType === 'totalRecords') return null;
+                                        return renderTable(tableType, records);
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Confirmation Modal */}
+                        {showConfirmDelete && (
+                            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+                                <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                                    <div className="mt-3 text-center">
+                                        <h3 className="text-lg font-medium text-gray-900 mb-4">
+                                            {deleteTarget?.type === 'nuclear' ? 'Nuclear Delete Confirmation' : 'Delete Confirmation'}
+                                        </h3>
+                                        <p className="text-sm text-gray-500 mb-4">
+                                            {deleteTarget?.type === 'nuclear' 
+                                                ? 'This will delete ALL data from the database. This action cannot be undone!'
+                                                : deleteTarget?.type === 'single'
+                                                ? `Are you sure you want to delete IMEI: ${deleteTarget.imei}?`
+                                                : `Are you sure you want to delete ${deleteTarget.count} selected records?`
+                                            }
+                                        </p>
+                                        <div className="flex justify-center space-x-3">
+                                            <button
+                                                onClick={() => setShowConfirmDelete(false)}
+                                                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm hover:bg-gray-400"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={confirmDelete}
+                                                disabled={bulkDeleteLoading}
+                                                className={`px-4 py-2 rounded-md text-sm text-white ${
+                                                    deleteTarget?.type === 'nuclear' 
+                                                        ? 'bg-red-800 hover:bg-red-900' 
+                                                        : 'bg-red-600 hover:bg-red-700'
+                                                } disabled:opacity-50`}
+                                            >
+                                                {bulkDeleteLoading ? 'Deleting...' : 'Confirm Delete'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<DataCleanupApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>

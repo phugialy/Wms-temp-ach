@@ -144,4 +144,46 @@ export class AdminController {
       });
     }
   };
+
+  async cleanupImeiData(req: Request, res: Response) {
+    try {
+        const { imei } = req.body;
+
+        if (!imei) {
+            return res.status(400).json({
+                success: false,
+                error: 'IMEI is required'
+            });
+        }
+
+        // Validate IMEI format (basic validation)
+        if (!/^\d{15}$/.test(imei)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid IMEI format. Must be 15 digits.'
+            });
+        }
+
+        // Execute the cleanup function
+        const result = await this.adminService.cleanupImeiData(imei);
+        const archivedCount = result.archivedCount;
+
+        logger.info(`Cleanup completed for IMEI ${imei}: ${archivedCount} records archived`);
+
+        return res.json({
+            success: true,
+            message: `Successfully cleaned up data for IMEI: ${imei}`,
+            archivedCount: archivedCount,
+            imei: imei
+        });
+
+    } catch (error) {
+        logger.error('Error cleaning up IMEI data:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to cleanup IMEI data',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+  }
 } 

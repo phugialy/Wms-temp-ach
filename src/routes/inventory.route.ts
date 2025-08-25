@@ -4,7 +4,7 @@ import { InventoryService } from '../services/inventory.service';
 import prisma from '../prisma/client';
 
 const router = Router();
-const inventoryService = new InventoryService(prisma);
+const inventoryService = new InventoryService();
 const inventoryController = new InventoryController(inventoryService);
 
 // Inventory CRUD routes

@@ -10,5 +10,12 @@ const supabaseAdminController = new SupabaseAdminController(supabaseAdminService
 router.post('/inventory-push', supabaseAdminController.pushInventory);
 router.get('/inventory', supabaseAdminController.getInventory);
 router.get('/locations', supabaseAdminController.getLocations);
+router.post('/cleanup-imei', supabaseAdminController.cleanupImeiData);
+router.get('/search-imei', supabaseAdminController.searchAllImeiData);
+router.get('/all-imei-data', supabaseAdminController.getAllImeiData);
+router.post('/cleanup-multiple-imei', supabaseAdminController.cleanupMultipleImeiData);
+router.post('/cleanup-all-imei', supabaseAdminController.cleanupAllImeiData);
+router.get('/deletion-stats', supabaseAdminController.getDeletionStats);
+router.post('/restore-imei', supabaseAdminController.restoreImeiData);
 
 export default router; 
