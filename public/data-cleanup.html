@@ -3,662 +3,1097 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Cleanup - WMS</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>WMS - Data Cleanup & Deletion</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-50">
-    <div id="root"></div>
+    <!-- Header -->
+    <div class="bg-white shadow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">
+                        <i class="fas fa-trash-alt text-red-600 mr-2"></i>
+                        Data Cleanup & Deletion
+                    </h1>
+                    <p class="mt-1 text-sm text-gray-500">Manage and delete inventory data with cascade operations</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Navigation Links -->
+                    <div class="hidden md:flex space-x-2">
+                        <a href="/admin-dashboard" class="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            <i class="fas fa-chart-line mr-1"></i>Dashboard
+                        </a>
+                        <a href="/inventory-manager-new.html" class="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            <i class="fas fa-boxes mr-1"></i>Inventory
+                        </a>
+                        <a href="/data-cleanup.html" class="px-4 py-2 bg-red-100 text-red-700 rounded-md font-medium">
+                            <i class="fas fa-trash-alt mr-1"></i>Cleanup
+                        </a>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                            <i class="fas fa-sync-alt mr-1"></i>Refresh
+                        </button>
+                        <button onclick="exportData()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                            <i class="fas fa-download mr-1"></i>Export
+                        </button>
+                        <button onclick="recalculateInventory()" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm">
+                            <i class="fas fa-calculator mr-1"></i>Recalculate Inventory
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+            <p class="mt-4 text-gray-500">Loading cleanup data...</p>
+        </div>
 
-        const DataCleanupApp = () => {
-            const [activeTab, setActiveTab] = useState('search');
-            const [searchTerm, setSearchTerm] = useState('');
-            const [searchResults, setSearchResults] = useState(null);
-            const [allDataResults, setAllDataResults] = useState(null);
-            const [loading, setLoading] = useState(false);
-            const [loadingAllData, setLoadingAllData] = useState(false);
-            const [error, setError] = useState('');
-            const [success, setSuccess] = useState('');
-            const [selectedRecords, setSelectedRecords] = useState(new Set());
-            const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
-            const [filterType, setFilterType] = useState('all');
-            const [showConfirmDelete, setShowConfirmDelete] = useState(false);
-            const [deleteTarget, setDeleteTarget] = useState(null);
-            const [nuclearDeleteLoading, setNuclearDeleteLoading] = useState(false);
+        <!-- Error State -->
+        <div id="error" class="hidden text-center py-12">
+            <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+                <h3 class="text-lg font-semibold text-red-800 mb-2">Error Loading Data</h3>
+                <p class="text-red-600 mb-4" id="error-message">Failed to load cleanup data</p>
+                <button onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    Retry
+                </button>
+            </div>
+        </div>
 
-            const tableTypes = {
-                imeiSkuInfo: 'IMEI SKU Info',
-                imeiInspectData: 'IMEI Inspect Data',
-                imeiUnits: 'IMEI Units',
-                imeiDataQueue: 'IMEI Data Queue',
-                items: 'Items'
-            };
+        <!-- Main Content -->
+        <div id="main-content" class="hidden">
+            <!-- Statistics Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="stats-cards">
+                <!-- Stats will be populated here -->
+            </div>
 
-            const searchImeiData = async () => {
-                if (!searchTerm.trim()) {
-                    setError('Please enter a search term');
-                    return;
-                }
+            <!-- Tabs -->
+            <div class="mb-8">
+                <div class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-8">
+                        <button onclick="switchTab('bulk-delete')" id="tab-bulk-delete" class="tab-button border-b-2 border-red-500 py-2 px-1 text-sm font-medium text-red-600">
+                            <i class="fas fa-list mr-2"></i>Bulk Delete
+                        </button>
+                        <button onclick="switchTab('imei-search')" id="tab-imei-search" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            <i class="fas fa-search mr-2"></i>IMEI Search
+                        </button>
+                        <button onclick="switchTab('filter-delete')" id="tab-filter-delete" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            <i class="fas fa-filter mr-2"></i>Filter & Delete
+                        </button>
+                    </nav>
+                </div>
+            </div>
 
-                setLoading(true);
-                setError('');
-                setSearchResults(null);
-
-                try {
-                    const response = await fetch(`/api/admin/search-imei?searchTerm=${encodeURIComponent(searchTerm.trim())}`);
-                    const result = await response.json();
-
-                    if (result.success) {
-                        setSearchResults(result.data);
-                        setSuccess(`Found ${result.data.totalRecords} records`);
-                    } else {
-                        setError(result.error || 'Search failed');
-                    }
-                } catch (err) {
-                    setError('Failed to search data: ' + err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const loadAllData = async () => {
-                setLoadingAllData(true);
-                setError('');
-                setAllDataResults(null);
-
-                try {
-                    const response = await fetch('/api/admin/all-imei-data');
-                    const result = await response.json();
-
-                    if (result.success) {
-                        setAllDataResults(result.data);
-                        setSuccess(`Loaded ${result.data.totalRecords} total records from database`);
-                    } else {
-                        setError(result.error || 'Failed to load all data');
-                    }
-                } catch (err) {
-                    setError('Failed to load all data: ' + err.message);
-                } finally {
-                    setLoadingAllData(false);
-                }
-            };
-
-            const cleanupImeiData = async (imei) => {
-                setLoading(true);
-                setError('');
-                setSuccess('');
-
-                try {
-                    const response = await fetch('/api/admin/cleanup-imei', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ imei })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        setSuccess(`Successfully cleaned up ${result.archivedCount} records for IMEI: ${imei}`);
-                        // Refresh search results
-                        if (searchResults) {
-                            searchImeiData();
-                        }
-                        if (allDataResults) {
-                            loadAllData();
-                        }
-                    } else {
-                        setError(result.error || 'Cleanup failed');
-                    }
-                } catch (err) {
-                    setError('Failed to cleanup data: ' + err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleRecordSelect = (recordId, tableType) => {
-                const key = `${tableType}-${recordId}`;
-                const newSelected = new Set(selectedRecords);
-                
-                if (newSelected.has(key)) {
-                    newSelected.delete(key);
-                } else {
-                    newSelected.add(key);
-                }
-                
-                setSelectedRecords(newSelected);
-            };
-
-            const handleSelectAll = () => {
-                const currentResults = activeTab === 'search' ? searchResults : allDataResults;
-                if (!currentResults) return;
-
-                const allRecords = [];
-                Object.entries(currentResults).forEach(([tableType, records]) => {
-                    if (Array.isArray(records) && tableType !== 'totalRecords') {
-                        records.forEach(record => {
-                            allRecords.push(`${tableType}-${record.id || record.imei}`);
-                        });
-                    }
-                });
-
-                setSelectedRecords(new Set(allRecords));
-            };
-
-            const handleDeselectAll = () => {
-                setSelectedRecords(new Set());
-            };
-
-            const handleBulkDelete = async () => {
-                if (selectedRecords.size === 0) {
-                    setError('Please select records to delete');
-                    return;
-                }
-
-                setDeleteTarget({
-                    type: 'bulk',
-                    count: selectedRecords.size,
-                    records: Array.from(selectedRecords)
-                });
-                setShowConfirmDelete(true);
-            };
-
-            const handleNuclearDelete = () => {
-                setDeleteTarget({
-                    type: 'nuclear'
-                });
-                setShowConfirmDelete(true);
-            };
-
-            const handleSingleDelete = (imei) => {
-                setDeleteTarget({
-                    type: 'single',
-                    imei: imei
-                });
-                setShowConfirmDelete(true);
-            };
-
-            const confirmDelete = async () => {
-                if (!deleteTarget) return;
-
-                setBulkDeleteLoading(true);
-                setError('');
-                setSuccess('');
-
-                try {
-                    if (deleteTarget.type === 'single') {
-                        await cleanupImeiData(deleteTarget.imei);
-                    } else if (deleteTarget.type === 'nuclear') {
-                        // Use the nuclear delete endpoint
-                        const response = await fetch('/api/admin/cleanup-all-imei', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' }
-                        });
-                        const result = await response.json();
-                        
-                        if (result.success) {
-                            setSuccess(`Nuclear deletion completed: ${result.data.total_deleted} records deleted`);
-                            setSearchResults(null);
-                            setAllDataResults(null);
-                            setSelectedRecords(new Set());
-                        } else {
-                            setError(result.error || 'Nuclear deletion failed');
-                        }
-                    } else {
-                        // For bulk delete, extract IMEIs and use the bulk delete endpoint
-                        const currentResults = activeTab === 'search' ? searchResults : allDataResults;
-                        const imeis = new Set();
-                        deleteTarget.records.forEach(recordKey => {
-                            const [tableType, recordId] = recordKey.split('-');
-                            // Extract IMEI from the record
-                            const tableData = currentResults[tableType];
-                            const record = tableData.find(r => (r.id || r.imei) == recordId);
-                            if (record && record.imei) {
-                                imeis.add(record.imei);
-                            }
-                        });
-
-                        // Use the bulk delete endpoint
-                        const response = await fetch('/api/admin/cleanup-multiple-imei', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ imeiList: Array.from(imeis) })
-                        });
-                        const result = await response.json();
-
-                        if (result.success) {
-                            setSuccess(`Bulk deletion completed: ${result.data.success_count} IMEIs processed, ${result.data.total_deleted} records deleted`);
-                            setSelectedRecords(new Set());
-                            
-                            // Refresh results
-                            if (searchResults) {
-                                searchImeiData();
-                            }
-                            if (allDataResults) {
-                                loadAllData();
-                            }
-                        } else {
-                            setError(result.error || 'Bulk deletion failed');
-                        }
-                    }
-                } catch (err) {
-                    setError('Failed to delete records: ' + err.message);
-                } finally {
-                    setBulkDeleteLoading(false);
-                    setShowConfirmDelete(false);
-                    setDeleteTarget(null);
-                }
-            };
-
-            const getFilteredResults = () => {
-                const currentResults = activeTab === 'search' ? searchResults : allDataResults;
-                if (!currentResults) return {};
-
-                if (filterType === 'all') {
-                    return currentResults;
-                }
-
-                return {
-                    [filterType]: currentResults[filterType] || [],
-                    totalRecords: currentResults[filterType]?.length || 0
-                };
-            };
-
-            const renderTable = (tableType, records) => {
-                if (!records || records.length === 0) return null;
-
-                const isSelected = (record) => {
-                    const key = `${tableType}-${record.id || record.imei}`;
-                    return selectedRecords.has(key);
-                };
-
-                return (
-                    <div key={tableType} className="mb-8">
-                        <h3 className="text-lg font-semibold mb-4 text-gray-800">
-                            {tableTypes[tableType]} ({records.length} records)
+            <!-- Tab Content -->
+            <div id="tab-content">
+                <!-- Bulk Delete Tab -->
+                <div id="bulk-delete-content" class="tab-content">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                            <i class="fas fa-list mr-2 text-red-600"></i>Bulk Delete Operations
                         </h3>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm">
-                                <thead className="bg-gray-50">
+                        
+                        <!-- Search and Filter Controls -->
+                        <div class="mb-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                                    <input type="text" id="search-input" placeholder="Search IMEI, SKU, Brand, Model..." 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Working Status</label>
+                                    <select id="working-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500">
+                                        <option value="">All Status</option>
+                                        <option value="PASS">Pass</option>
+                                        <option value="FAIL">Fail</option>
+                                        <option value="PENDING">Pending</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                                    <select id="brand-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500">
+                                        <option value="">All Brands</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <button onclick="applyFilters()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    <i class="fas fa-filter mr-1"></i>Apply Filters
+                                </button>
+                                <button onclick="clearFilters()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+                                    <i class="fas fa-times mr-1"></i>Clear
+                                </button>
+                                <button onclick="selectAll()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                    <i class="fas fa-check-double mr-1"></i>Select All
+                                </button>
+                                <button onclick="deselectAll()" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
+                                    <i class="fas fa-times-circle mr-1"></i>Deselect All
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Data Table -->
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <input
-                                                type="checkbox"
-                                                checked={records.every(r => isSelected(r))}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        records.forEach(record => {
-                                                            const key = `${tableType}-${record.id || record.imei}`;
-                                                            selectedRecords.add(key);
-                                                        });
-                                                        setSelectedRecords(new Set(selectedRecords));
-                                                    } else {
-                                                        records.forEach(record => {
-                                                            const key = `${tableType}-${record.id || record.imei}`;
-                                                            selectedRecords.delete(key);
-                                                        });
-                                                        setSelectedRecords(new Set(selectedRecords));
-                                                    }
-                                                }}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll()">
                                         </th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            IMEI
-                                        </th>
-                                        {tableType === 'imeiSkuInfo' && (
-                                            <>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                            </>
-                                        )}
-                                        {tableType === 'imeiInspectData' && (
-                                            <>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Test Type</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                            </>
-                                        )}
-                                        {tableType === 'imeiUnits' && (
-                                            <>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Name</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                            </>
-                                        )}
-                                        {tableType === 'imeiDataQueue' && (
-                                            <>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                            </>
-                                        )}
-                                        {tableType === 'items' && (
-                                            <>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                            </>
-                                        )}
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Actions
-                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IMEI</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Condition</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {records.map((record, index) => (
-                                        <tr key={`${tableType}-${record.id || record.imei}-${index}`} className="hover:bg-gray-50">
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected(record)}
-                                                    onChange={() => handleRecordSelect(record.id || record.imei, tableType)}
-                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                {record.imei || 'N/A'}
-                                            </td>
-                                            {tableType === 'imeiSkuInfo' && (
-                                                <>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.sku || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
-                                                </>
-                                            )}
-                                            {tableType === 'imeiInspectData' && (
-                                                <>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.test_type || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
-                                                </>
-                                            )}
-                                            {tableType === 'imeiUnits' && (
-                                                <>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.unit_name || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
-                                                </>
-                                            )}
-                                            {tableType === 'imeiDataQueue' && (
-                                                <>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.status || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
-                                                </>
-                                            )}
-                                            {tableType === 'items' && (
-                                                <>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.name || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.sku || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                        {record.status || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                        {record.created_at ? new Date(record.created_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
-                                                </>
-                                            )}
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                                {record.imei && (
-                                                    <button
-                                                        onClick={() => handleSingleDelete(record.imei)}
-                                                        className="text-red-600 hover:text-red-900 font-medium"
-                                                        disabled={loading}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                <tbody id="data-table-body" class="bg-white divide-y divide-gray-200">
+                                    <!-- Data will be populated here -->
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                );
-            };
 
-            return (
-                <div className="min-h-screen bg-gray-50">
-                    {/* Header */}
-                    <div className="bg-white shadow-sm border-b border-gray-200">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between items-center py-6">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-gray-900">Data Cleanup</h1>
-                                    <p className="text-sm text-gray-600">Manage and clean up IMEI data across all tables</p>
+                        <!-- Pagination -->
+                        <div class="mt-6 flex items-center justify-between">
+                            <div class="flex items-center space-x-4">
+                                <div class="text-sm text-gray-700">
+                                    Showing <span id="showing-start">1</span> to <span id="showing-end">10</span> of <span id="total-items">0</span> items
                                 </div>
-                                <div className="flex space-x-3">
-                                    <a href="/inventory-manager-new.html" className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700">
-                                        Inventory Manager
-                                    </a>
-                                    <a href="/admin-dashboard-controlled-charts.html" className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700">
-                                        Admin Dashboard
-                                    </a>
+                                <div class="flex items-center space-x-2">
+                                    <label class="text-sm text-gray-600">Show:</label>
+                                    <select id="items-per-page" onchange="changeItemsPerPage()" class="px-2 py-1 border border-gray-300 rounded-md text-sm">
+                                        <option value="10">10</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="all">All</option>
+                                    </select>
+                                    <span class="text-sm text-gray-600">per page</span>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Main Content */}
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                        {/* Alert Messages */}
-                        {error && (
-                            <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <i className="fas fa-exclamation-triangle text-red-400"></i>
-                                    </div>
-                                    <div className="ml-3">
-                                        <p className="text-sm text-red-800">{error}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {success && (
-                            <div className="mb-6 bg-green-50 border border-green-200 rounded-md p-4">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <i className="fas fa-check-circle text-green-400"></i>
-                                    </div>
-                                    <div className="ml-3">
-                                        <p className="text-sm text-green-800">{success}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Tabs */}
-                        <div className="mb-6">
-                            <div className="border-b border-gray-200">
-                                <nav className="-mb-px flex space-x-8">
-                                    <button
-                                        onClick={() => setActiveTab('search')}
-                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                                            activeTab === 'search'
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                        }`}
-                                    >
-                                        Search Data
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('all')}
-                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                                            activeTab === 'all'
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                        }`}
-                                    >
-                                        Load All Data
-                                    </button>
-                                </nav>
-                            </div>
-                        </div>
-
-                        {/* Search Tab */}
-                        {activeTab === 'search' && (
-                            <div className="bg-white rounded-lg shadow p-6 mb-6">
-                                <h2 className="text-lg font-semibold mb-4">Search IMEI Data</h2>
-                                <div className="flex space-x-4 mb-4">
-                                    <input
-                                        type="text"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        placeholder="Enter IMEI, SKU, or search term..."
-                                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                    <button
-                                        onClick={searchImeiData}
-                                        disabled={loading}
-                                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                                    >
-                                        {loading ? 'Searching...' : 'Search'}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Load All Data Tab */}
-                        {activeTab === 'all' && (
-                            <div className="bg-white rounded-lg shadow p-6 mb-6">
-                                <h2 className="text-lg font-semibold mb-4">Load All Data</h2>
-                                <p className="text-gray-600 mb-4">Load all IMEI-related data from the database for bulk operations.</p>
-                                <button
-                                    onClick={loadAllData}
-                                    disabled={loadingAllData}
-                                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
-                                >
-                                    {loadingAllData ? 'Loading...' : 'Load All Data'}
+                            <div class="flex space-x-2">
+                                <button onclick="previousPage()" id="prev-btn" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50">
+                                    Previous
+                                </button>
+                                <button onclick="nextPage()" id="next-btn" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50">
+                                    Next
                                 </button>
                             </div>
-                        )}
+                        </div>
 
-                        {/* Results */}
-                        {(searchResults || allDataResults) && (
-                            <div className="bg-white rounded-lg shadow">
-                                <div className="px-6 py-4 border-b border-gray-200">
-                                    <div className="flex justify-between items-center">
-                                        <h2 className="text-lg font-semibold">Results</h2>
-                                        <div className="flex space-x-3">
-                                            <select
-                                                value={filterType}
-                                                onChange={(e) => setFilterType(e.target.value)}
-                                                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-                                            >
-                                                <option value="all">All Tables</option>
-                                                {Object.entries(tableTypes).map(([key, label]) => (
-                                                    <option key={key} value={key}>{label}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                onClick={handleSelectAll}
-                                                className="bg-blue-600 text-white px-3 py-2 rounded-md text-sm hover:bg-blue-700"
-                                            >
-                                                Select All
-                                            </button>
-                                            <button
-                                                onClick={handleDeselectAll}
-                                                className="bg-gray-600 text-white px-3 py-2 rounded-md text-sm hover:bg-gray-700"
-                                            >
-                                                Deselect All
-                                            </button>
-                                            <button
-                                                onClick={handleBulkDelete}
-                                                disabled={selectedRecords.size === 0 || bulkDeleteLoading}
-                                                className="bg-red-600 text-white px-3 py-2 rounded-md text-sm hover:bg-red-700 disabled:opacity-50"
-                                            >
-                                                {bulkDeleteLoading ? 'Deleting...' : `Delete Selected (${selectedRecords.size})`}
-                                            </button>
-                                            <button
-                                                onClick={handleNuclearDelete}
-                                                disabled={bulkDeleteLoading}
-                                                className="bg-red-800 text-white px-3 py-2 rounded-md text-sm hover:bg-red-900 disabled:opacity-50"
-                                                title="Delete ALL data from the database"
-                                            >
-                                                Nuclear Delete
-                                            </button>
-                                        </div>
-                                    </div>
+                        <!-- Bulk Actions -->
+                        <div class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                            <h4 class="text-sm font-medium text-red-800 mb-2">Bulk Actions</h4>
+                            <div class="flex flex-wrap items-center gap-4">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-red-600">
+                                        <span id="selected-count">0</span> items selected
+                                    </span>
+                                    <span class="text-sm text-gray-500">|</span>
+                                    <span class="text-sm text-gray-600">
+                                        <span id="total-filtered">0</span> total filtered
+                                    </span>
                                 </div>
-                                <div className="p-6">
-                                    {Object.entries(getFilteredResults()).map(([tableType, records]) => {
-                                        if (tableType === 'totalRecords') return null;
-                                        return renderTable(tableType, records);
-                                    })}
+                                <div class="flex items-center space-x-2">
+                                    <button onclick="selectAll()" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                                        <i class="fas fa-check-square mr-1"></i>Select All
+                                    </button>
+                                    <button onclick="deselectAll()" class="px-3 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
+                                        <i class="fas fa-square mr-1"></i>Deselect All
+                                    </button>
+                                    <button onclick="selectAllFiltered()" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                                        <i class="fas fa-check-double mr-1"></i>Select All Filtered
+                                    </button>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button onclick="deleteSelected()" id="delete-selected-btn" disabled 
+                                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <i class="fas fa-trash mr-1"></i>Delete Selected
+                                    </button>
+                                    <button onclick="deleteAllFiltered()" id="delete-all-filtered-btn" disabled 
+                                            class="px-4 py-2 bg-red-800 text-white rounded-md hover:bg-red-900 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <i class="fas fa-trash-alt mr-1"></i>Delete All Filtered
+                                    </button>
                                 </div>
                             </div>
-                        )}
-
-                        {/* Confirmation Modal */}
-                        {showConfirmDelete && (
-                            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                                <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-                                    <div className="mt-3 text-center">
-                                        <h3 className="text-lg font-medium text-gray-900 mb-4">
-                                            {deleteTarget?.type === 'nuclear' ? 'Nuclear Delete Confirmation' : 'Delete Confirmation'}
-                                        </h3>
-                                        <p className="text-sm text-gray-500 mb-4">
-                                            {deleteTarget?.type === 'nuclear' 
-                                                ? 'This will delete ALL data from the database. This action cannot be undone!'
-                                                : deleteTarget?.type === 'single'
-                                                ? `Are you sure you want to delete IMEI: ${deleteTarget.imei}?`
-                                                : `Are you sure you want to delete ${deleteTarget.count} selected records?`
-                                            }
-                                        </p>
-                                        <div className="flex justify-center space-x-3">
-                                            <button
-                                                onClick={() => setShowConfirmDelete(false)}
-                                                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm hover:bg-gray-400"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={confirmDelete}
-                                                disabled={bulkDeleteLoading}
-                                                className={`px-4 py-2 rounded-md text-sm text-white ${
-                                                    deleteTarget?.type === 'nuclear' 
-                                                        ? 'bg-red-800 hover:bg-red-900' 
-                                                        : 'bg-red-600 hover:bg-red-700'
-                                                } disabled:opacity-50`}
-                                            >
-                                                {bulkDeleteLoading ? 'Deleting...' : 'Confirm Delete'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </div>
-            );
-        };
 
-        ReactDOM.render(<DataCleanupApp />, document.getElementById('root'));
+                <!-- IMEI Search Tab -->
+                <div id="imei-search-content" class="tab-content hidden">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                            <i class="fas fa-search mr-2 text-blue-600"></i>IMEI Search & Delete
+                        </h3>
+                        
+                        <div class="max-w-md">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Enter IMEI</label>
+                            <div class="flex space-x-2">
+                                <input type="text" id="imei-search-input" placeholder="Enter 15-digit IMEI..." 
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <button onclick="searchImei()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    <i class="fas fa-search mr-1"></i>Search
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Search Results -->
+                        <div id="imei-search-results" class="mt-6 hidden">
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-gray-900 mb-3">Search Results</h4>
+                                <div id="imei-result-content">
+                                    <!-- Results will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filter Delete Tab -->
+                <div id="filter-delete-content" class="tab-content hidden">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                            <i class="fas fa-filter mr-2 text-green-600"></i>Advanced Filter & Delete
+                        </h3>
+                        
+                        <p class="text-sm text-gray-600 mb-6">
+                            Use advanced filters to find and delete specific groups of items. This is useful for bulk cleanup operations.
+                        </p>
+
+                        <!-- Advanced Filters -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Working Status</label>
+                                <select id="advanced-working-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    <option value="">All Status</option>
+                                    <option value="PASS">Pass Only</option>
+                                    <option value="FAIL">Fail Only</option>
+                                    <option value="PENDING">Pending Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                                <select id="advanced-brand-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    <option value="">All Brands</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                                <select id="advanced-location-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    <option value="">All Locations</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Condition</label>
+                                <select id="advanced-condition-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    <option value="">All Conditions</option>
+                                    <option value="GOOD">Good Only</option>
+                                    <option value="POOR">Poor Only</option>
+                                    <option value="UNKNOWN">Unknown Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                                <input type="date" id="date-from" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                                <input type="date" id="date-to" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-2 mb-6">
+                            <button onclick="applyAdvancedFilters()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                                <i class="fas fa-filter mr-1"></i>Apply Filters
+                            </button>
+                            <button onclick="clearAdvancedFilters()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+                                <i class="fas fa-times mr-1"></i>Clear Filters
+                            </button>
+                        </div>
+
+                        <!-- Filter Results -->
+                        <div id="filter-results" class="hidden">
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h4 class="text-sm font-medium text-yellow-800">Filter Results</h4>
+                                        <p class="text-sm text-yellow-600 mt-1">
+                                            <span id="filter-count">0</span> items match your criteria
+                                        </p>
+                                    </div>
+                                    <button onclick="deleteFiltered()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                        <i class="fas fa-trash mr-1"></i>Delete All Filtered
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <i class="fas fa-exclamation-triangle text-red-600"></i>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mt-4">Confirm Deletion</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500" id="confirmation-message">
+                        Are you sure you want to delete these items? This action cannot be undone.
+                    </p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300">
+                        Delete
+                    </button>
+                    <button onclick="closeConfirmationModal()" class="mt-2 px-4 py-2 bg-gray-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentData = [];
+        let filteredData = [];
+        let selectedItems = new Set();
+        let currentPage = 0;
+        let itemsPerPage = 10;
+        let currentTab = 'bulk-delete';
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadData();
+            setupEventListeners();
+        });
+
+        // Setup event listeners
+        function setupEventListeners() {
+            document.getElementById('search-input').addEventListener('input', debounce(applyFilters, 300));
+            document.getElementById('working-filter').addEventListener('change', applyFilters);
+            document.getElementById('brand-filter').addEventListener('change', applyFilters);
+            document.getElementById('imei-search-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    searchImei();
+                }
+            });
+        }
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/cleanup/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderStats(data.stats);
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Render statistics
+        function renderStats(stats) {
+            const statsContainer = document.getElementById('stats-cards');
+            statsContainer.innerHTML = `
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-boxes text-blue-600 text-2xl"></i>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Items</dt>
+                                    <dd class="text-lg font-medium text-gray-900">${stats.totalItems}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-check-circle text-green-600 text-2xl"></i>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Passed Items</dt>
+                                    <dd class="text-lg font-medium text-gray-900">${stats.passedItems}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-times-circle text-red-600 text-2xl"></i>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Failed Items</dt>
+                                    <dd class="text-lg font-medium text-gray-900">${stats.failedItems}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-clock text-yellow-600 text-2xl"></i>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Pending Items</dt>
+                                    <dd class="text-lg font-medium text-gray-900">${stats.pendingItems}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load data
+        async function loadData() {
+            showLoading();
+            try {
+                const response = await fetch('/api/cleanup/data');
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentData = data.data;
+                    filteredData = [...currentData];
+                    renderData();
+                    populateFilters();
+                    hideLoading();
+                } else {
+                    showError('Failed to load data: ' + data.error);
+                }
+            } catch (error) {
+                showError('Failed to load data: ' + error.message);
+            }
+        }
+
+
+
+        // Get working status class
+        function getWorkingStatusClass(status) {
+            switch (status) {
+                case 'PASS': return 'bg-green-100 text-green-800';
+                case 'FAIL': return 'bg-red-100 text-red-800';
+                case 'PENDING': return 'bg-yellow-100 text-yellow-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        // Get condition class
+        function getConditionClass(condition) {
+            switch (condition) {
+                case 'GOOD': return 'bg-green-100 text-green-800';
+                case 'POOR': return 'bg-red-100 text-red-800';
+                case 'UNKNOWN': return 'bg-gray-100 text-gray-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        // Populate filters
+        function populateFilters() {
+            const brands = [...new Set(currentData.map(item => item.brand).filter(Boolean))];
+            const locations = [...new Set(currentData.map(item => item.location).filter(Boolean))];
+            
+            populateSelect('brand-filter', brands);
+            populateSelect('advanced-brand-filter', brands);
+            populateSelect('advanced-location-filter', locations);
+        }
+
+        // Populate select element
+        function populateSelect(elementId, options) {
+            const select = document.getElementById(elementId);
+            const currentValue = select.value;
+            
+            select.innerHTML = '<option value="">All</option>';
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                select.appendChild(optionElement);
+            });
+            
+            select.value = currentValue;
+        }
+
+        // Apply filters
+        function applyFilters() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const workingFilter = document.getElementById('working-filter').value;
+            const brandFilter = document.getElementById('brand-filter').value;
+            
+            filteredData = currentData.filter(item => {
+                const matchesSearch = !searchTerm || 
+                    item.imei.toLowerCase().includes(searchTerm) ||
+                    item.sku.toLowerCase().includes(searchTerm) ||
+                    item.brand.toLowerCase().includes(searchTerm) ||
+                    item.model.toLowerCase().includes(searchTerm) ||
+                    item.device_name.toLowerCase().includes(searchTerm);
+                
+                const matchesWorking = !workingFilter || item.working_status === workingFilter;
+                const matchesBrand = !brandFilter || item.brand === brandFilter;
+                
+                return matchesSearch && matchesWorking && matchesBrand;
+            });
+            
+            currentPage = 0;
+            renderData();
+        }
+
+        // Clear filters
+        function clearFilters() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('working-filter').value = '';
+            document.getElementById('brand-filter').value = '';
+            filteredData = [...currentData];
+            currentPage = 0;
+            renderData();
+        }
+
+        // Select all
+        function selectAll() {
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                selectedItems.add(checkbox.value);
+            });
+            updateSelectedCount();
+        }
+
+        // Deselect all
+        function deselectAll() {
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+                selectedItems.delete(checkbox.value);
+            });
+            updateSelectedCount();
+        }
+
+        // Toggle select all
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('select-all-checkbox');
+            if (selectAllCheckbox.checked) {
+                selectAll();
+            } else {
+                deselectAll();
+            }
+        }
+
+        // Toggle item selection
+        function toggleItemSelection(imei) {
+            if (selectedItems.has(imei)) {
+                selectedItems.delete(imei);
+            } else {
+                selectedItems.add(imei);
+            }
+            updateSelectedCount();
+        }
+
+        // Update selected count
+        function updateSelectedCount() {
+            const count = selectedItems.size;
+            document.getElementById('selected-count').textContent = count;
+            document.getElementById('delete-selected-btn').disabled = count === 0;
+        }
+
+        // Update pagination
+        function updatePagination() {
+            const total = filteredData.length;
+            const start = currentPage * itemsPerPage + 1;
+            const end = Math.min((currentPage + 1) * itemsPerPage, total);
+            
+            document.getElementById('showing-start').textContent = total > 0 ? start : 0;
+            document.getElementById('showing-end').textContent = end;
+            document.getElementById('total-items').textContent = total;
+            
+            document.getElementById('prev-btn').disabled = currentPage === 0;
+            document.getElementById('next-btn').disabled = end >= total;
+        }
+
+        // Previous page
+        function previousPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                renderData();
+            }
+        }
+
+        // Next page
+        function nextPage() {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                renderData();
+            }
+        }
+
+        // Switch tab
+        function switchTab(tabName) {
+            currentTab = tabName;
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('border-red-500', 'text-red-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            
+            document.getElementById(`tab-${tabName}`).classList.remove('border-transparent', 'text-gray-500');
+            document.getElementById(`tab-${tabName}`).classList.add('border-red-500', 'text-red-600');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            document.getElementById(`${tabName}-content`).classList.remove('hidden');
+        }
+
+        // Search IMEI
+        async function searchImei() {
+            const imei = document.getElementById('imei-search-input').value.trim();
+            if (!imei) {
+                alert('Please enter an IMEI');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/cleanup/search-imei/${imei}`);
+                const data = await response.json();
+                
+                const resultsDiv = document.getElementById('imei-search-results');
+                const contentDiv = document.getElementById('imei-result-content');
+                
+                if (data.success) {
+                    const item = data.data;
+                    contentDiv.innerHTML = `
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <span class="font-medium">IMEI:</span> ${item.imei}
+                            </div>
+                            <div>
+                                <span class="font-medium">SKU:</span> ${item.sku}
+                            </div>
+                            <div>
+                                <span class="font-medium">Brand:</span> ${item.brand}
+                            </div>
+                            <div>
+                                <span class="font-medium">Model:</span> ${item.model}
+                            </div>
+                            <div>
+                                <span class="font-medium">Working:</span> 
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getWorkingStatusClass(item.working_status)}">
+                                    ${item.working_status}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="font-medium">Location:</span> ${item.location}
+                            </div>
+                            <div>
+                                <span class="font-medium">Condition:</span> 
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getConditionClass(item.condition)}">
+                                    ${item.condition}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="font-medium">Defects:</span> ${item.defects || 'None'}
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <button onclick="deleteSingleItem('${item.imei}')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                <i class="fas fa-trash mr-1"></i>Delete This Item
+                            </button>
+                        </div>
+                    `;
+                    resultsDiv.classList.remove('hidden');
+                } else {
+                    contentDiv.innerHTML = `
+                        <div class="text-center text-red-600">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>IMEI not found in the database</p>
+                        </div>
+                    `;
+                    resultsDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error searching IMEI:', error);
+                alert('Error searching for IMEI');
+            }
+        }
+
+        // Apply advanced filters
+        function applyAdvancedFilters() {
+            const workingFilter = document.getElementById('advanced-working-filter').value;
+            const brandFilter = document.getElementById('advanced-brand-filter').value;
+            const locationFilter = document.getElementById('advanced-location-filter').value;
+            const conditionFilter = document.getElementById('advanced-condition-filter').value;
+            const dateFrom = document.getElementById('date-from').value;
+            const dateTo = document.getElementById('date-to').value;
+            
+            filteredData = currentData.filter(item => {
+                const matchesWorking = !workingFilter || item.working_status === workingFilter;
+                const matchesBrand = !brandFilter || item.brand === brandFilter;
+                const matchesLocation = !locationFilter || item.location === locationFilter;
+                const matchesCondition = !conditionFilter || item.condition === conditionFilter;
+                
+                let matchesDate = true;
+                if (dateFrom || dateTo) {
+                    const itemDate = new Date(item.date_in);
+                    if (dateFrom && itemDate < new Date(dateFrom)) matchesDate = false;
+                    if (dateTo && itemDate > new Date(dateTo)) matchesDate = false;
+                }
+                
+                return matchesWorking && matchesBrand && matchesLocation && matchesCondition && matchesDate;
+            });
+            
+            // Show filter results
+            const filterResults = document.getElementById('filter-results');
+            const filterCount = document.getElementById('filter-count');
+            filterCount.textContent = filteredData.length;
+            filterResults.classList.remove('hidden');
+            
+            // Switch to bulk delete tab to show results
+            switchTab('bulk-delete');
+            currentPage = 0;
+            renderData();
+        }
+
+        // Clear advanced filters
+        function clearAdvancedFilters() {
+            document.getElementById('advanced-working-filter').value = '';
+            document.getElementById('advanced-brand-filter').value = '';
+            document.getElementById('advanced-location-filter').value = '';
+            document.getElementById('advanced-condition-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            
+            document.getElementById('filter-results').classList.add('hidden');
+            filteredData = [...currentData];
+            currentPage = 0;
+            renderData();
+        }
+
+        // Delete single item
+        async function deleteSingleItem(imei) {
+            if (!confirm(`Are you sure you want to delete IMEI ${imei}? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/cleanup/delete-imei/${imei}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Item deleted successfully');
+                    loadData();
+                    loadStats();
+                } else {
+                    alert('Error deleting item: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting item:', error);
+                alert('Error deleting item');
+            }
+        }
+
+        // Delete selected items
+        async function deleteSelected() {
+            if (selectedItems.size === 0) {
+                alert('No items selected');
+                return;
+            }
+            
+            showConfirmationModal(
+                `Are you sure you want to delete ${selectedItems.size} selected items? This action cannot be undone.`,
+                () => performBulkDelete(Array.from(selectedItems))
+            );
+        }
+
+        // Delete filtered items
+        async function deleteFiltered() {
+            if (filteredData.length === 0) {
+                alert('No items to delete');
+                return;
+            }
+            
+            showConfirmationModal(
+                `Are you sure you want to delete all ${filteredData.length} filtered items? This action cannot be undone.`,
+                () => performBulkDelete(filteredData.map(item => item.imei))
+            );
+        }
+
+        // Perform bulk delete
+        async function performBulkDelete(imeis) {
+            try {
+                const response = await fetch('/api/cleanup/bulk-delete', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ imeis })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Bulk delete completed: ${data.deletedCount} items deleted, ${data.failedCount} failed`);
+                    selectedItems.clear();
+                    loadData();
+                    loadStats();
+                } else {
+                    alert('Error performing bulk delete: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error performing bulk delete:', error);
+                alert('Error performing bulk delete');
+            }
+        }
+
+        // Show confirmation modal
+        function showConfirmationModal(message, onConfirm) {
+            document.getElementById('confirmation-message').textContent = message;
+            document.getElementById('confirm-delete-btn').onclick = () => {
+                closeConfirmationModal();
+                onConfirm();
+            };
+            document.getElementById('confirmation-modal').classList.remove('hidden');
+        }
+
+        // Close confirmation modal
+        function closeConfirmationModal() {
+            document.getElementById('confirmation-modal').classList.add('hidden');
+        }
+
+        // Export data
+        function exportData() {
+            const csvContent = generateCSV(filteredData);
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cleanup-data.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Generate CSV
+        function generateCSV(data) {
+            const headers = ['IMEI', 'SKU', 'Brand', 'Model', 'Device Name', 'Working Status', 'Location', 'Condition', 'Defects', 'Notes', 'Repair Notes'];
+            const csvRows = [headers.join(',')];
+            
+            data.forEach(item => {
+                const row = [
+                    item.imei,
+                    item.sku,
+                    item.brand,
+                    item.model,
+                    item.device_name,
+                    item.working_status,
+                    item.location,
+                    item.condition,
+                    item.defects || '',
+                    item.notes || '',
+                    item.repair_notes || ''
+                ].map(field => `"${field}"`).join(',');
+                csvRows.push(row);
+            });
+            
+            return csvRows.join('\n');
+        }
+
+        // Utility functions
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+        }
+
+        function showError(message) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+            document.getElementById('error-message').textContent = message;
+        }
+
+        function refreshData() {
+            loadData();
+            loadStats();
+        }
+
+        // Recalculate inventory counts
+        async function recalculateInventory() {
+            if (!confirm('This will recalculate all inventory counts based on actual data. Continue?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/recalculate-inventory', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Inventory counts recalculated successfully!');
+                    loadStats(); // Refresh stats to show updated counts
+                } else {
+                    alert('Error recalculating inventory: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error recalculating inventory:', error);
+                alert('Error recalculating inventory');
+            }
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Change items per page
+        function changeItemsPerPage() {
+            const newItemsPerPage = document.getElementById('items-per-page').value;
+            if (newItemsPerPage === 'all') {
+                itemsPerPage = filteredData.length;
+            } else {
+                itemsPerPage = parseInt(newItemsPerPage);
+            }
+            currentPage = 0;
+            renderData();
+        }
+
+        // Select all filtered items
+        function selectAllFiltered() {
+            const startIndex = currentPage * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageData = filteredData.slice(startIndex, endIndex);
+            
+            pageData.forEach(item => {
+                selectedItems.add(item.imei);
+            });
+            
+            // Update checkboxes
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            
+            updateSelectedCount();
+        }
+
+        // Delete all filtered items
+        function deleteAllFiltered() {
+            if (filteredData.length === 0) {
+                alert('No items to delete');
+                return;
+            }
+            
+            showConfirmationModal(
+                `Are you sure you want to delete ALL ${filteredData.length} filtered items? This action cannot be undone.`,
+                () => performBulkDelete(filteredData.map(item => item.imei))
+            );
+        }
+
+        // Enhanced update selected count
+        function updateSelectedCount() {
+            const selectedCount = selectedItems.size;
+            const totalFiltered = filteredData.length;
+            
+            document.getElementById('selected-count').textContent = selectedCount;
+            document.getElementById('total-filtered').textContent = totalFiltered;
+            
+            // Enable/disable delete buttons
+            document.getElementById('delete-selected-btn').disabled = selectedCount === 0;
+            document.getElementById('delete-all-filtered-btn').disabled = totalFiltered === 0;
+        }
+
+        // Enhanced render data to update total filtered count
+        function renderData() {
+            const startIndex = currentPage * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageData = filteredData.slice(startIndex, endIndex);
+            
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = '';
+            
+            pageData.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <input type="checkbox" class="item-checkbox" value="${item.imei}" 
+                               ${selectedItems.has(item.imei) ? 'checked' : ''} 
+                               onchange="toggleItemSelection('${item.imei}')">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.imei}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.device_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.brand}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getWorkingStatusClass(item.working_status)}">
+                            ${item.working_status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.location}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getConditionClass(item.condition)}">
+                            ${item.condition}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onclick="deleteSingleItem('${item.imei}')" class="text-red-600 hover:text-red-900">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            updatePagination();
+            updateSelectedCount();
+        }
     </script>
 </body>
 </html>

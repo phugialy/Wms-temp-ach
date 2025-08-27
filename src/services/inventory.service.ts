@@ -17,12 +17,10 @@ export class InventoryService {
   async createInventory(data: CreateInventoryInput) {
     try {
       // Check if inventory already exists for this item and location
-      const existingInventory = await prisma.inventory.findUnique({
+      const existingInventory = await prisma.inventory.findFirst({
         where: {
-          itemId_locationId: {
-            itemId: data.itemId,
-            locationId: data.locationId,
-          },
+          itemId: data.itemId,
+          locationId: data.locationId,
         },
       });
 
@@ -32,10 +30,9 @@ export class InventoryService {
           where: { id: existingInventory.id },
           data: {
             quantity: existingInventory.quantity + data.quantity,
-            available: existingInventory.available + data.quantity,
           },
         });
-        logger.info('Inventory record updated', { inventoryId: inventory.id, sku: inventory.sku, locationId: inventory.locationId });
+        logger.info('Inventory record updated', { inventoryId: inventory.id, locationId: inventory.locationId });
         return inventory;
       } else {
         // Create new inventory record
@@ -43,13 +40,10 @@ export class InventoryService {
           data: {
             itemId: data.itemId,
             locationId: data.locationId,
-            sku: data.sku,
             quantity: data.quantity,
-            reserved: data.reserved || 0,
-            available: data.available || data.quantity
           }
         });
-        logger.info('Inventory record created', { inventoryId: inventory.id, sku: inventory.sku, locationId: inventory.locationId });
+        logger.info('Inventory record created', { inventoryId: inventory.id, locationId: inventory.locationId });
         return inventory;
       }
     } catch (error) {
@@ -64,7 +58,7 @@ export class InventoryService {
         where: { id },
         data
       });
-      logger.info('Inventory record updated', { inventoryId: inventory.id, sku: inventory.sku, locationId: inventory.locationId });
+      logger.info('Inventory record updated', { inventoryId: inventory.id, locationId: inventory.locationId });
       return inventory;
     } catch (error) {
       logger.error('Error updating inventory', { error, id, data });
@@ -150,22 +144,30 @@ export class InventoryService {
 
       const summary = {
         totalItems: inventory.length,
-        availableItems: inventory.reduce((sum, inv) => sum + inv.available, 0),
-        reservedItems: inventory.reduce((sum, inv) => sum + inv.reserved, 0),
+        availableItems: inventory.reduce((sum, inv) => sum + inv.quantity, 0),
+        reservedItems: 0, // No reserved items in current schema
         byBrand: {} as Record<string, number>,
         byModel: {} as Record<string, number>,
         byCondition: {} as Record<string, number>,
       };
 
       inventory.forEach((inv) => {
-        if (inv.item?.brand) {
-          summary.byBrand[inv.item.brand] = (summary.byBrand[inv.item.brand] || 0) + inv.quantity;
+        // Since the current schema doesn't have brand, model, condition directly on item,
+        // we'll use description or status for categorization
+        if (inv.item?.description) {
+          const description = inv.item.description.toLowerCase();
+          if (description.includes('apple') || description.includes('iphone')) {
+            summary.byBrand['Apple'] = (summary.byBrand['Apple'] || 0) + inv.quantity;
+          } else if (description.includes('samsung')) {
+            summary.byBrand['Samsung'] = (summary.byBrand['Samsung'] || 0) + inv.quantity;
+          } else {
+            summary.byBrand['Other'] = (summary.byBrand['Other'] || 0) + inv.quantity;
+          }
         }
-        if (inv.item?.model) {
-          summary.byModel[inv.item.model] = (summary.byModel[inv.item.model] || 0) + inv.quantity;
-        }
-        if (inv.item?.condition) {
-          summary.byCondition[inv.item.condition] = (summary.byCondition[inv.item.condition] || 0) + inv.quantity;
+        
+        // Use status for condition
+        if (inv.item?.status) {
+          summary.byCondition[inv.item.status] = (summary.byCondition[inv.item.status] || 0) + inv.quantity;
         }
       });
 
@@ -181,10 +183,9 @@ export class InventoryService {
       const inventory = await prisma.inventory.findMany({
         where: {
           OR: [
-            { sku: { contains: query, mode: 'insensitive' } },
+            { item: { sku: { contains: query, mode: 'insensitive' } } },
             { item: { name: { contains: query, mode: 'insensitive' } } },
-            { item: { brand: { contains: query, mode: 'insensitive' } } },
-            { item: { model: { contains: query, mode: 'insensitive' } } },
+            { item: { description: { contains: query, mode: 'insensitive' } } },
             { item: { imei: { contains: query, mode: 'insensitive' } } },
           ],
         },

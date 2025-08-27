@@ -23,11 +23,8 @@ export class SupabaseAdminService {
       let finalSku = data.sku;
       if (!finalSku) {
         finalSku = generateSku({
-          brand: data.brand,
-          model: data.model,
-          storage: data.storage,
-          color: data.color,
-          carrier: data.carrier
+          name: data.name,
+          imei: data.imei
         });
       }
 
@@ -71,7 +68,7 @@ export class SupabaseAdminService {
             imei: data.imei,
             name: data.name,
             sku: finalSku,
-            description: `${data.brand} ${data.model} ${data.storage} ${data.color} ${data.carrier}`,
+            description: `${data.name} - ${data.imei}`,
             status: 'active'
           })
           .select()
@@ -97,8 +94,9 @@ export class SupabaseAdminService {
           updateData.sku = finalSku;
           needsUpdate = true;
         }
-        if (item.description !== `${data.brand} ${data.model} ${data.storage} ${data.color} ${data.carrier}`) {
-          updateData.description = `${data.brand} ${data.model} ${data.storage} ${data.color} ${data.carrier}`;
+        const newDescription = `${data.name} - ${data.imei}`;
+        if (item.description !== newDescription) {
+          updateData.description = newDescription;
           needsUpdate = true;
         }
 

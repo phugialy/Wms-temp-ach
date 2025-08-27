@@ -30,7 +30,7 @@ export class InventoryController {
       
       // For now, we'll get all inventory and filter by SKU
       const allInventory = await this.inventoryService.getAllInventory();
-      const inventory = allInventory.filter(inv => inv.sku === sku);
+      const inventory = allInventory.filter(inv => inv.item.sku === sku);
       
       if (inventory.length === 0) {
         res.status(404).json({

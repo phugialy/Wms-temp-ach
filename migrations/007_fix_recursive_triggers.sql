@@ -20,7 +20,7 @@ DECLARE
     archived_count INTEGER := 0;
     temp_count INTEGER;
 BEGIN
-    -- Only archive the current record being deleted
+    -- Only archive the current record being deleteda
     -- Don't try to cascade delete from other tables here
     INSERT INTO imei_archived (
         original_table,

@@ -18,23 +18,17 @@ export class ItemsService {
           { name: { contains: search, mode: 'insensitive' } },
           { sku: { contains: search, mode: 'insensitive' } },
           { description: { contains: search, mode: 'insensitive' } },
-          { brand: { contains: search, mode: 'insensitive' } },
-          { model: { contains: search, mode: 'insensitive' } },
-          { modelNumber: { contains: search, mode: 'insensitive' } },
-          { storage: { contains: search, mode: 'insensitive' } },
-          { color: { contains: search, mode: 'insensitive' } },
-          { carrier: { contains: search, mode: 'insensitive' } },
-          { carrierId: { contains: search, mode: 'insensitive' } }
+          { imei: { contains: search, mode: 'insensitive' } }
         ];
       }
       if (brand) {
-        where.brand = brand;
+        where.description = { contains: brand, mode: 'insensitive' };
       }
       if (condition) {
-        where.condition = condition;
+        where.status = condition;
       }
       if (type) {
-        where.type = type;
+        where.description = { contains: type, mode: 'insensitive' };
       }
 
       const [items, total] = await Promise.all([
@@ -86,28 +80,11 @@ export class ItemsService {
 
       const item = await this.prisma.item.create({
         data: {
-          sku: data.sku ?? skuData?.sku ?? null,
+          sku: data.sku ?? skuData?.sku ?? 'DEFAULT-SKU',
           name: data.name,
           description: data.description ?? null,
-          upc: data.upc ?? null,
-          brand: data.brand ?? null,
-          model: data.model ?? null,
-          modelNumber: data.modelNumber ?? null,
-          storage: data.storage ?? null,
-          color: data.color ?? null,
-          carrier: data.carrier ?? null,
-          carrierId: data.carrierId ?? null,
-          condition: data.condition ?? 'used',
-          cost: data.cost ?? null,
-          price: data.price ?? null,
-          weightOz: data.weightOz ?? null,
-          dimensions: data.dimensions ?? null,
-          imageUrl: data.imageUrl ?? null,
-          type: data.type,
-          imei: data.imei ?? null,
-          serialNumber: data.serialNumber ?? null,
-          isActive: data.isActive ?? true,
-          skuGeneratedAt: skuData?.skuGeneratedAt ?? null
+          imei: data.imei ?? 'UNKNOWN-IMEI',
+          status: data.status ?? 'active'
         }
       });
 
@@ -133,24 +110,8 @@ export class ItemsService {
       const updateData: any = {};
       if (data.name !== undefined) updateData.name = data.name;
       if (data.description !== undefined) updateData.description = data.description ?? null;
-      if (data.upc !== undefined) updateData.upc = data.upc ?? null;
-      if (data.brand !== undefined) updateData.brand = data.brand ?? null;
-      if (data.model !== undefined) updateData.model = data.model ?? null;
-      if (data.modelNumber !== undefined) updateData.modelNumber = data.modelNumber ?? null;
-      if (data.storage !== undefined) updateData.storage = data.storage ?? null;
-      if (data.color !== undefined) updateData.color = data.color ?? null;
-      if (data.carrier !== undefined) updateData.carrier = data.carrier ?? null;
-      if (data.carrierId !== undefined) updateData.carrierId = data.carrierId ?? null;
-      if (data.condition !== undefined) updateData.condition = data.condition ?? null;
-      if (data.cost !== undefined) updateData.cost = data.cost ?? null;
-      if (data.price !== undefined) updateData.price = data.price ?? null;
-      if (data.weightOz !== undefined) updateData.weightOz = data.weightOz ?? null;
-      if (data.dimensions !== undefined) updateData.dimensions = data.dimensions ?? null;
-      if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl ?? null;
-      if (data.type !== undefined) updateData.type = data.type;
-      if (data.imei !== undefined) updateData.imei = data.imei ?? null;
-      if (data.serialNumber !== undefined) updateData.serialNumber = data.serialNumber ?? null;
-      if (data.isActive !== undefined) updateData.isActive = data.isActive ?? null;
+      if (data.imei !== undefined) updateData.imei = data.imei ?? 'UNKNOWN-IMEI';
+      if (data.status !== undefined) updateData.status = data.status ?? 'active';
 
       const updatedItems = await Promise.all(
         existingItems.map(item =>

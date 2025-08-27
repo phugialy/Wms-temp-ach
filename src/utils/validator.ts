@@ -5,47 +5,15 @@ export const createItemSchema = z.object({
   sku: z.string().optional(), // Now optional - will be auto-generated if not provided
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
-  upc: z.string().optional(),
-  brand: z.string().optional(),
-  model: z.string().optional(),
-  modelNumber: z.string().optional(), // NEW - e.g., "GVU6C"
-  storage: z.string().optional(), // NEW - e.g., "128GB"
-  color: z.string().optional(), // NEW - e.g., "Obsidian"
-  carrier: z.string().optional(), // NEW - e.g., "Unlocked"
-  carrierId: z.string().optional(), // NEW - for internal carrier identification
-  condition: z.string().default('used'),
-  cost: z.number().positive().optional(),
-  price: z.number().positive().optional(),
-  weightOz: z.number().int().positive().optional(),
-  dimensions: z.string().optional(),
-  imageUrl: z.string().url().optional(),
-  type: z.string().min(1, 'Type is required'), // Required field
   imei: z.string().optional(), // Optional unique IMEI
-  serialNumber: z.string().optional(), // Optional unique serial number
-  isActive: z.boolean().default(true)
+  status: z.string().default('active')
 });
 
 export const updateItemSchema = z.object({
   name: z.string().min(1, 'Name is required').optional(),
   description: z.string().optional(),
-  upc: z.string().optional(),
-  brand: z.string().optional(),
-  model: z.string().optional(),
-  modelNumber: z.string().optional(), // NEW
-  storage: z.string().optional(), // NEW
-  color: z.string().optional(), // NEW
-  carrier: z.string().optional(), // NEW
-  carrierId: z.string().optional(), // NEW
-  condition: z.string().optional(),
-  cost: z.number().positive().optional(),
-  price: z.number().positive().optional(),
-  weightOz: z.number().int().positive().optional(),
-  dimensions: z.string().optional(),
-  imageUrl: z.string().url().optional(),
-  type: z.string().min(1, 'Type is required').optional(),
   imei: z.string().optional(),
-  serialNumber: z.string().optional(),
-  isActive: z.boolean().optional()
+  status: z.string().optional()
 });
 
 // Inventory validation schemas

@@ -6,13 +6,14 @@ import dotenv from 'dotenv';
 // Import routes
 import itemsRoutes from './routes/items.route';
 import inventoryRoutes from './routes/inventory.route';
-import logsRoutes from './routes/logs.route';
+// import logsRoutes from './routes/logs.route';
 import adminRoutes from './routes/admin.route';
 import phonecheckRoutes from './routes/phonecheck.route';
 import enhancedInventoryRoutes from './routes/enhanced-inventory.route';
 import bulkInventoryRoutes from './routes/bulk-inventory.route';
 import imeiQueueRoutes from './routes/imei-queue.route';
 import imeiArchivalRoutes from './routes/imei-archival.route';
+import hybridQueueRoutes from './routes/hybrid-queue.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -53,13 +54,14 @@ app.get('/health', (_req, res) => {
 // API Routes
 app.use('/items', itemsRoutes);
 app.use('/inventory', inventoryRoutes);
-app.use('/logs', logsRoutes);
+// app.use('/logs', logsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/phonecheck', phonecheckRoutes);
 app.use('/api/enhanced-inventory', enhancedInventoryRoutes);
 app.use('/api/bulk-inventory', bulkInventoryRoutes);
 app.use('/api/imei-queue', imeiQueueRoutes);
 app.use('/api/imei-archival', imeiArchivalRoutes);
+app.use('/api/hybrid-queue', hybridQueueRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

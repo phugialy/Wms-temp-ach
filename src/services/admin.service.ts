@@ -251,19 +251,19 @@ export class AdminService {
       return inventory.map(inv => ({
         id: inv.id,
         name: inv.item.name,
-        brand: inv.item.brand,
-        model: inv.item.model,
-        storage: inv.item.storage,
-        color: inv.item.color,
-        carrier: inv.item.carrier,
-        type: inv.item.type,
+        brand: 'N/A', // Not available in current schema
+        model: 'N/A', // Not available in current schema
+        storage: 'N/A', // Not available in current schema
+        color: 'N/A', // Not available in current schema
+        carrier: 'N/A', // Not available in current schema
+        type: 'N/A', // Not available in current schema
         imei: inv.item.imei,
-        serialNumber: inv.item.serialNumber,
-        condition: inv.item.condition,
-        working: inv.item.working,
+        serialNumber: 'N/A', // Not available in current schema
+        condition: inv.item.status, // Use status instead of condition
+        working: 'N/A', // Not available in current schema
         quantity: inv.quantity,
         location: `${inv.location.warehouse.name}-${inv.location.name}`,
-        sku: inv.sku,
+        sku: inv.item.sku,
         updatedAt: inv.updatedAt
       }));
     } catch (error) {
@@ -316,13 +316,8 @@ export class AdminService {
         where: { id: inventory.itemId },
         data: {
           name: updateData.name,
-          brand: updateData.brand,
-          model: updateData.model,
-          storage: updateData.storage,
-          color: updateData.color,
-          carrier: updateData.carrier,
-          type: updateData.type,
-          condition: updateData.condition
+          description: updateData.description,
+          status: updateData.status
         }
       });
 
