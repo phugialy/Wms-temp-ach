@@ -111,13 +111,19 @@ class GoogleSheetsService {
       if (!row || row.length === 0) continue;
       
       try {
+        const skuCode = row[headers.indexOf('sku')] || row[0] || '';
+        const productDescription = row[headers.indexOf('product description')] || '';
+        
+        // Parse product description to extract device information
+        const parsedInfo = this.parseProductDescription(productDescription, skuCode, sheetName);
+        
         const skuData = {
-          sku_code: row[headers.indexOf('sku')] || row[0] || '',
-          brand: row[headers.indexOf('brand')] || '',
-          model: row[headers.indexOf('model')] || '',
-          capacity: row[headers.indexOf('capacity')] || '',
-          color: row[headers.indexOf('color')] || '',
-          carrier: row[headers.indexOf('carrier')] || '',
+          sku_code: skuCode,
+          brand: parsedInfo.brand,
+          model: parsedInfo.model,
+          capacity: parsedInfo.capacity,
+          color: parsedInfo.color,
+          carrier: parsedInfo.carrier,
           post_fix: row[headers.indexOf('post_fix')] || row[headers.indexOf('postfix')] || '',
           is_unlocked: (row[headers.indexOf('unlocked')] || '').toLowerCase() === 'true',
           source_tab: sheetName,
@@ -134,6 +140,80 @@ class GoogleSheetsService {
     }
     
     return skus;
+  }
+
+  // Parse product description to extract device information
+  parseProductDescription(description, skuCode, sheetName) {
+    const desc = (description || '').toLowerCase();
+    const sku = (skuCode || '').toUpperCase();
+    
+    let brand = '';
+    let model = '';
+    let capacity = '';
+    let color = '';
+    let carrier = '';
+    
+    // Determine brand based on sheet name and description
+    if (sheetName.includes('APPLE') || desc.includes('apple') || desc.includes('iphone') || desc.includes('ipad')) {
+      brand = 'Apple';
+    } else if (sheetName.includes('SAMSUNG') || sheetName.includes('ZFLIP') || sheetName.includes('FOLD') || desc.includes('samsung') || desc.includes('galaxy')) {
+      brand = 'Samsung';
+    } else if (sheetName.includes('PIXEL') || desc.includes('pixel')) {
+      brand = 'Google';
+    } else {
+      brand = 'Unknown';
+    }
+    
+    // Extract capacity (look for GB/TB patterns)
+    const capacityMatch = desc.match(/(\d+)\s*(gb|tb)/i) || sku.match(/(\d+)(GB|TB)/);
+    if (capacityMatch) {
+      capacity = `${capacityMatch[1]}${capacityMatch[2].toUpperCase()}`;
+    }
+    
+    // Extract color (common colors)
+    const colors = ['black', 'white', 'silver', 'gold', 'pink', 'blue', 'green', 'red', 'purple', 'yellow', 'orange', 'gray', 'grey'];
+    for (const colorName of colors) {
+      if (desc.includes(colorName)) {
+        color = colorName.charAt(0).toUpperCase() + colorName.slice(1);
+        break;
+      }
+    }
+    
+    // Extract carrier/connectivity
+    if (desc.includes('wifi') || desc.includes('wi-fi')) {
+      carrier = 'WIFI';
+    } else if (desc.includes('4g')) {
+      carrier = '4G';
+    } else if (desc.includes('5g')) {
+      carrier = '5G';
+    } else if (desc.includes('unlocked')) {
+      carrier = 'UNLOCKED';
+    }
+    
+    // Extract model from description or SKU
+    if (desc.includes('iphone')) {
+      const iphoneMatch = desc.match(/iphone\s*(\d+)/i) || sku.match(/IP-(\d+)/);
+      if (iphoneMatch) {
+        model = `iPhone ${iphoneMatch[1]}`;
+      }
+    } else if (desc.includes('ipad')) {
+      const ipadMatch = desc.match(/ipad\s*(pro|air|mini)?/i);
+      if (ipadMatch) {
+        model = `iPad ${ipadMatch[1] || ''}`.trim();
+      }
+    } else if (desc.includes('pixel')) {
+      const pixelMatch = desc.match(/pixel\s*(\d+[a-z]?)/i) || sku.match(/PIXEL-(\d+[A-Z]?)/);
+      if (pixelMatch) {
+        model = `Pixel ${pixelMatch[1]}`;
+      }
+    } else if (desc.includes('galaxy') || desc.includes('fold') || desc.includes('flip')) {
+      const samsungMatch = desc.match(/(galaxy\s+\w+|fold\s*\d+|flip\s*\d+)/i);
+      if (samsungMatch) {
+        model = samsungMatch[1];
+      }
+    }
+    
+    return { brand, model, capacity, color, carrier };
   }
 
   // Sync all SKUs from Google Sheets

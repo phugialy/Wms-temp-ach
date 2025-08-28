@@ -21,15 +21,15 @@ const imeiQueueApi = require('./src/api/imeiQueueApi');
 const skuMasterApi = require('./src/api/skuMasterApi');
 const skuMatchingApi = require('./src/api/skuMatchingApi');
 
-// API routes
-app.use('/api', inventoryApi);
+// API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
-app.use('/api', bulkDataApi);
 app.use('/api/phonecheck', phonecheckApi);
 app.use('/api/admin', adminApi);
 app.use('/api/imei-queue', imeiQueueApi);
 app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
+app.use('/api', bulkDataApi);
+app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -26,7 +26,7 @@ router.post('/process-all', async (req, res) => {
     const itemsQuery = `
       SELECT 
         p.imei,
-        p.sku as current_sku,
+        p.sku as original_sku,
         i.model,
         i.capacity,
         i.color,
@@ -59,11 +59,11 @@ router.post('/process-all', async (req, res) => {
         // Find best matching SKU
         const match = await skuMatchingService.findBestMatchingSku(deviceData);
         
-        if (match && match.match_score >= 0.6) {
+        if (match && match.match_score >= 0.65) { // Lowered threshold to 65%
           // Log the match
           await skuMatchingService.logSkuMatch(
             item.imei,
-            item.current_sku,
+            item.original_sku,
             match.sku_code,
             match.match_score,
             match.match_method
@@ -75,11 +75,30 @@ router.post('/process-all', async (req, res) => {
             [match.sku_code, item.imei]
           );
           
+          // Insert/Update the sku_matching_results table
+          await client.query(`
+            INSERT INTO sku_matching_results (imei, original_sku, matched_sku, match_score, match_method, match_status, processed_at)
+            VALUES ($1, $2, $3, $4, $5, 'matched', NOW())
+            ON CONFLICT (imei) DO UPDATE SET
+              matched_sku = EXCLUDED.matched_sku,
+              match_score = EXCLUDED.match_score,
+              match_method = EXCLUDED.match_method,
+              match_status = EXCLUDED.match_status,
+              processed_at = EXCLUDED.processed_at,
+              updated_at = NOW()
+          `, [
+            item.imei,
+            item.original_sku,
+            match.sku_code,
+            match.match_score,
+            match.match_method
+          ]);
+          
           matchedCount++;
-          console.log(`✅ IMEI ${item.imei}: ${item.current_sku} → ${match.sku_code} (${match.match_score})`);
+          console.log(`✅ IMEI ${item.imei}: ${item.original_sku} → ${match.sku_code} (${match.match_score})`);
         } else {
           noMatchCount++;
-          console.log(`❌ IMEI ${item.imei}: No good match found for ${item.current_sku}`);
+          console.log(`❌ IMEI ${item.imei}: No good match found for ${item.original_sku}`);
         }
         
         processedCount++;
@@ -125,7 +144,7 @@ router.post('/process-imei/:imei', async (req, res) => {
     const itemQuery = `
       SELECT 
         p.imei,
-        p.sku as current_sku,
+        p.sku as original_sku,
         i.model,
         i.capacity,
         i.color,
@@ -157,11 +176,11 @@ router.post('/process-imei/:imei', async (req, res) => {
     // Find best matching SKU
     const match = await skuMatchingService.findBestMatchingSku(deviceData);
     
-    if (match && match.match_score >= 0.6) {
+    if (match && match.match_score >= 0.65) { // Lowered threshold to 65%
       // Log the match
       await skuMatchingService.logSkuMatch(
         item.imei,
-        item.current_sku,
+        item.original_sku,
         match.sku_code,
         match.match_score,
         match.match_method
@@ -173,14 +192,33 @@ router.post('/process-imei/:imei', async (req, res) => {
         [match.sku_code, item.imei]
       );
       
-      console.log(`✅ IMEI ${item.imei}: ${item.current_sku} → ${match.sku_code} (${match.match_score})`);
+      // Insert/Update the sku_matching_results table
+      await client.query(`
+        INSERT INTO sku_matching_results (imei, original_sku, matched_sku, match_score, match_method, match_status, processed_at)
+        VALUES ($1, $2, $3, $4, $5, 'matched', NOW())
+        ON CONFLICT (imei) DO UPDATE SET
+          matched_sku = EXCLUDED.matched_sku,
+          match_score = EXCLUDED.match_score,
+          match_method = EXCLUDED.match_method,
+          match_status = EXCLUDED.match_status,
+          processed_at = EXCLUDED.processed_at,
+          updated_at = NOW()
+      `, [
+        item.imei,
+        item.original_sku,
+        match.sku_code,
+        match.match_score,
+        match.match_method
+      ]);
+      
+      console.log(`✅ IMEI ${item.imei}: ${item.original_sku} → ${match.sku_code} (${match.match_score})`);
       
       res.json({
         success: true,
         message: 'SKU matched successfully',
         data: {
           imei: item.imei,
-          originalSku: item.current_sku,
+          originalSku: item.original_sku,
           matchedSku: match.sku_code,
           matchScore: match.match_score,
           matchMethod: match.match_method,
@@ -188,14 +226,14 @@ router.post('/process-imei/:imei', async (req, res) => {
         }
       });
     } else {
-      console.log(`❌ IMEI ${item.imei}: No good match found for ${item.current_sku}`);
+      console.log(`❌ IMEI ${item.imei}: No good match found for ${item.original_sku}`);
       
       res.json({
         success: true,
         message: 'No good SKU match found',
         data: {
           imei: item.imei,
-          originalSku: item.current_sku,
+          originalSku: item.original_sku,
           matchedSku: null,
           matchScore: match ? match.match_score : 0,
           matchMethod: 'none',

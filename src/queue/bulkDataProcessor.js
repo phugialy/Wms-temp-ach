@@ -247,7 +247,20 @@ class BulkDataProcessor extends EventEmitter {
     
     // Ensure required fields have fallbacks
     corrected.model = corrected.model || 'Unknown Model';
-    corrected.brand = corrected.brand || 'Unknown Brand';
+    
+    // Enhanced brand detection - try to infer brand from model if not provided
+    if (!corrected.brand || corrected.brand === 'Unknown' || corrected.brand === 'Unknown Brand') {
+      if (corrected.model && corrected.model.toLowerCase().includes('galaxy')) {
+        corrected.brand = 'Samsung';
+      } else if (corrected.model && (corrected.model.toLowerCase().includes('iphone') || corrected.model.toLowerCase().includes('ipad'))) {
+        corrected.brand = 'Apple';
+      } else if (corrected.model && corrected.model.toLowerCase().includes('pixel')) {
+        corrected.brand = 'Google';
+      } else {
+        corrected.brand = 'Unknown';
+      }
+    }
+    
     corrected.capacity = corrected.capacity || corrected.storage || 'N/A';
     corrected.color = corrected.color || corrected.colour || 'N/A';
     corrected.location = corrected.location || 'DNCL-Inspection';
@@ -287,19 +300,23 @@ class BulkDataProcessor extends EventEmitter {
 
       const deviceData = await deviceResponse.json();
       
+      // Handle array response from Phonecheck API
+      const device = Array.isArray(deviceData) ? deviceData[0] : deviceData;
+      
       // Map Phonecheck API response to our format
       const mappedData = {
-        model: deviceData.Model || deviceData.model || null,
-        brand: deviceData.Brand || deviceData.brand || null,
-        capacity: deviceData.Capacity || deviceData.capacity || deviceData.Storage || deviceData.storage || null,
-        color: deviceData.Color || deviceData.color || null,
-        carrier: deviceData.Carrier || deviceData.carrier || 'Unlocked',
-        battery_health: deviceData.BatteryHealthPercentage || deviceData.battery_health || null,
-        battery_count: deviceData.BatteryCycle || deviceData.battery_count || null,
-        working: deviceData.Working || deviceData.working || 'PENDING',
-        defects: deviceData.Failed || deviceData.defects || null,
-        notes: deviceData.Notes || deviceData.notes || null,
-        repair_notes: deviceData.Custom1 || deviceData.repair_notes || null
+        model: device.Model || device.model || null,
+                 brand: device.Make || device.make || device.Brand || device.brand || null,
+         capacity: device.Capacity || device.capacity || device.Storage || device.storage || device.Memory || device.memory || null,
+         model_number: device['Model#'] || device.modelNumber || device.ModelNumber || null,
+        color: device.Color || device.color || null,
+        carrier: device.Carrier || device.carrier || 'Unlocked',
+        battery_health: device.BatteryHealthPercentage || device.battery_health || null,
+        battery_count: device.BatteryCycle || device.battery_count || null,
+        working: device.Working || device.working || 'PENDING',
+        defects: device.Failed || device.failed || null,
+        notes: device.Notes || device.notes || null,
+        custom1: device.Custom1 || device.custom1 || null
       };
       
       console.log(`📞 Phonecheck API response for ${imei}:`, mappedData);
@@ -326,18 +343,47 @@ class BulkDataProcessor extends EventEmitter {
     const model = data.model || 'Unknown';
     const capacity = data.capacity || data.storage || 'N/A';
     const color = data.color || data.colour || 'N/A';
-    const carrier = data.carrier || 'Unlocked';
+    const carrier = data.carrier || null; // Allow null for carrier
     
     // Clean and format components
     const cleanModel = model.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
     const cleanCapacity = capacity.toString().replace(/\s+/g, '').toUpperCase();
-    const cleanColor = color.replace(/\s+/g, '').substring(0, 3).toUpperCase();
-    const cleanCarrier = carrier.replace(/\s+/g, '').substring(0, 3).toUpperCase();
+    
+         // Enhanced color processing - limit to 10 characters and handle abbreviations
+     let cleanColor = color.replace(/\s+/g, '').toUpperCase();
+     
+     // Handle Phantom colors properly - don't truncate if it's a phantom color
+     if (cleanColor.includes('PHANTOM')) {
+       // For phantom colors, we need to preserve the full name to determine the actual color
+       if (cleanColor.includes('PHANTOMBLACK')) cleanColor = 'BLK';
+       else if (cleanColor.includes('PHANTOMGREEN')) cleanColor = 'GRN';
+       else if (cleanColor.includes('PHANTOMBLUE')) cleanColor = 'BLU';
+       else if (cleanColor.includes('PHANTOMWHITE')) cleanColor = 'WHT';
+       else if (cleanColor.includes('PHANTOMRED')) cleanColor = 'RED';
+       else if (cleanColor === 'PHA' || cleanColor === 'PHANTOM') cleanColor = 'UNKNOWN';
+       else cleanColor = 'UNKNOWN'; // For any other phantom color we can't identify
+     } else {
+       // For non-phantom colors, apply the 10-character limit
+       if (cleanColor.length > 10) {
+         cleanColor = cleanColor.substring(0, 10);
+       }
+     }
+    
+    // Enhanced carrier processing - default to UNLOCKED when empty/null
+    let cleanCarrier = 'UNLOCKED'; // Default for unlocked devices
+    if (carrier && carrier.trim() !== '') {
+      cleanCarrier = carrier.replace(/\s+/g, '').toUpperCase();
+      // Limit carrier to reasonable length
+      if (cleanCarrier.length > 10) {
+        cleanCarrier = cleanCarrier.substring(0, 10);
+      }
+    }
     
     // Generate SKU in format: Model-Capacity-Color-Carrier
     const sku = `${cleanModel}-${cleanCapacity}-${cleanColor}-${cleanCarrier}`;
     
     console.log(`🏷️ Generated SKU for ${data.imei}: ${sku}`);
+    console.log(`   Model: ${cleanModel}, Capacity: ${cleanCapacity}, Color: ${cleanColor}, Carrier: ${cleanCarrier}`);
     return sku;
   }
 
@@ -419,7 +465,7 @@ class BulkDataProcessor extends EventEmitter {
       data.working || 'PENDING',
       data.defects || null,
       data.notes || null,
-      data.repair_notes || data.custom1 || null,
+      data.custom1 || null,
       data.test_date || new Date()
     ]);
   }

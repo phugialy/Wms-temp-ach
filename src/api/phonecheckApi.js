@@ -182,7 +182,9 @@ router.post('/process-bulk', async (req, res) => {
     console.log(`📞 Phonecheck API: Found ${devices.length} devices to process`);
     
     // Process each device to create the expected format for the frontend
-    const processedDevices = devices.map(device => {
+    const processedDevices = devices.map(deviceData => {
+      // Handle array response from Phonecheck API
+      const device = Array.isArray(deviceData) ? deviceData[0] : deviceData;
              // Extract working status
        const working = device.Working || device.working || 'PENDING';
        const workingStatus = working === 'Yes' || working === 'YES' || working === 'PASS' ? 'YES' : 
@@ -255,12 +257,14 @@ router.post('/process-bulk', async (req, res) => {
         model: deviceName,
         color: color,
         carrier: carrier,
-        brand: device.Brand || device.brand || 'Unknown',
-        capacity: device.Capacity || device.capacity || device.Storage || device.storage || 'N/A',
+                 brand: device.Make || device.make || device.Brand || device.brand || 'Unknown',
+         capacity: device.Capacity || device.capacity || device.Storage || device.storage || device.Memory || device.memory || 'N/A',
+         model_number: device['Model#'] || device.modelNumber || device.ModelNumber || null,
         battery_health: device.BatteryHealthPercentage || device.batteryHealth || null,
         battery_count: device.BatteryCycle || device.batteryCycle || null,
-        defects: device.Failed || device.failed || null,
-        notes: device.Notes || device.notes || null,
+                 defects: device.Failed || device.failed || null,
+         notes: device.Notes || device.notes || null,
+         custom1: device.Custom1 || device.custom1 || null,
         location: location || 'DNCL-Inspection'
       };
     });
