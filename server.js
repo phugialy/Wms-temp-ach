@@ -20,6 +20,7 @@ const adminApi = require('./src/api/adminApi');
 const imeiQueueApi = require('./src/api/imeiQueueApi');
 const skuMasterApi = require('./src/api/skuMasterApi');
 const skuMatchingApi = require('./src/api/skuMatchingApi');
+const skuTestApi = require('./src/routes/skuTest');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
@@ -28,6 +29,7 @@ app.use('/api/admin', adminApi);
 app.use('/api/imei-queue', imeiQueueApi);
 app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
+app.use('/api/sku-test', skuTestApi);
 app.use('/api', bulkDataApi);
 app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
@@ -59,6 +61,10 @@ app.get('/data-cleanup', (req, res) => {
 
 app.get('/sku-matching', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'sku-matching.html'));
+});
+
+app.get('/sku-test', (req, res) => {
+  res.redirect('/api/sku-test');
 });
 
 // Error handling middleware

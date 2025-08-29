@@ -196,156 +196,85 @@ class SkuMatchingService {
       // Determine if we're looking for unlocked or carrier-specific SKUs
       const isDeviceUnlocked = this.isUnlockedCarrier(normalizedCarrier);
       
-      // Query SKU master entries with carrier logic
-      let query;
-      let queryParams = [];
-      
-      if (isDeviceUnlocked) {
-        // For unlocked devices, look for SKUs that have NO carrier field (unlocked)
-        query = `
-          SELECT 
-            sku_code,
-            post_fix,
-            is_unlocked,
-            source_tab
-          FROM sku_master 
-          WHERE is_active = true
-          AND (is_unlocked = true OR sku_code NOT LIKE '%-%-%-%-%')
-        `;
-      } else {
-        // For carrier-specific devices, look for SKUs that have carrier field
-        query = `
-          SELECT 
-            sku_code,
-            post_fix,
-            is_unlocked,
-            source_tab
-          FROM sku_master 
-          WHERE is_active = true
-          AND sku_code LIKE '%-%-%-%-%'
-        `;
-      }
-      
-      const result = await client.query(query, queryParams);
-      
-      if (result.rows.length === 0) {
-        return null;
-      }
-      
-      // Calculate match scores and find the best match
-      let bestMatch = null;
-      let bestScore = 0;
-      
-      for (const row of result.rows) {
-        const masterSku = row.sku_code;
-        
-        // Parse the master SKU to extract device information
-        const parsedMasterSku = this.parseSkuCode(masterSku);
-        
-        // Apply carrier-specific matching logic
-        const matchScore = this.calculateDeviceSimilarityWithCarrierLogic(
-          { brand: deviceBrand, model, capacity, color: normalizedColor, carrier: normalizedCarrier },
-          parsedMasterSku,
-          isDeviceUnlocked
-        );
-        
-        // Apply carrier-specific matching requirements with field count normalization
-        let shouldAcceptMatch = false;
-        let adjustedScore = matchScore;
-        
-        // Determine if this is a carrier-specific SKU
-        const hasCarrierField = parsedMasterSku.carrier && parsedMasterSku.carrier.trim() !== '';
-        const isCarrierSpecificSku = hasCarrierField;
-        
-        // If carrier override is applied, give MAJOR priority to carrier matches
-        if (carrierOverride.shouldOverride) {
-          // For carrier overrides, require higher base score but give massive boost for carrier match
-          if (matchScore >= 0.5) {
-            // Check if this is a perfect carrier match for the overridden carrier
-            const parsedMasterCarrier = parsedMasterSku.carrier || '';
-            const effectiveCarrierUpper = effectiveCarrier.toUpperCase().trim();
-            const masterCarrierUpper = parsedMasterCarrier.toUpperCase().trim();
-            
-            if (effectiveCarrierUpper === 'UNLOCKED' && 
-                (masterCarrierUpper === 'UNLOCKED' || masterCarrierUpper === 'UNL' || masterCarrierUpper === '')) {
-              // Perfect carrier match for overridden device - MASSIVE boost
-              adjustedScore = Math.min(1.0, matchScore + 0.4); // Up to 40% boost
-              shouldAcceptMatch = true;
-            } else if (effectiveCarrierUpper === masterCarrierUpper) {
-              // Good carrier match for overridden device
-              adjustedScore = Math.min(1.0, matchScore + 0.2); // Up to 20% boost
-              shouldAcceptMatch = true;
-            } else {
-              // Poor carrier match for overridden device - heavy penalty
-              adjustedScore = Math.max(0, matchScore - 0.3); // Up to 30% penalty
-              shouldAcceptMatch = adjustedScore >= 0.4; // Still accept if score is reasonable
-            }
-          }
-        } else {
-          // No carrier override - use field count normalized logic
-          if (isCarrierSpecificSku) {
-            // For carrier-specific SKUs, require higher score but give bonus for carrier match
-            if (matchScore >= 0.7) {
-              shouldAcceptMatch = true;
-              adjustedScore = matchScore;
-            } else if (matchScore >= 0.5) {
-              // Check if carrier matches perfectly
-              const carrierScore = this.compareCarrierWithLogic(
-                effectiveCarrier, 
-                parsedMasterSku.carrier, 
-                isDeviceUnlocked
-              );
-              if (carrierScore >= 0.9) {
-                // Perfect carrier match - accept with boost
-                adjustedScore = Math.min(1.0, matchScore + 0.2);
-                shouldAcceptMatch = true;
-              }
-            }
-          } else {
-            // For unlocked SKUs, use standard logic
-            if (matchScore >= 0.6) {
-              shouldAcceptMatch = true;
-              adjustedScore = matchScore;
-            }
-          }
-        }
-        
-        if (shouldAcceptMatch && adjustedScore >= bestScore) {
-          // If scores are equal, prefer base SKUs over variants
-          let shouldReplace = adjustedScore > bestScore;
-          
-          if (adjustedScore === bestScore && bestMatch) {
-            // Same score - check if current SKU is better (base vs variant)
-            const currentIsBase = !row.sku_code.includes('-VG') && !row.sku_code.includes('-ACCEPTABLE') && !row.sku_code.includes('-LIKE') && !row.sku_code.includes('-NEW') && !row.sku_code.includes('-EXCELLENT') && !row.sku_code.includes('-GOOD') && !row.sku_code.includes('-FAIR');
-            const bestIsBase = !bestMatch.sku_code.includes('-VG') && !bestMatch.sku_code.includes('-ACCEPTABLE') && !bestMatch.sku_code.includes('-LIKE') && !bestMatch.sku_code.includes('-NEW') && !bestMatch.sku_code.includes('-EXCELLENT') && !bestMatch.sku_code.includes('-GOOD') && !bestMatch.sku_code.includes('-FAIR');
-            
-            // Prefer base SKUs over variants
-            if (currentIsBase && !bestIsBase) {
-              shouldReplace = true;
-            }
-          }
-          
-          if (shouldReplace) {
-            bestScore = adjustedScore;
-            bestMatch = {
-              sku_code: row.sku_code,
-              post_fix: row.post_fix,
-              is_unlocked: row.is_unlocked,
-              source_tab: row.source_tab,
-              match_score: adjustedScore,
-              match_method: this.getMatchMethodFromScore(adjustedScore),
-              parsed_info: parsedMasterSku,
-              carrier_override: carrierOverride.shouldOverride ? {
-                original_carrier: carrier,
-                effective_carrier: effectiveCarrier,
-                notes: notes
-              } : null
-            };
-          }
-        }
-      }
-      
-      return bestMatch;
+             // 🎯 SMART TIERED QUERY STRATEGY
+       // Tier 1: Exact matches (most efficient)
+       let bestMatch = await this.findExactMatches(client, {
+         brand: deviceBrand,
+         model,
+         capacity,
+         color: normalizedColor,
+         carrier: normalizedCarrier,
+         isDeviceUnlocked
+       });
+       
+       if (bestMatch && bestMatch.match_score >= 0.95) {
+         console.log(`🎯 Found exact match: ${bestMatch.sku_code} (${(bestMatch.match_score * 100).toFixed(1)}%)`);
+         return bestMatch;
+       }
+       
+       // Tier 2: Brand + Model matches (high precision)
+       if (!bestMatch || bestMatch.match_score < 0.8) {
+         const brandModelMatch = await this.findBrandModelMatches(client, {
+           brand: deviceBrand,
+           model,
+           capacity,
+           color: normalizedColor,
+           carrier: normalizedCarrier,
+           isDeviceUnlocked
+         });
+         
+         if (brandModelMatch && brandModelMatch.match_score > (bestMatch?.match_score || 0)) {
+           bestMatch = brandModelMatch;
+           console.log(`🎯 Found brand+model match: ${bestMatch.sku_code} (${(bestMatch.match_score * 100).toFixed(1)}%)`);
+         }
+       }
+       
+       // Tier 3: Brand + Capacity matches (medium precision)
+       if (!bestMatch || bestMatch.match_score < 0.7) {
+         const brandCapacityMatch = await this.findBrandCapacityMatches(client, {
+           brand: deviceBrand,
+           model,
+           capacity,
+           color: normalizedColor,
+           carrier: normalizedCarrier,
+           isDeviceUnlocked
+         });
+         
+         if (brandCapacityMatch && brandCapacityMatch.match_score > (bestMatch?.match_score || 0)) {
+           bestMatch = brandCapacityMatch;
+           console.log(`🎯 Found brand+capacity match: ${bestMatch.sku_code} (${(bestMatch.match_score * 100).toFixed(1)}%)`);
+         }
+       }
+       
+       // Tier 4: Brand-only matches (fallback)
+       if (!bestMatch || bestMatch.match_score < 0.5) {
+         const brandMatch = await this.findBrandMatches(client, {
+           brand: deviceBrand,
+           model,
+           capacity,
+           color: normalizedColor,
+           carrier: normalizedCarrier,
+           isDeviceUnlocked
+         });
+         
+         if (brandMatch && brandMatch.match_score > (bestMatch?.match_score || 0)) {
+           bestMatch = brandMatch;
+           console.log(`🎯 Found brand-only match: ${bestMatch.sku_code} (${(bestMatch.match_score * 100).toFixed(1)}%)`);
+         }
+       }
+       
+       // Add carrier override info to the result
+       if (bestMatch) {
+         bestMatch.carrier_override = {
+           original_carrier: carrier,
+           effective_carrier: normalizedCarrier,
+           notes: notes,
+           should_override: carrierOverride.shouldOverride,
+           is_failed: false
+         };
+       }
+       
+       return bestMatch;
       
     } finally {
       await client.end();
@@ -727,15 +656,553 @@ class SkuMatchingService {
     return result;
   }
 
-  // Parse generic SKU codes
+    // 🎯 TIER 1: Find exact matches (most efficient) - ENHANCED with flexible color matching
+  async findExactMatches(client, deviceData) {
+    const { brand, model, capacity, color, carrier, isDeviceUnlocked } = deviceData;
+    
+    // Extract key identifiers for precise database filtering
+    const modelKey = this.extractModelKey(model);
+    const capacityValue = capacity ? capacity.replace('GB', '').replace('TB', '000') : null;
+    const colorKey = this.extractColorKey(color);
+    
+    if (!modelKey || !capacityValue) {
+      return null;
+    }
+    
+    // Build highly specific query using database-level filtering
+    let query = `
+      SELECT sku_code, post_fix, is_unlocked, source_tab
+      FROM sku_master 
+      WHERE is_active = true
+      AND sku_code LIKE $1
+      AND sku_code LIKE $2
+    `;
+    
+    const params = [
+      `${modelKey}%`,           // Model prefix (e.g., FOLD3)
+      `%-${capacityValue}-%`    // Capacity (e.g., -512-)
+    ];
+    
+    // Add color filtering if available, but make it optional
+    if (colorKey) {
+      query += ` AND sku_code LIKE $3`;
+      params.push(`%-${colorKey}%`); // Color (e.g., -BLK)
+    }
+    
+    // Add carrier-specific filtering at database level - FIXED: "CARRIER LOCKED" should match carrier-specific SKUs
+    if (isDeviceUnlocked) {
+      // For unlocked devices, exclude carrier-specific SKUs
+      query += ` AND sku_code NOT LIKE '%-ATT' AND sku_code NOT LIKE '%-VRZ' AND sku_code NOT LIKE '%-VERIZON' AND sku_code NOT LIKE '%-TMO' AND sku_code NOT LIKE '%-TMOBILE'`;
+    } else {
+      // For carrier-specific devices, include carrier-specific SKUs
+      query += ` AND (sku_code LIKE '%-ATT' OR sku_code LIKE '%-VRZ' OR sku_code LIKE '%-VERIZON' OR sku_code LIKE '%-TMO' OR sku_code LIKE '%-TMOBILE')`;
+    }
+    
+    // Smart post-fix filtering: Allow carriers but exclude condition post-fixes
+    const conditionPostFixPatterns = ['-VG', '-UV', '-ACCEPTABLE', '-UL', '-LN', '-NEW', '-TEST', '-EXCELLENT', '-GOOD', '-FAIR', '-LIKE'];
+    conditionPostFixPatterns.forEach(pattern => {
+      query += ` AND sku_code NOT LIKE '%${pattern}'`;
+    });
+    
+    // Additional filtering for non-standard post-fix formats
+    query += ` AND sku_code NOT LIKE '%--%'`; // Exclude double-dash patterns
+    query += ` AND sku_code NOT LIKE '%(LIKE NEW)%'`; // Exclude parenthetical descriptions
+    
+    query += ` ORDER BY sku_code LIMIT 10`;
+    
+    console.log(`🔍 Exact Match Query: ${query}`);
+    console.log(`   Params: ${params.join(', ')}`);
+    
+    const result = await client.query(query, params);
+    
+    console.log(`📊 Found ${result.rows.length} exact match candidates`);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    // Score the exact matches (now with much smaller dataset)
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const row of result.rows) {
+      const parsedSku = this.parseSkuCode(row.sku_code);
+      
+      // ENHANCED: Product type validation - prevent phone/tablet confusion
+      const deviceProductType = this.getDeviceProductType(model);
+      const skuProductType = this.getProductType(row.sku_code);
+      
+      if (deviceProductType !== skuProductType) {
+        console.log(`   ❌ Product type mismatch: Device=${deviceProductType}, SKU=${skuProductType} (${row.sku_code})`);
+        continue;
+      }
+      
+      const score = this.calculateDeviceSimilarityWithCarrierLogic(
+        { brand, model, capacity, color, carrier },
+        parsedSku,
+        isDeviceUnlocked
+      );
+      
+      console.log(`   📱 ${row.sku_code}: ${(score * 100).toFixed(1)}%`);
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = {
+          sku_code: row.sku_code,
+          post_fix: row.post_fix,
+          is_unlocked: row.is_unlocked,
+          source_tab: row.source_tab,
+          match_score: score,
+          match_method: 'exact',
+          parsed_info: parsedSku
+        };
+      }
+    }
+    
+    return bestMatch;
+  }
+
+  // 🎯 TIER 2: Find brand + model matches (improved filtering) - ENHANCED
+  async findBrandModelMatches(client, deviceData) {
+    const { brand, model, capacity, color, carrier, isDeviceUnlocked } = deviceData;
+    
+    // Extract model key for precise filtering
+    const modelKey = this.extractModelKey(model);
+    
+    if (!modelKey) {
+      return null;
+    }
+    
+    // Build highly specific query using model key
+    let query = `
+      SELECT sku_code, post_fix, is_unlocked, source_tab
+      FROM sku_master 
+      WHERE is_active = true
+      AND sku_code LIKE $1
+    `;
+    
+    const params = [`${modelKey}%`];
+    
+    // Add carrier logic at database level - FIXED: "CARRIER LOCKED" should match carrier-specific SKUs
+    if (isDeviceUnlocked) {
+      // For unlocked devices, exclude carrier-specific SKUs
+      query += ` AND sku_code NOT LIKE '%-ATT' AND sku_code NOT LIKE '%-VRZ' AND sku_code NOT LIKE '%-VERIZON' AND sku_code NOT LIKE '%-TMO' AND sku_code NOT LIKE '%-TMOBILE'`;
+    } else {
+      // For carrier-locked devices, include carrier-specific SKUs
+      query += ` AND (sku_code LIKE '%-ATT' OR sku_code LIKE '%-VRZ' OR sku_code LIKE '%-VERIZON' OR sku_code LIKE '%-TMO' OR sku_code LIKE '%-TMOBILE')`;
+    }
+    
+    // Smart post-fix filtering: Allow carriers but exclude condition post-fixes
+    const conditionPostFixPatterns = ['-VG', '-UV', '-ACCEPTABLE', '-UL', '-LN', '-NEW', '-TEST', '-EXCELLENT', '-GOOD', '-FAIR', '-LIKE'];
+    conditionPostFixPatterns.forEach(pattern => {
+      query += ` AND sku_code NOT LIKE '%${pattern}'`;
+    });
+    
+    // Additional filtering for non-standard post-fix formats
+    query += ` AND sku_code NOT LIKE '%--%'`; // Exclude double-dash patterns
+    query += ` AND sku_code NOT LIKE '%(LIKE NEW)%'`; // Exclude parenthetical descriptions
+    
+    query += ` ORDER BY sku_code LIMIT 20`;
+    
+    console.log(`🔍 Brand+Model Query: ${query}`);
+    console.log(`   Params: ${params.join(', ')}`);
+    
+    const result = await client.query(query, params);
+    
+    console.log(`📊 Found ${result.rows.length} brand+model candidates`);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    // Score the brand+model matches
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const row of result.rows) {
+      const parsedSku = this.parseSkuCode(row.sku_code);
+      const score = this.calculateDeviceSimilarityWithCarrierLogic(
+        { brand, model, capacity, color, carrier },
+        parsedSku,
+        isDeviceUnlocked
+      );
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = {
+          sku_code: row.sku_code,
+          post_fix: row.post_fix,
+          is_unlocked: row.is_unlocked,
+          source_tab: row.source_tab,
+          match_score: score,
+          match_method: 'brand_model',
+          parsed_info: parsedSku
+        };
+      }
+    }
+    
+    return bestMatch;
+  }
+
+  // 🎯 TIER 3: Find brand + capacity matches - ENHANCED with flexible color matching
+  async findBrandCapacityMatches(client, deviceData) {
+    const { brand, model, capacity, color, carrier, isDeviceUnlocked } = deviceData;
+    
+    // Extract model key and capacity for SMART filtering
+    const modelKey = this.extractModelKey(model);
+    const capacityValue = capacity ? capacity.replace('GB', '').replace('TB', '000') : null;
+    
+    if (!modelKey || !capacityValue) {
+      return null;
+    }
+    
+    // SMART STRATEGY: Use model family instead of just capacity
+    const modelFamily = this.getModelFamily(modelKey);
+    
+    let query = `
+      SELECT sku_code, post_fix, is_unlocked, source_tab
+      FROM sku_master 
+      WHERE is_active = true
+      AND sku_code LIKE $1
+      AND sku_code LIKE $2
+    `;
+    
+    const params = [
+      `${modelFamily}%`,        // Model family (e.g., FOLD%, S%, IP%)
+      `%-${capacityValue}-%`    // Capacity (e.g., -512-)
+    ];
+    
+    // Add carrier logic - FIXED: "CARRIER LOCKED" should match carrier-specific SKUs
+    if (isDeviceUnlocked) {
+      // For unlocked devices, exclude carrier-specific SKUs but allow unlocked variants
+      query += ` AND (sku_code NOT LIKE '%-ATT' AND sku_code NOT LIKE '%-VRZ' AND sku_code NOT LIKE '%-VERIZON' AND sku_code NOT LIKE '%-TMO' AND sku_code NOT LIKE '%-TMOBILE' OR sku_code LIKE '%-UNLOCKED' OR sku_code LIKE '%-UNL')`;
+    } else {
+      // For carrier-locked devices, include carrier-specific SKUs
+      query += ` AND (sku_code LIKE '%-ATT' OR sku_code LIKE '%-VRZ' OR sku_code LIKE '%-VERIZON' OR sku_code LIKE '%-TMO' OR sku_code LIKE '%-TMOBILE')`;
+    }
+    
+    // Smart post-fix filtering: Allow carriers but exclude condition post-fixes
+    const conditionPostFixPatterns = ['-VG', '-UV', '-ACCEPTABLE', '-UL', '-LN', '-NEW', '-TEST', '-EXCELLENT', '-GOOD', '-FAIR', '-LIKE'];
+    conditionPostFixPatterns.forEach(pattern => {
+      query += ` AND sku_code NOT LIKE '%${pattern}'`;
+    });
+    
+    // Additional filtering for non-standard post-fix formats
+    query += ` AND sku_code NOT LIKE '%--%'`; // Exclude double-dash patterns
+    query += ` AND sku_code NOT LIKE '%(LIKE NEW)%'`; // Exclude parenthetical descriptions
+    
+    query += ` ORDER BY sku_code LIMIT 100`;
+    
+    const result = await client.query(query, params);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    // Score the brand+capacity matches
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const row of result.rows) {
+      const parsedSku = this.parseSkuCode(row.sku_code);
+      const score = this.calculateDeviceSimilarityWithCarrierLogic(
+        { brand, model, capacity, color, carrier },
+        parsedSku,
+        isDeviceUnlocked
+      );
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = {
+          sku_code: row.sku_code,
+          post_fix: row.post_fix,
+          is_unlocked: row.is_unlocked,
+          source_tab: row.source_tab,
+          match_score: score,
+          match_method: 'brand_capacity',
+          parsed_info: parsedSku
+        };
+      }
+    }
+    
+    return bestMatch;
+  }
+
+  // 🎯 TIER 4: Find brand-only matches (fallback) - ENHANCED for phone models
+  async findBrandMatches(client, deviceData) {
+    const { brand, model, capacity, color, carrier, isDeviceUnlocked } = deviceData;
+    
+    // For phones, use model-based matching instead of brand prefix
+    const modelKey = this.extractModelKey(model);
+    const modelFamily = this.getModelFamily(modelKey);
+    
+    if (!modelKey && !modelFamily) {
+      return null;
+    }
+    
+    let query = `
+      SELECT sku_code, post_fix, is_unlocked, source_tab
+      FROM sku_master 
+      WHERE is_active = true
+    `;
+    
+    const params = [];
+    
+    // Use model family for broader matching
+    if (modelFamily) {
+      query += ` AND sku_code LIKE $1`;
+      params.push(`${modelFamily}%`);
+    }
+    
+    // Add carrier logic - FIXED: "CARRIER LOCKED" should match carrier-specific SKUs
+    if (isDeviceUnlocked) {
+      // For unlocked devices, exclude carrier-specific SKUs but allow unlocked variants
+      query += ` AND (sku_code NOT LIKE '%-ATT' AND sku_code NOT LIKE '%-VRZ' AND sku_code NOT LIKE '%-VERIZON' AND sku_code NOT LIKE '%-TMO' AND sku_code NOT LIKE '%-TMOBILE' OR sku_code LIKE '%-UNLOCKED' OR sku_code LIKE '%-UNL')`;
+    } else {
+      // For carrier-locked devices, include carrier-specific SKUs
+      query += ` AND (sku_code LIKE '%-ATT' OR sku_code LIKE '%-VRZ' OR sku_code LIKE '%-VERIZON' OR sku_code LIKE '%-TMO' OR sku_code LIKE '%-TMOBILE')`;
+    }
+    
+    // Smart post-fix filtering: Allow carriers but exclude condition post-fixes
+    const conditionPostFixPatterns = ['-VG', '-UV', '-ACCEPTABLE', '-UL', '-LN', '-NEW', '-TEST', '-EXCELLENT', '-GOOD', '-FAIR', '-LIKE'];
+    conditionPostFixPatterns.forEach(pattern => {
+      query += ` AND sku_code NOT LIKE '%${pattern}'`;
+    });
+    
+    // Additional filtering for non-standard post-fix formats
+    query += ` AND sku_code NOT LIKE '%--%'`; // Exclude double-dash patterns
+    query += ` AND sku_code NOT LIKE '%(LIKE NEW)%'`; // Exclude parenthetical descriptions
+    
+    query += ` ORDER BY sku_code LIMIT 200`;
+    
+    const result = await client.query(query, params);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    // Score the brand-only matches
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const row of result.rows) {
+      const parsedSku = this.parseSkuCode(row.sku_code);
+      const score = this.calculateDeviceSimilarityWithCarrierLogic(
+        { brand, model, capacity, color, carrier },
+        parsedSku,
+        isDeviceUnlocked
+      );
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = {
+          sku_code: row.sku_code,
+          post_fix: row.post_fix,
+          is_unlocked: row.is_unlocked,
+          source_tab: row.source_tab,
+          match_score: score,
+          match_method: 'brand_only',
+          parsed_info: parsedSku
+        };
+      }
+    }
+    
+    return bestMatch;
+  }
+
+  // Helper methods for tiered matching
+  getBrandPrefix(brand) {
+    if (!brand) return null;
+    
+    const brandUpper = brand.toUpperCase();
+    if (brandUpper.includes('SAMSUNG') || brandUpper.includes('GALAXY')) {
+      // Samsung SKUs can start with various prefixes - return the most common one
+      return 'FOLD'; // Default to FOLD for Samsung devices
+    } else if (brandUpper.includes('APPLE') || brandUpper.includes('IPHONE')) {
+      return 'IP'; // Apple SKUs start with IP
+    } else if (brandUpper.includes('GOOGLE') || brandUpper.includes('PIXEL')) {
+      return 'PIXEL'; // Google SKUs start with PIXEL
+    }
+    
+    return brandUpper.substring(0, 3);
+  }
+
+  // Extract model key for precise database filtering
+  extractModelKey(model) {
+    if (!model) return null;
+    
+    const modelUpper = model.toUpperCase();
+    
+    // Extract specific model identifiers
+    if (modelUpper.includes('FOLD3')) return 'FOLD3';
+    if (modelUpper.includes('FOLD4')) return 'FOLD4';
+    if (modelUpper.includes('FOLD5')) return 'FOLD5';
+    if (modelUpper.includes('FOLD6')) return 'FOLD6';
+    if (modelUpper.includes('FOLD7')) return 'FOLD7';
+    if (modelUpper.includes('ZFLIP4')) return 'ZFLIP4';
+    if (modelUpper.includes('ZFLIP5')) return 'ZFLIP5';
+    if (modelUpper.includes('ZFLIP6')) return 'ZFLIP6';
+    if (modelUpper.includes('ZFLIP7')) return 'ZFLIP7';
+    if (modelUpper.includes('IPHONE 13')) return 'IP-13';
+    if (modelUpper.includes('IPHONE 14')) return 'IP-14';
+    if (modelUpper.includes('IPHONE 15')) return 'IP-15';
+    if (modelUpper.includes('PIXEL 6')) return 'PIXEL-6';
+    if (modelUpper.includes('PIXEL 7')) return 'PIXEL-7';
+    if (modelUpper.includes('PIXEL 8')) return 'PIXEL-8';
+    if (modelUpper.includes('PIXEL 9')) return 'PIXEL-9';
+    if (modelUpper.includes('PIXEL FOLD')) return 'PIXEL-FOLD';
+    if (modelUpper.includes('S22')) return 'S22';
+    if (modelUpper.includes('S23')) return 'S23';
+    if (modelUpper.includes('S24')) return 'S24';
+    if (modelUpper.includes('S25')) return 'S25';
+    
+    // Extract first word or number as fallback
+    const words = modelUpper.split(' ');
+    return words[0];
+  }
+
+  // Extract color key for precise database filtering
+  extractColorKey(color) {
+    if (!color) return null;
+    
+    const colorUpper = color.toUpperCase();
+    
+    // Map common color names to SKU color codes
+    if (colorUpper.includes('BLACK') || colorUpper.includes('PHANTOM BLACK')) return 'BLK';
+    if (colorUpper.includes('WHITE') || colorUpper.includes('SILVER')) return 'SLV';
+    if (colorUpper.includes('BLUE')) return 'BLU';
+    if (colorUpper.includes('GREEN')) return 'GRN';
+    if (colorUpper.includes('PINK')) return 'PINK';
+    if (colorUpper.includes('PURPLE')) return 'PURPLE';
+    if (colorUpper.includes('RED')) return 'RED';
+    if (colorUpper.includes('YELLOW')) return 'YLW';
+    if (colorUpper.includes('CREAM')) return 'CREAM';
+    if (colorUpper.includes('MINT')) return 'MINT';
+    if (colorUpper.includes('NAVY')) return 'NAVY';
+    if (colorUpper.includes('VIOLET')) return 'VIOLET';
+    if (colorUpper.includes('GRAY') || colorUpper.includes('GREY')) return 'GRAY';
+    if (colorUpper.includes('BEIGE')) return 'BEIGE';
+    if (colorUpper.includes('BURGUNDY')) return 'BURGUNDY';
+    if (colorUpper.includes('GRAPHITE')) return 'GRAPHITE';
+    if (colorUpper.includes('HAZEL')) return 'HAZEL';
+    if (colorUpper.includes('CORAL')) return 'CORAL';
+    if (colorUpper.includes('JETBLACK')) return 'JETBLACK';
+    if (colorUpper.includes('BLUESHADOW')) return 'BLUESHADOW';
+    if (colorUpper.includes('ICYBLUE')) return 'ICYBLUE';
+    
+    // Return first 3 characters as fallback
+    return colorUpper.substring(0, 3);
+  }
+
+  // Get model family for smarter tiered matching
+  getModelFamily(modelKey) {
+    if (!modelKey) return null;
+    
+    const modelUpper = modelKey.toUpperCase();
+    
+    // Samsung families
+    if (modelUpper.startsWith('FOLD')) return 'FOLD';
+    if (modelUpper.startsWith('ZFLIP')) return 'ZFLIP';
+    if (modelUpper.startsWith('S')) return 'S';
+    if (modelUpper.startsWith('TAB')) return 'TAB';
+    if (modelUpper.startsWith('WATCH')) return 'WATCH';
+    
+    // Apple families
+    if (modelUpper.startsWith('IP')) return 'IP';
+    if (modelUpper.startsWith('A')) return 'A';
+    
+    // Google families
+    if (modelUpper.startsWith('PIXEL')) return 'PIXEL';
+    
+    // Return the model key as fallback
+    return modelKey;
+  }
+
+  getModelPrefix(model) {
+    if (!model) return null;
+    
+    const modelUpper = model.toUpperCase();
+    
+    // Extract key model identifiers
+    if (modelUpper.includes('FOLD')) {
+      return 'FOLD';
+    } else if (modelUpper.includes('FLIP')) {
+      return 'FLIP';
+    } else if (modelUpper.includes('IPHONE')) {
+      return 'IPHONE';
+    } else if (modelUpper.includes('PIXEL')) {
+      return 'PIXEL';
+    }
+    
+    // Extract first word or number
+    const words = modelUpper.split(' ');
+    return words[0];
+  }
+
+  // Parse generic SKU format
   parseGenericSku(sku) {
     return {
-      brand: 'Unknown',
-      model: 'Unknown',
-      capacity: 'Unknown',
-      color: 'Unknown',
-      carrier: 'Unknown'
+      brand: '',
+      model: '',
+      capacity: '',
+      color: '',
+      carrier: ''
     };
+  }
+
+  // Product Type Detection Function
+  getProductType(sku) {
+    if (!sku || typeof sku !== 'string') return 'unknown';
+    
+    const upperSku = sku.toUpperCase().trim();
+    
+    // Check for specific product type prefixes
+    if (upperSku.startsWith('TAB-')) return 'tablet';
+    if (upperSku.startsWith('WATCH-')) return 'watch';
+    if (upperSku.startsWith('LAPTOP-')) return 'laptop';
+    
+    // Default to phone for existing SKUs
+    return 'phone';
+  }
+
+  // Enhanced Product Type Detection for Device Models
+  getDeviceProductType(model) {
+    if (!model || typeof model !== 'string') return 'unknown';
+    
+    const upperModel = model.toUpperCase().trim();
+    
+    // Check for tablet indicators
+    if (upperModel.includes('TAB') || 
+        upperModel.includes('TABLET') ||
+        upperModel.includes('IPAD')) {
+      return 'tablet';
+    }
+    
+    // Check for watch indicators
+    if (upperModel.includes('WATCH') || 
+        upperModel.includes('GALAXY WATCH') ||
+        upperModel.includes('APPLE WATCH')) {
+      return 'watch';
+    }
+    
+    // Check for laptop indicators
+    if (upperModel.includes('LAPTOP') || 
+        upperModel.includes('MACBOOK') ||
+        upperModel.includes('SURFACE')) {
+      return 'laptop';
+    }
+    
+    // Check for phone indicators (including foldables)
+    if (upperModel.includes('GALAXY') || 
+        upperModel.includes('IPHONE') ||
+        upperModel.includes('PIXEL') ||
+        upperModel.includes('FOLD') ||
+        upperModel.includes('FLIP')) {
+      return 'phone';
+    }
+    
+    // Default to phone
+    return 'phone';
   }
 
   // Calculate similarity between device characteristics
@@ -835,12 +1302,16 @@ class SkuMatchingService {
     
     // Samsung devices - check for carrier unlock/lock patterns
     if (brandUpper.includes('SAMSUNG') || brandUpper.includes('GALAXY')) {
-      // Check for carrier unlock patterns
+      // Check for carrier unlock patterns - ENHANCED with typo handling
       if (notesUpper.includes('CARRIER UNLOCKED') || 
+          notesUpper.includes('CARRIER UNLOKED') || // Handle typo
           notesUpper.includes('UNLOCKED') ||
           notesUpper.includes('UNLOCK') ||
+          notesUpper.includes('UNLOKED') || // Handle typo
           notesUpper.includes('CARRIR UNLOCK') || // Common typo
-          notesUpper.includes('CARRIERS UNLOCKED')) {
+          notesUpper.includes('CARRIR UNLOKED') || // Handle typo
+          notesUpper.includes('CARRIERS UNLOCKED') ||
+          notesUpper.includes('CARRIERS UNLOKED')) { // Handle typo
         
         // Only override if original carrier is one of the big 3
         const originalCarrier = (carrier || '').toUpperCase().trim();
@@ -892,28 +1363,28 @@ class SkuMatchingService {
     return '';
   }
 
-  // Calculate similarity with carrier-specific logic
+  // Calculate similarity with carrier-specific logic and CHARACTER-BASED WEIGHTING
   calculateDeviceSimilarityWithCarrierLogic(device1, device2, isDeviceUnlocked) {
     let totalScore = 0;
     let maxScore = 0;
 
-    // Brand comparison (weight: 10%)
-    const brandScore = this.compareField(device1.brand, device2.brand);
+    // Brand comparison (weight: 10%) - ENHANCED with character weighting
+    const brandScore = this.compareFieldWithCharacterWeight(device1.brand, device2.brand);
     totalScore += brandScore * 0.10;
     maxScore += 0.10;
 
-    // Model comparison (weight: 20%)
-    const modelScore = this.compareField(device1.model, device2.model);
+    // Model comparison (weight: 20%) - ENHANCED with character weighting
+    const modelScore = this.compareFieldWithCharacterWeight(device1.model, device2.model);
     totalScore += modelScore * 0.20;
     maxScore += 0.20;
 
-    // Capacity comparison (weight: 15%)
-    const capacityScore = this.compareField(device1.capacity, device2.capacity);
+    // Capacity comparison (weight: 15%) - ENHANCED with character weighting
+    const capacityScore = this.compareFieldWithCharacterWeight(device1.capacity, device2.capacity);
     totalScore += capacityScore * 0.15;
     maxScore += 0.15;
 
-    // Color comparison (weight: 10%)
-    const colorScore = this.compareField(device1.color, device2.color);
+    // Color comparison (weight: 10%) - ENHANCED with character weighting
+    const colorScore = this.compareFieldWithCharacterWeight(device1.color, device2.color);
     totalScore += colorScore * 0.10;
     maxScore += 0.10;
 
@@ -1077,6 +1548,82 @@ class SkuMatchingService {
     if (this.isSimilarComponent(f1, f2)) return 0.6;
     
     return 0;
+  }
+
+  // ENHANCED: Compare fields with CHARACTER-BASED WEIGHTING
+  compareFieldWithCharacterWeight(field1, field2) {
+    if (!field1 || !field2) return 0;
+    
+    const str1 = field1.toString().toUpperCase().trim();
+    const str2 = field2.toString().toUpperCase().trim();
+    
+    // Perfect match gets full score
+    if (str1 === str2) return 1.0;
+    
+    // Find the longest common substring for character-based weighting
+    const commonSubstring = this.findLongestCommonSubstring(str1, str2);
+    const commonLength = commonSubstring.length;
+    
+    if (commonLength === 0) return 0;
+    
+    // Calculate character-based score
+    const maxLength = Math.max(str1.length, str2.length);
+    const baseScore = commonLength / maxLength;
+    
+    // ENHANCED WEIGHTING: Longer matches get exponentially higher scores
+    // 1 char = 0.1, 2 chars = 0.25, 3 chars = 0.45, 4 chars = 0.7, 5+ chars = 0.9+
+    const characterBonus = this.calculateCharacterBonus(commonLength);
+    
+    // Combine base score with character bonus
+    const finalScore = Math.min(1.0, baseScore + characterBonus);
+    
+    console.log(`   🔍 Character Weight: "${str1}" vs "${str2}" = "${commonSubstring}" (${commonLength} chars) = ${(finalScore * 100).toFixed(1)}%`);
+    
+    return finalScore;
+  }
+
+  // Find the longest common substring between two strings
+  findLongestCommonSubstring(str1, str2) {
+    if (!str1 || !str2) return '';
+    
+    const matrix = [];
+    let maxLength = 0;
+    let endIndex = 0;
+    
+    // Initialize matrix
+    for (let i = 0; i <= str1.length; i++) {
+      matrix[i] = new Array(str2.length + 1).fill(0);
+    }
+    
+    // Fill matrix
+    for (let i = 1; i <= str1.length; i++) {
+      for (let j = 1; j <= str2.length; j++) {
+        if (str1[i - 1] === str2[j - 1]) {
+          matrix[i][j] = matrix[i - 1][j - 1] + 1;
+          if (matrix[i][j] > maxLength) {
+            maxLength = matrix[i][j];
+            endIndex = i;
+          }
+        }
+      }
+    }
+    
+    // Extract the longest common substring
+    return str1.substring(endIndex - maxLength, endIndex);
+  }
+
+  // Calculate character bonus based on match length
+  calculateCharacterBonus(matchLength) {
+    // Exponential bonus for longer matches
+    switch (matchLength) {
+      case 1: return 0.05;   // 1 char = minimal bonus
+      case 2: return 0.15;   // 2 chars = small bonus
+      case 3: return 0.30;   // 3 chars = medium bonus
+      case 4: return 0.50;   // 4 chars = significant bonus
+      case 5: return 0.70;   // 5 chars = high bonus
+      case 6: return 0.85;   // 6 chars = very high bonus
+      default: return 0.95;  // 7+ chars = near perfect
+    }
   }
 }
 
