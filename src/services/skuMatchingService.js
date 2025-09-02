@@ -113,25 +113,25 @@ class SkuMatchingService {
     
     const colorUpper = color.toUpperCase().trim();
     
-    // Handle specific color names and abbreviations
-    if (colorUpper.includes('BLK') || colorUpper.includes('BLACK')) return 'BLK';
-    if (colorUpper.includes('BLU') || colorUpper.includes('BLUE')) return 'BLU';
-    if (colorUpper.includes('WHT') || colorUpper.includes('WHITE')) return 'WHT';
+    // Handle specific color names and abbreviations - use full names that exist in SKU master
+    if (colorUpper.includes('BLK') || colorUpper.includes('BLACK')) return 'BLACK';
+    if (colorUpper.includes('BLU') || colorUpper.includes('BLUE')) return 'BLUE';
+    if (colorUpper.includes('WHT') || colorUpper.includes('WHITE')) return 'WHITE';
     if (colorUpper.includes('RED')) return 'RED';
-    if (colorUpper.includes('GRN') || colorUpper.includes('GREEN')) return 'GRN';
-    if (colorUpper.includes('PUR') || colorUpper.includes('PURPLE')) return 'PUR';
-    if (colorUpper.includes('PNK') || colorUpper.includes('PINK')) return 'PNK';
-    if (colorUpper.includes('GLD') || colorUpper.includes('GOLD')) return 'GLD';
-    if (colorUpper.includes('SLV') || colorUpper.includes('SILVER')) return 'SLV';
-    if (colorUpper.includes('GRY') || colorUpper.includes('GRAY') || colorUpper.includes('GREY')) return 'GRY';
-    if (colorUpper.includes('HAZ') || colorUpper.includes('HAZEL')) return 'HAZ';
+    if (colorUpper.includes('GRN') || colorUpper.includes('GREEN')) return 'GREEN';
+    if (colorUpper.includes('PUR') || colorUpper.includes('PURPLE')) return 'PURPLE';
+    if (colorUpper.includes('PNK') || colorUpper.includes('PINK')) return 'PINK';
+    if (colorUpper.includes('GLD') || colorUpper.includes('GOLD')) return 'GOLD';
+    if (colorUpper.includes('SLV') || colorUpper.includes('SILVER')) return 'SILVER';
+    if (colorUpper.includes('GRY') || colorUpper.includes('GRAY') || colorUpper.includes('GREY')) return 'GRAY';
+    if (colorUpper.includes('HAZ') || colorUpper.includes('HAZEL')) return 'HAZEL';
     
     // Handle Phantom colors - need to check the full name
     if (colorUpper.includes('PHANTOM')) {
-      if (colorUpper.includes('PHANTOM BLACK') || colorUpper.includes('PHANTOMBLACK')) return 'BLK';
-      if (colorUpper.includes('PHANTOM GREEN') || colorUpper.includes('PHANTOMGREEN')) return 'GRN';
-      if (colorUpper.includes('PHANTOM BLUE') || colorUpper.includes('PHANTOMBLUE')) return 'BLU';
-      if (colorUpper.includes('PHANTOM WHITE') || colorUpper.includes('PHANTOMWHITE')) return 'WHT';
+      if (colorUpper.includes('PHANTOM BLACK') || colorUpper.includes('PHANTOMBLACK')) return 'BLACK';
+      if (colorUpper.includes('PHANTOM GREEN') || colorUpper.includes('PHANTOMGREEN')) return 'GREEN';
+      if (colorUpper.includes('PHANTOM BLUE') || colorUpper.includes('PHANTOMBLUE')) return 'BLUE';
+      if (colorUpper.includes('PHANTOM WHITE') || colorUpper.includes('PHANTOMWHITE')) return 'WHITE';
       if (colorUpper.includes('PHANTOM RED') || colorUpper.includes('PHANTOMRED')) return 'RED';
       // If it's just "PHA" or "PHANTOM" without a specific color, return UNKNOWN
       if (colorUpper === 'PHA' || colorUpper === 'PHANTOM') return 'UNKNOWN';
@@ -197,7 +197,11 @@ class SkuMatchingService {
       const isDeviceUnlocked = this.isUnlockedCarrier(normalizedCarrier);
       
              // 🎯 SMART TIERED QUERY STRATEGY
+       console.log(`🔍 Starting tiered matching for device:`);
+       console.log(`   Brand: ${deviceBrand}, Model: ${model}, Capacity: ${capacity}, Color: ${normalizedColor}, Carrier: ${normalizedCarrier}, Unlocked: ${isDeviceUnlocked}`);
+       
        // Tier 1: Exact matches (most efficient)
+       console.log(`\n🎯 Tier 1: Exact Matches`);
        let bestMatch = await this.findExactMatches(client, {
          brand: deviceBrand,
          model,
@@ -210,6 +214,8 @@ class SkuMatchingService {
        if (bestMatch && bestMatch.match_score >= 0.95) {
          console.log(`🎯 Found exact match: ${bestMatch.sku_code} (${(bestMatch.match_score * 100).toFixed(1)}%)`);
          return bestMatch;
+       } else {
+         console.log(`❌ No exact match found or score too low`);
        }
        
        // Tier 2: Brand + Model matches (high precision)
@@ -683,6 +689,10 @@ class SkuMatchingService {
       `%-${capacityValue}-%`    // Capacity (e.g., -512-)
     ];
     
+    // Fix capacity matching to be more precise
+    // The current pattern `%-512-%` can match wrong capacities (e.g., 256 matches 512)
+    // We'll filter this in the application logic after the query
+    
     // Add color filtering if available, but make it optional
     if (colorKey) {
       query += ` AND sku_code LIKE $3`;
@@ -721,11 +731,34 @@ class SkuMatchingService {
       return null;
     }
     
+    // Filter results to ensure capacity matches exactly
+    console.log(`🔍 Capacity filtering: Looking for capacity "${capacityValue}"`);
+    const capacityFilteredRows = result.rows.filter(row => {
+      const skuParts = row.sku_code.split('-');
+      if (skuParts.length >= 2) {
+        const skuCapacity = skuParts[1];
+        const isCapacityMatch = skuCapacity === capacityValue;
+        console.log(`   🔍 SKU ${row.sku_code}: capacity "${skuCapacity}" vs device "${capacityValue}" = ${isCapacityMatch ? '✅ MATCH' : '❌ MISMATCH'}`);
+        if (!isCapacityMatch) {
+          console.log(`   ❌ Capacity mismatch: SKU ${row.sku_code} has ${skuCapacity}, device has ${capacityValue}`);
+        }
+        return isCapacityMatch;
+      }
+      return false;
+    });
+    
+    console.log(`📊 After capacity filtering: ${capacityFilteredRows.length} candidates`);
+    
+    if (capacityFilteredRows.length === 0) {
+      console.log(`   ❌ No SKUs found with exact capacity match: ${capacityValue}`);
+      return null;
+    }
+    
     // Score the exact matches (now with much smaller dataset)
     let bestMatch = null;
     let bestScore = 0;
     
-    for (const row of result.rows) {
+    for (const row of capacityFilteredRows) {
       const parsedSku = this.parseSkuCode(row.sku_code);
       
       // ENHANCED: Product type validation - prevent phone/tablet confusion
@@ -766,10 +799,11 @@ class SkuMatchingService {
   async findBrandModelMatches(client, deviceData) {
     const { brand, model, capacity, color, carrier, isDeviceUnlocked } = deviceData;
     
-    // Extract model key for precise filtering
+    // Extract model key and capacity for precise filtering
     const modelKey = this.extractModelKey(model);
+    const capacityValue = capacity ? capacity.replace('GB', '').replace('TB', '000') : null;
     
-    if (!modelKey) {
+    if (!modelKey || !capacityValue) {
       return null;
     }
     
@@ -815,11 +849,32 @@ class SkuMatchingService {
       return null;
     }
     
+    // Filter results to ensure capacity matches exactly (CRITICAL FIX)
+    const capacityFilteredRows = result.rows.filter(row => {
+      const skuParts = row.sku_code.split('-');
+      if (skuParts.length >= 2) {
+        const skuCapacity = skuParts[1];
+        const isCapacityMatch = skuCapacity === capacityValue;
+        if (!isCapacityMatch) {
+          console.log(`   ❌ Capacity mismatch: SKU ${row.sku_code} has ${skuCapacity}, device has ${capacityValue}`);
+        }
+        return isCapacityMatch;
+      }
+      return false;
+    });
+    
+    console.log(`📊 After capacity filtering: ${capacityFilteredRows.length} candidates`);
+    
+    if (capacityFilteredRows.length === 0) {
+      console.log(`   ❌ No SKUs found with exact capacity match: ${capacityValue}`);
+      return null;
+    }
+    
     // Score the brand+model matches
     let bestMatch = null;
     let bestScore = 0;
     
-    for (const row of result.rows) {
+    for (const row of capacityFilteredRows) {
       const parsedSku = this.parseSkuCode(row.sku_code);
       const score = this.calculateDeviceSimilarityWithCarrierLogic(
         { brand, model, capacity, color, carrier },
@@ -1067,15 +1122,16 @@ class SkuMatchingService {
     
     const colorUpper = color.toUpperCase();
     
-    // Map common color names to SKU color codes
-    if (colorUpper.includes('BLACK') || colorUpper.includes('PHANTOM BLACK')) return 'BLK';
-    if (colorUpper.includes('WHITE') || colorUpper.includes('SILVER')) return 'SLV';
-    if (colorUpper.includes('BLUE')) return 'BLU';
-    if (colorUpper.includes('GREEN')) return 'GRN';
+    // Map common color names to SKU color codes - use exact codes from SKU master
+    if (colorUpper.includes('BLACK') || colorUpper.includes('PHANTOM BLACK')) return 'BLACK';
+    if (colorUpper.includes('WHITE') || colorUpper.includes('PHANTOM WHITE')) return 'WHITE';
+    if (colorUpper.includes('SILVER')) return 'SILVER';
+    if (colorUpper.includes('BLUE') || colorUpper.includes('PHANTOM BLUE')) return 'BLUE';
+    if (colorUpper.includes('GREEN') || colorUpper.includes('PHANTOM GREEN')) return 'GREEN';
     if (colorUpper.includes('PINK')) return 'PINK';
     if (colorUpper.includes('PURPLE')) return 'PURPLE';
-    if (colorUpper.includes('RED')) return 'RED';
-    if (colorUpper.includes('YELLOW')) return 'YLW';
+    if (colorUpper.includes('RED') || colorUpper.includes('PHANTOM RED')) return 'RED';
+    if (colorUpper.includes('YELLOW')) return 'YELLOW';
     if (colorUpper.includes('CREAM')) return 'CREAM';
     if (colorUpper.includes('MINT')) return 'MINT';
     if (colorUpper.includes('NAVY')) return 'NAVY';
