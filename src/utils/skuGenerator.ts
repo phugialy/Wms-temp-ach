@@ -3,15 +3,15 @@ import { CreateItemInput } from './validator';
 
 /**
  * Generates a SKU based on available item data
- * Since the current schema is simplified, we'll use name and IMEI
+ * Uses model and IMEI from the actual database schema
  */
 export function generateSku(item: Partial<Item>): string {
-  const name = (item.name || 'UNKNOWN').toUpperCase().replace(/\s+/g, '');
+  const model = (item.model || 'UNKNOWN').toUpperCase().replace(/\s+/g, '');
   const imei = item.imei || 'UNKNOWN';
   
-  // Create a simple SKU: NAME-IMEI (last 4 digits)
+  // Create a simple SKU: MODEL-IMEI (last 4 digits)
   const imeiSuffix = imei.length >= 4 ? imei.slice(-4) : imei;
-  return `${name}-${imeiSuffix}`;
+  return `${model}-${imeiSuffix}`;
 }
 
 /**
@@ -28,7 +28,7 @@ function capitalizeFirstLetter(str: string): string {
 export function generateSkuWithTimestamp(item: CreateItemInput): { sku: string; skuGeneratedAt: Date } {
   // Convert the input to match the Item type structure
   const itemData: Partial<Item> = {
-    name: item.name,
+    model: item.model,
     imei: item.imei || undefined
   };
 

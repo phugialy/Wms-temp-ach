@@ -77,7 +77,7 @@ export class QueueProxyService {
 
       // Insert into queue
       const { data, error } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .insert(queueItems)
         .select('id');
 
@@ -503,7 +503,7 @@ export class QueueProxyService {
   async retryFailedItems(): Promise<ProcessResult> {
     try {
       const { data: failedItems, error } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .select('*')
         .eq('status', 'failed');
 
@@ -527,7 +527,7 @@ export class QueueProxyService {
         try {
           // Reset status to pending
           await supabase
-            .from('imei_data_queue')
+            .from('data_queue')
             .update({
               status: 'pending',
               retry_count: 0,

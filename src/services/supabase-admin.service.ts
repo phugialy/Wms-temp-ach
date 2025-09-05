@@ -23,7 +23,7 @@ export class SupabaseAdminService {
       let finalSku = data.sku;
       if (!finalSku) {
         finalSku = generateSku({
-          name: data.name,
+          model: data.model || 'Unknown',
           imei: data.imei
         });
       }
@@ -334,17 +334,16 @@ export class SupabaseAdminService {
         logger.warn('Could not create imei_units record', { error: unitsError });
       }
 
-      // Create imei_data_queue record
+      // Create data_queue record
       const { error: queueError } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .insert({
-          imei: imei,
-          raw_data: testResults,
+          raw_data: { imei: imei, ...testResults },
           status: 'processed'
         });
 
       if (queueError) {
-        logger.warn('Could not create imei_data_queue record', { error: queueError });
+        logger.warn('Could not create data_queue record', { error: queueError });
       }
 
     } catch (error) {
@@ -647,7 +646,7 @@ export class SupabaseAdminService {
         supabase.from('imei_sku_info').select('*', { count: 'exact', head: true }),
         supabase.from('imei_inspect_data').select('*', { count: 'exact', head: true }),
         supabase.from('imei_units').select('*', { count: 'exact', head: true }),
-        supabase.from('imei_data_queue').select('*', { count: 'exact', head: true }),
+        supabase.from('data_queue').select('*', { count: 'exact', head: true }),
         supabase.from('DeviceTest').select('*', { count: 'exact', head: true }),
         supabase.from('Inventory').select('*', { count: 'exact', head: true })
       ]);
@@ -737,11 +736,11 @@ export class SupabaseAdminService {
           .or(`imei.ilike.%${searchTerm}%,unit_name.ilike.%${searchTerm}%`)
           .limit(100),
         
-        // Search in imei_data_queue
+        // Search in data_queue
         supabase
-          .from('imei_data_queue')
+          .from('data_queue')
           .select('*')
-          .or(`imei.ilike.%${searchTerm}%,status.ilike.%${searchTerm}%`)
+          .or(`raw_data->>'imei'.ilike.%${searchTerm}%,status.ilike.%${searchTerm}%`)
           .limit(100),
         
         // Search in Item table
@@ -823,9 +822,9 @@ export class SupabaseAdminService {
           .select('*')
           .limit(1000),
         
-        // Get all from imei_data_queue
+        // Get all from data_queue
         supabase
-          .from('imei_data_queue')
+          .from('data_queue')
           .select('*')
           .limit(1000),
         

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKU Matching - Operator Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .role-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .role-tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .role-tab.active {
+            background: #007bff;
+            color: white;
+        }
+
+        .role-tab:hover {
+            background: #e9ecef;
+        }
+
+        .role-tab.active:hover {
+            background: #0056b3;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .role-content {
+            display: none;
+        }
+
+        .role-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .device-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .device-info h3 {
+            color: #007bff;
+            margin-bottom: 15px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+
+        .info-item strong {
+            color: #333;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .recent-actions {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .recent-actions h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .action-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            border-left: 4px solid #007bff;
+        }
+
+        .action-item .time {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .scan-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .scan-button:hover {
+            background: #1e7e34;
+            transform: translateY(-2px);
+        }
+
+        .imei-input {
+            display: flex;
+            align-items: center;
+        }
+
+        .imei-input input {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .role-tabs {
+                flex-direction: column;
+            }
+            
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏭 SKU Matching System</h1>
+            <p>Operator Dashboard - Quick Actions</p>
+        </div>
+
+        <div class="role-tabs">
+            <button class="role-tab active" onclick="switchRole('shipping')">🚚 SHIPPING</button>
+            <button class="role-tab" onclick="switchRole('postfix')">🏷️ POSTFIX</button>
+            <button class="role-tab" onclick="switchRole('repair')">🔧 REPAIR</button>
+            <button class="role-tab" onclick="switchRole('inspector')">🔍 INSPECTOR</button>
+        </div>
+
+        <div class="content">
+            <!-- SHIPPING ROLE -->
+            <div id="shipping-content" class="role-content active">
+                <h2>🚚 Shipping - Quick Pickup</h2>
+                <p>Scan IMEI to quickly move device to SHIPOUT location</p>
+                
+                <div class="form-group">
+                    <label for="shipping-imei">📱 IMEI:</label>
+                    <div class="imei-input">
+                        <input type="text" id="shipping-imei" placeholder="Scan or enter IMEI" maxlength="15">
+                        <button class="scan-button" onclick="simulateScan('shipping-imei')">📷 SCAN</button>
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="processShipping()">🚚 QUICK PICKUP</button>
+                <button class="btn" onclick="clearForm('shipping')">🔄 CLEAR</button>
+
+                <div id="shipping-device-info" class="device-info" style="display: none;">
+                    <h3>📱 Device Information</h3>
+                    <div id="shipping-device-details"></div>
+                </div>
+
+                <div id="shipping-status" class="status-message" style="display: none;"></div>
+            </div>
+
+            <!-- POSTFIX ROLE -->
+            <div id="postfix-content" class="role-content">
+                <h2>🏷️ Postfix - Grade & Update SKU</h2>
+                <p>Grade device and update SKU with appropriate postfix</p>
+                
+                <div class="form-group">
+                    <label for="postfix-imei">📱 IMEI:</label>
+                    <div class="imei-input">
+                        <input type="text" id="postfix-imei" placeholder="Scan or enter IMEI" maxlength="15">
+                        <button class="scan-button" onclick="simulateScan('postfix-imei')">📷 SCAN</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="postfix-grade">🏷️ Grade:</label>
+                    <select id="postfix-grade">
+                        <option value="">Select Grade</option>
+                        <option value="A">A - Grade A (No Retail Box)</option>
+                        <option value="A+BOX">A+BOX - Grade A (Has Retail Box)</option>
+                        <option value="B">B - Grade B</option>
+                        <option value="C">C - Grade C</option>
+                        <option value="NEW">NEW - New Sealed</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-warning" onclick="processPostfix()">🏷️ UPDATE SKU</button>
+                <button class="btn" onclick="clearForm('postfix')">🔄 CLEAR</button>
+
+                <div id="postfix-device-info" class="device-info" style="display: none;">
+                    <h3>📱 Device Information</h3>
+                    <div id="postfix-device-details"></div>
+                </div>
+
+                <div id="postfix-status" class="status-message" style="display: none;"></div>
+            </div>
+
+            <!-- REPAIR ROLE -->
+            <div id="repair-content" class="role-content">
+                <h2>🔧 Repair - Location & Notes Update</h2>
+                <p>Move device to repair location and add repair notes</p>
+                
+                <div class="form-group">
+                    <label for="repair-imei">📱 IMEI:</label>
+                    <div class="imei-input">
+                        <input type="text" id="repair-imei" placeholder="Scan or enter IMEI" maxlength="15">
+                        <button class="scan-button" onclick="simulateScan('repair-imei')">📷 SCAN</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="repair-location">📍 New Location:</label>
+                    <select id="repair-location">
+                        <option value="">Select Location</option>
+                        <option value="REPAIR-BAY">REPAIR-BAY</option>
+                        <option value="DNCL-Testing">DNCL-Testing</option>
+                        <option value="DNCL-QC">DNCL-QC</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="repair-notes">📝 Repair Notes:</label>
+                    <textarea id="repair-notes" rows="3" placeholder="Enter repair notes..."></textarea>
+                </div>
+
+                <button class="btn btn-danger" onclick="processRepair()">🔧 UPDATE REPAIR</button>
+                <button class="btn" onclick="clearForm('repair')">🔄 CLEAR</button>
+
+                <div id="repair-device-info" class="device-info" style="display: none;">
+                    <h3>📱 Device Information</h3>
+                    <div id="repair-device-details"></div>
+                </div>
+
+                <div id="repair-status" class="status-message" style="display: none;"></div>
+            </div>
+
+            <!-- INSPECTOR ROLE -->
+            <div id="inspector-content" class="role-content">
+                <h2>🔍 Inspector - Device Characteristics Update</h2>
+                <p>Update device notes, working status, and other characteristics</p>
+                
+                <div class="form-group">
+                    <label for="inspector-imei">📱 IMEI:</label>
+                    <div class="imei-input">
+                        <input type="text" id="inspector-imei" placeholder="Scan or enter IMEI" maxlength="15">
+                        <button class="scan-button" onclick="simulateScan('inspector-imei')">📷 SCAN</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="inspector-notes">📝 Device Notes:</label>
+                    <textarea id="inspector-notes" rows="3" placeholder="Enter inspection notes..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="inspector-working">⚡ Working Status:</label>
+                    <select id="inspector-working">
+                        <option value="">Select Status</option>
+                        <option value="PASS">PASS</option>
+                        <option value="FAIL">FAIL</option>
+                        <option value="PENDING">PENDING</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="inspector-battery">🔋 Battery Health (%):</label>
+                    <input type="number" id="inspector-battery" min="0" max="100" placeholder="Enter battery percentage">
+                </div>
+
+                <button class="btn btn-success" onclick="processInspector()">🔍 UPDATE INSPECTION</button>
+                <button class="btn" onclick="clearForm('inspector')">🔄 CLEAR</button>
+
+                <div id="inspector-device-info" class="device-info" style="display: none;">
+                    <h3>📱 Device Information</h3>
+                    <div id="inspector-device-details"></div>
+                </div>
+
+                <div id="inspector-status" class="status-message" style="display: none;"></div>
+            </div>
+
+            <!-- RECENT ACTIONS -->
+            <div class="recent-actions">
+                <h3>📋 Recent Actions</h3>
+                <button class="btn" onclick="loadRecentActions()">🔄 Refresh</button>
+                <div id="recent-actions-list">
+                    <p>Click "Refresh" to load recent actions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRole = 'shipping';
+
+        // Switch between roles
+        function switchRole(role) {
+            // Update tabs
+            document.querySelectorAll('.role-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`[onclick="switchRole('${role}')"]`).classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.role-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${role}-content`).classList.add('active');
+            
+            currentRole = role;
+        }
+
+        // Simulate barcode scanner
+        function simulateScan(inputId) {
+            const input = document.getElementById(inputId);
+            // Simulate scanning a real IMEI
+            const testImeis = [
+                '352707358605214',
+                '356317536605163', 
+                '350468690735746'
+            ];
+            const randomImei = testImeis[Math.floor(Math.random() * testImeis.length)];
+            input.value = randomImei;
+            input.focus();
+            
+            // Auto-fetch device info
+            setTimeout(() => {
+                fetchDeviceInfo(randomImei, currentRole);
+            }, 500);
+        }
+
+        // Fetch device information
+        async function fetchDeviceInfo(imei, role) {
+            try {
+                const response = await fetch(`/api/operator/device-info/${imei}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayDeviceInfo(data.device, role);
+                } else {
+                    showStatus(role, `Device not found: ${imei}`, 'error');
+                }
+            } catch (error) {
+                showStatus(role, `Error fetching device info: ${error.message}`, 'error');
+            }
+        }
+
+        // Display device information
+        function displayDeviceInfo(device, role) {
+            const deviceInfoDiv = document.getElementById(`${role}-device-info`);
+            const deviceDetailsDiv = document.getElementById(`${role}-device-details`);
+            
+            deviceDetailsDiv.innerHTML = `
+                <div class="info-grid">
+                    <div class="info-item">
+                        <strong>IMEI:</strong> ${device.imei}
+                    </div>
+                    <div class="info-item">
+                        <strong>Model:</strong> ${device.model || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Capacity:</strong> ${device.capacity || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Color:</strong> ${device.color || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Carrier:</strong> ${device.carrier || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Current Location:</strong> ${device.location || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Matched SKU:</strong> ${device.matched_sku || 'N/A'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Working Status:</strong> ${device.working || 'N/A'}
+                    </div>
+                </div>
+            `;
+            
+            deviceInfoDiv.style.display = 'block';
+        }
+
+        // Process shipping pickup
+        async function processShipping() {
+            const imei = document.getElementById('shipping-imei').value.trim();
+            if (!imei) {
+                showStatus('shipping', 'Please enter an IMEI', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/operator/shipping-pickup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ imei })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('shipping', `✅ ${data.message}`, 'success');
+                    clearForm('shipping');
+                } else {
+                    showStatus('shipping', `❌ ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('shipping', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Process postfix update
+        async function processPostfix() {
+            const imei = document.getElementById('postfix-imei').value.trim();
+            const grade = document.getElementById('postfix-grade').value;
+            
+            if (!imei || !grade) {
+                showStatus('postfix', 'Please enter IMEI and select grade', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/operator/postfix-update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ imei, grade })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('postfix', `✅ ${data.message}`, 'success');
+                    clearForm('postfix');
+                } else {
+                    showStatus('postfix', `❌ ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('postfix', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Process repair update
+        async function processRepair() {
+            const imei = document.getElementById('repair-imei').value.trim();
+            const location = document.getElementById('repair-location').value;
+            const notes = document.getElementById('repair-notes').value.trim();
+            
+            if (!imei || !location) {
+                showStatus('repair', 'Please enter IMEI and select location', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/operator/repair-update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ imei, location, notes })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('repair', `✅ ${data.message}`, 'success');
+                    clearForm('repair');
+                } else {
+                    showStatus('repair', `❌ ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('repair', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Process inspector update
+        async function processInspector() {
+            const imei = document.getElementById('inspector-imei').value.trim();
+            const notes = document.getElementById('inspector-notes').value.trim();
+            const working = document.getElementById('inspector-working').value;
+            const battery = document.getElementById('inspector-battery').value;
+            
+            if (!imei) {
+                showStatus('inspector', 'Please enter an IMEI', 'error');
+                return;
+            }
+
+            const updates = {};
+            if (notes) updates.deviceNotes = notes;
+            if (working) updates.workingStatus = working;
+            if (battery) updates.batteryHealth = battery;
+
+            if (Object.keys(updates).length === 0) {
+                showStatus('inspector', 'Please enter at least one update', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/operator/inspector-update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ imei, updates })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('inspector', `✅ ${data.message}`, 'success');
+                    clearForm('inspector');
+                } else {
+                    showStatus('inspector', `❌ ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('inspector', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Show status message
+        function showStatus(role, message, type) {
+            const statusDiv = document.getElementById(`${role}-status`);
+            statusDiv.textContent = message;
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.style.display = 'block';
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Clear form
+        function clearForm(role) {
+            document.getElementById(`${role}-imei`).value = '';
+            document.getElementById(`${role}-device-info`).style.display = 'none';
+            document.getElementById(`${role}-status`).style.display = 'none';
+            
+            // Clear role-specific fields
+            if (role === 'postfix') {
+                document.getElementById('postfix-grade').value = '';
+            } else if (role === 'repair') {
+                document.getElementById('repair-location').value = '';
+                document.getElementById('repair-notes').value = '';
+            } else if (role === 'inspector') {
+                document.getElementById('inspector-notes').value = '';
+                document.getElementById('inspector-working').value = '';
+                document.getElementById('inspector-battery').value = '';
+            }
+        }
+
+        // Load recent actions
+        async function loadRecentActions() {
+            try {
+                const response = await fetch('/api/operator/recent-actions');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const actionsList = document.getElementById('recent-actions-list');
+                    if (data.actions.length === 0) {
+                        actionsList.innerHTML = '<p>No recent actions found.</p>';
+                        return;
+                    }
+                    
+                    actionsList.innerHTML = data.actions.map(action => `
+                        <div class="action-item">
+                            <strong>${action.operator_role}</strong> - ${action.action_type}<br>
+                            IMEI: ${action.imei}<br>
+                            <span class="time">${new Date(action.created_at).toLocaleString()}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('recent-actions-list').innerHTML = '<p>Error loading recent actions.</p>';
+                }
+            } catch (error) {
+                document.getElementById('recent-actions-list').innerHTML = '<p>Error loading recent actions.</p>';
+            }
+        }
+
+        // Auto-fetch device info when IMEI is entered
+        document.addEventListener('DOMContentLoaded', function() {
+            const imeiInputs = document.querySelectorAll('input[placeholder*="IMEI"]');
+            imeiInputs.forEach(input => {
+                input.addEventListener('blur', function() {
+                    if (this.value.trim().length === 15) {
+                        const role = this.id.split('-')[0];
+                        fetchDeviceInfo(this.value.trim(), role);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+

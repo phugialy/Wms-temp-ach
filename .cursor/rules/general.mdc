@@ -8,3 +8,6 @@ When necessary to delete be direct and foward on what's wrong and why should it 
 
 We are window-based development enviroment so be aware of the works related to scripts\commands. 
 
+Approach right now for this project is a FULL STACK PRODUCTION Server, function as of a WMS System, we mainly focus on WEB-APP services atm . 
+Pay attention to build as well, 
+but we prioritize Development and features before BUILD.

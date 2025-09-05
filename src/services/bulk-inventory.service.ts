@@ -1,11 +1,14 @@
 import { logger } from '../utils/logger';
 import { SupabaseAdminService } from './supabase-admin.service';
+import CompleteSkuMatchingService from './CompleteSkuMatchingService';
 
 export class BulkInventoryService {
   private supabaseService: SupabaseAdminService;
+  private skuMatchingService: CompleteSkuMatchingService;
 
   constructor() {
     this.supabaseService = new SupabaseAdminService();
+    this.skuMatchingService = new CompleteSkuMatchingService();
   }
   // Process items in batches to avoid connection pooling issues
   async processBulkItems(items: any[], batchSize: number = 5) {
@@ -41,6 +44,15 @@ export class BulkInventoryService {
              results.successful++;
              results.items.push(result);
              logger.info(`✅ Item ${itemIndex + 1} processed successfully`);
+             
+             // Trigger SKU matching for this item
+             try {
+               await this.triggerSkuMatching(item);
+               logger.info(`🎯 SKU matching triggered for item ${itemIndex + 1}: ${item.imei}`);
+             } catch (skuError) {
+               logger.warn(`⚠️ SKU matching failed for item ${itemIndex + 1}: ${item.imei}`, skuError);
+               // Don't fail the entire process if SKU matching fails
+             }
             
           } catch (error) {
             results.failed++;
@@ -67,6 +79,67 @@ export class BulkInventoryService {
       
     } catch (error) {
       logger.error('❌ Bulk processing failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trigger SKU matching for a single item
+   */
+  private async triggerSkuMatching(item: any): Promise<void> {
+    try {
+      // Initialize SKU matching service if needed
+      await this.skuMatchingService.initialize();
+      
+      // Perform SKU matching
+      const results = await this.skuMatchingService.matchImeiToSku({
+        imei: item.imei,
+        model: item.model,
+        capacity: item.capacity,
+        color: item.color,
+        carrier: item.carrier,
+        brand: item.brand,
+        original_sku: item.sku
+      }, {
+        filterPostfix: true,
+        minScore: 70,
+        maxResults: 1
+      });
+      
+      if (results && results.length > 0) {
+        const bestMatch = results[0];
+        if (bestMatch) {
+          logger.info(`🎯 SKU match found for ${item.imei}: ${item.sku} -> ${bestMatch.skuCode} (Score: ${bestMatch.score})`);
+          
+          // Store the match result in database
+          await this.storeSkuMatchResult(item.imei, item.sku, bestMatch);
+        } else {
+          logger.info(`❌ No valid SKU match found for ${item.imei}: ${item.sku}`);
+        }
+      } else {
+        logger.info(`❌ No SKU match found for ${item.imei}: ${item.sku}`);
+      }
+      
+    } catch (error) {
+      logger.error(`❌ SKU matching error for ${item.imei}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Store SKU matching result in database
+   */
+  private async storeSkuMatchResult(imei: string, originalSku: string, match: any): Promise<void> {
+    try {
+      // Use the supabase service to store the result
+      // This will be implemented based on your database structure
+      logger.info(`💾 Storing SKU match result for ${imei}: ${match.skuCode}`);
+      
+      // For now, just log the result
+      // TODO: Implement database storage of SKU matching results
+      
+    } catch (error) {
+      logger.error(`❌ Error storing SKU match result for ${imei}:`, error);
       throw error;
     }
   }

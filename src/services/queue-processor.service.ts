@@ -26,7 +26,7 @@ export class QueueProcessorService {
     try {
       // Get all pending items
       const { data: pendingItems, error: fetchError } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .select('*')
         .eq('status', 'pending');
 
@@ -42,7 +42,7 @@ export class QueueProcessorService {
 
       // Mark items as processing
       await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .update({ status: 'processing' })
         .eq('status', 'pending');
 
@@ -57,7 +57,7 @@ export class QueueProcessorService {
           
           // Mark item as failed
           await supabase
-            .from('imei_data_queue')
+            .from('data_queue')
             .update({ 
               status: 'failed', 
               processed_at: new Date().toISOString(),
@@ -293,7 +293,7 @@ export class QueueProcessorService {
 
     // Mark queue item as completed
     await supabase
-      .from('imei_data_queue')
+      .from('data_queue')
       .update({
         status: 'completed',
         processed_at: new Date().toISOString(),

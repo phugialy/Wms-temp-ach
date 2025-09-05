@@ -1,7 +1,7 @@
 import { PrismaClient, Item } from '@prisma/client';
 import { CreateItemInput, UpdateItemInput, QueryParams } from '../utils/validator';
 import { logger } from '../utils/logger';
-import { generateSkuWithTimestamp } from '../utils/skuGenerator';
+// import { generateSkuWithTimestamp } from '../utils/skuGenerator'; // Not needed - SKU handled in Product table
 
 export class ItemsService {
   constructor(private prisma: PrismaClient) {}
@@ -15,20 +15,20 @@ export class ItemsService {
       const where: any = {};
       if (search) {
         where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { imei: { contains: search, mode: 'insensitive' } }
+          { model: { contains: search, mode: 'insensitive' } },
+          { imei: { contains: search, mode: 'insensitive' } },
+          { carrier: { contains: search, mode: 'insensitive' } },
+          { color: { contains: search, mode: 'insensitive' } }
         ];
       }
       if (brand) {
-        where.description = { contains: brand, mode: 'insensitive' };
+        where.model = { contains: brand, mode: 'insensitive' };
       }
       if (condition) {
-        where.status = condition;
+        where.working = condition;
       }
       if (type) {
-        where.description = { contains: type, mode: 'insensitive' };
+        where.model = { contains: type, mode: 'insensitive' };
       }
 
       const [items, total] = await Promise.all([
@@ -52,43 +52,45 @@ export class ItemsService {
 
   async getItemBySku(sku: string): Promise<Item[]> {
     try {
+      // Note: Item model doesn't have sku field, using imei as identifier
       const items = await this.prisma.item.findMany({
-        where: { sku }
+        where: { imei: sku } // Using imei as the identifier
       });
 
       if (items.length === 0) {
-        throw new Error('No items found with this SKU');
+        throw new Error('No items found with this identifier');
       }
 
-      logger.info('Items retrieved by SKU', { sku, count: items.length });
+      logger.info('Items retrieved by identifier', { sku, count: items.length });
       return items;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting items by SKU', { error: errorMessage, sku });
+      logger.error('Error getting items by identifier', { error: errorMessage, sku });
       throw error;
     }
   }
 
   async createItem(data: CreateItemInput): Promise<Item> {
     try {
-      // Generate SKU if not provided
-      let skuData: { sku: string; skuGeneratedAt: Date } | undefined;
-      if (!data.sku) {
-        skuData = generateSkuWithTimestamp(data);
-        logger.info('SKU auto-generated', { sku: skuData.sku, itemData: data });
-      }
+      // Note: SKU generation removed - Item model doesn't have sku field
+      // SKU is handled in the Product table instead
 
       const item = await this.prisma.item.create({
         data: {
-          sku: data.sku ?? skuData?.sku ?? 'DEFAULT-SKU',
-          name: data.name,
-          description: data.description ?? null,
           imei: data.imei ?? 'UNKNOWN-IMEI',
-          status: data.status ?? 'active'
+          model: data.model ?? null,
+          modelNumber: data.modelNumber ?? null,
+          carrier: data.carrier ?? null,
+          capacity: data.capacity ?? null,
+          color: data.color ?? null,
+          batteryHealth: data.batteryHealth ?? null,
+          batteryCount: data.batteryCount ?? null,
+          working: data.working ?? null,
+          location: data.location ?? null
         }
       });
 
-      logger.info('Item created', { itemId: item.id, sku: item.sku });
+      logger.info('Item created', { imei: item.imei });
       return item;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -100,7 +102,7 @@ export class ItemsService {
   async updateItem(sku: string, data: UpdateItemInput): Promise<Item[]> {
     try {
       const existingItems = await this.prisma.item.findMany({
-        where: { sku }
+        where: { imei: sku }
       });
 
       if (existingItems.length === 0) {
@@ -108,15 +110,20 @@ export class ItemsService {
       }
 
       const updateData: any = {};
-      if (data.name !== undefined) updateData.name = data.name;
-      if (data.description !== undefined) updateData.description = data.description ?? null;
-      if (data.imei !== undefined) updateData.imei = data.imei ?? 'UNKNOWN-IMEI';
-      if (data.status !== undefined) updateData.status = data.status ?? 'active';
+      if (data.model !== undefined) updateData.model = data.model;
+      if (data.modelNumber !== undefined) updateData.modelNumber = data.modelNumber;
+      if (data.carrier !== undefined) updateData.carrier = data.carrier;
+      if (data.capacity !== undefined) updateData.capacity = data.capacity;
+      if (data.color !== undefined) updateData.color = data.color;
+      if (data.batteryHealth !== undefined) updateData.batteryHealth = data.batteryHealth;
+      if (data.batteryCount !== undefined) updateData.batteryCount = data.batteryCount;
+      if (data.working !== undefined) updateData.working = data.working;
+      if (data.location !== undefined) updateData.location = data.location;
 
       const updatedItems = await Promise.all(
         existingItems.map(item =>
           this.prisma.item.update({
-            where: { id: item.id },
+            where: { imei: item.imei },
             data: updateData
           })
         )
@@ -134,7 +141,7 @@ export class ItemsService {
   async deleteItem(sku: string): Promise<void> {
     try {
       const existingItems = await this.prisma.item.findMany({
-        where: { sku }
+        where: { imei: sku }
       });
 
       if (existingItems.length === 0) {
@@ -144,7 +151,7 @@ export class ItemsService {
       await Promise.all(
         existingItems.map(item =>
           this.prisma.item.delete({
-            where: { id: item.id }
+            where: { imei: item.imei }
           })
         )
       );

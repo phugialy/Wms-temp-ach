@@ -12,25 +12,25 @@ export const QUEUE_NAMES = {
 // Create queues
 const bulkDataQueue = new Queue(QUEUE_NAMES.BULK_DATA_PROCESSING, {
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD
+    host: process.env['REDIS_HOST'] || 'localhost',
+    port: parseInt(process.env['REDIS_PORT'] || '6379'),
+    password: process.env['REDIS_PASSWORD']
   }
 });
 
 const phonecheckQueue = new Queue(QUEUE_NAMES.PHONECHECK_DATA_PROCESSING, {
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD
+    host: process.env['REDIS_HOST'] || 'localhost',
+    port: parseInt(process.env['REDIS_PORT'] || '6379'),
+    password: process.env['REDIS_PASSWORD']
   }
 });
 
 const dataEnrichmentQueue = new Queue(QUEUE_NAMES.DATA_ENRICHMENT, {
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD
+    host: process.env['REDIS_HOST'] || 'localhost',
+    port: parseInt(process.env['REDIS_PORT'] || '6379'),
+    password: process.env['REDIS_PASSWORD']
   }
 });
 
@@ -59,7 +59,7 @@ export async function addBulkDataToQueue(jobData: BulkDataJob): Promise<void> {
     // First, save to database queue table
     const queueItem = await prisma.dataQueue.create({
       data: {
-        raw_data: jobData.data,
+        rawData: jobData.data,
         source: jobData.source,
         batch_id: jobData.batchId,
         priority: jobData.priority || 5,

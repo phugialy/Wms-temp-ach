@@ -24,18 +24,18 @@ export class InventoryController {
     }
   };
 
-  getInventoryBySku = async (req: Request, res: Response): Promise<void> => {
+  getInventoryByImei = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { sku } = req.params;
+      const { imei } = req.params;
       
-      // For now, we'll get all inventory and filter by SKU
+      // For now, we'll get all inventory and filter by IMEI
       const allInventory = await this.inventoryService.getAllInventory();
-      const inventory = allInventory.filter(inv => inv.item.sku === sku);
+      const inventory = allInventory.filter(inv => inv.item.imei === imei);
       
       if (inventory.length === 0) {
         res.status(404).json({
           success: false,
-          error: 'No inventory found for this SKU'
+          error: 'No inventory found for this IMEI'
         });
         return;
       }
@@ -47,22 +47,21 @@ export class InventoryController {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error in getInventoryBySku controller', { error: errorMessage, sku: req.params['sku'] });
+      logger.error('Error in getInventoryByImei controller', { error: errorMessage, imei: req.params['imei'] });
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve inventory by SKU'
+        error: 'Failed to retrieve inventory by IMEI'
       });
     }
   };
 
   createInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { itemId, locationId, sku, quantity } = req.body;
+      const { itemId, locationId, quantity } = req.body;
       
       const inventory = await this.inventoryService.createInventory({
         itemId,
         locationId,
-        sku,
         quantity
       });
 

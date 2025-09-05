@@ -37,7 +37,7 @@ export class ImeiQueueService {
       for (const item of items) {
         try {
           const { error } = await supabase
-            .from('imei_data_queue')
+            .from('data_queue')
             .insert({
               raw_data: item.raw_data,
               status: 'pending'
@@ -103,7 +103,7 @@ export class ImeiQueueService {
   async getQueueItems(status?: string, limit: number = 100): Promise<QueueItemStatus[]> {
     try {
       let query = supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .select('id, status, error_message, created_at, processed_at')
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -161,7 +161,7 @@ export class ImeiQueueService {
       logger.info('Retrying failed queue items');
       
       const { data, error } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .update({ 
           status: 'pending',
           error_message: null,
@@ -197,7 +197,7 @@ export class ImeiQueueService {
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
       
       const { data, error } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .delete()
         .eq('status', 'completed')
         .lt('processed_at', cutoffDate.toISOString())

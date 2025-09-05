@@ -147,7 +147,7 @@ export class DatabaseAdapterService {
       
       // Insert into queue for processing
       const { data: queueItem, error: queueError } = await supabase
-        .from('imei_data_queue')
+        .from('data_queue')
         .insert({
           raw_data: imeiData,
           source: 'api-adapter',

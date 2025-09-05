@@ -1,65 +1,54 @@
-const SkuMatchingService = require('./src/services/skuMatchingService');
+const { Pool } = require('pg');
+require('dotenv').config();
 
 async function testSkuParsing() {
-  const service = new SkuMatchingService();
-  
-  // Test device data (from our IMEI)
-  const deviceData = {
-    brand: 'Unknown',
-    model: 'Galaxy Z Fold3 Duos',
-    capacity: '256GB',
-    color: 'Phantom Green',
-    carrier: 'Unlocked'
-  };
-  
-  console.log('🔍 Testing SKU Matching...');
-  console.log('Device Data:', deviceData);
-  
-  // Test parsing some SKU codes
-  const testSkus = [
-    'FOLD3-256-BLK',
-    'FOLD3-256-GREEN',
-    'FOLD3-256-BLK-ATT',
-    'A15-128-BLK-ATT'
-  ];
-  
-  console.log('\n📋 Testing SKU Parsing:');
-  for (const sku of testSkus) {
-    const parsed = service.parseSkuCode(sku);
-    console.log(`SKU: ${sku}`);
-    console.log(`  Parsed:`, parsed);
-  }
-  
-  // Test device similarity
-  console.log('\n🔍 Testing Device Similarity:');
-  const device1 = {
-    brand: 'Unknown',
-    model: 'Galaxy Z Fold3 Duos',
-    capacity: '256GB',
-    color: 'GRN',
-    carrier: 'UNLOCKED'
-  };
-  
-  const device2 = {
-    brand: 'Samsung',
-    model: 'Galaxy Z Fold3',
-    capacity: '256GB',
-    color: 'GRN',
-    carrier: 'UNLOCKED'
-  };
-  
-  const similarity = service.calculateDeviceSimilarity(device1, device2);
-  console.log('Device 1:', device1);
-  console.log('Device 2:', device2);
-  console.log('Similarity Score:', similarity);
-  
-  // Test field comparison
-  console.log('\n🔍 Testing Field Comparison:');
-  console.log('Brand comparison:', service.compareField('Unknown', 'Samsung'));
-  console.log('Model comparison:', service.compareField('Galaxy Z Fold3 Duos', 'Galaxy Z Fold3'));
-  console.log('Capacity comparison:', service.compareField('256GB', '256GB'));
-  console.log('Color comparison:', service.compareField('GRN', 'GRN'));
-  console.log('Carrier comparison:', service.compareField('UNLOCKED', 'UNLOCKED'));
+    console.log('🔍 Testing SKU parsing step by step...');
+    
+    try {
+        // Test connection
+        const pool = new Pool({
+            connectionString: process.env.DIRECT_URL,
+            max: 1,
+        });
+        
+        const client = await pool.connect();
+        console.log('✅ Connected to database');
+        
+        // Test 1: Get SKU count
+        const countResult = await client.query('SELECT COUNT(*) FROM sku_master');
+        const totalSkus = parseInt(countResult.rows[0].count);
+        console.log(`📋 Total SKUs: ${totalSkus}`);
+        
+        // Test 2: Get first few SKUs
+        const skusResult = await client.query(`
+            SELECT id, sku_code, brand, model, capacity, color, carrier, post_fix
+            FROM sku_master 
+            ORDER BY id 
+            LIMIT 5
+        `);
+        
+        console.log('📱 First 5 SKUs:');
+        skusResult.rows.forEach((sku, index) => {
+            console.log(`  ${index + 1}. ${sku.sku_code} (${sku.brand})`);
+        });
+        
+        // Test 3: Check if tag tables exist
+        const tagTablesResult = await client.query(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name IN ('sku_tags', 'sku_master_tags')
+        `);
+        
+        console.log('🏷️  Tag tables found:', tagTablesResult.rows.map(r => r.table_name));
+        
+        client.release();
+        await pool.end();
+        console.log('✅ Test completed successfully');
+        
+    } catch (error) {
+        console.error('❌ Test failed:', error.message);
+    }
 }
 
-testSkuParsing().catch(console.error);
+testSkuParsing();

@@ -4,10 +4,11 @@ import { logger } from '../utils/logger';
 const prisma = new PrismaClient();
 
 export interface CreateInventoryInput {
-  itemId: number;
-  locationId: number;
   sku: string;
-  quantity: number;
+  location: string;
+  qtyTotal?: number;
+  passDevices?: number;
+  failedDevices?: number;
   reserved?: number;
   available?: number;
 }
@@ -16,11 +17,11 @@ export class InventoryService {
   
   async createInventory(data: CreateInventoryInput) {
     try {
-      // Check if inventory already exists for this item and location
+      // Check if inventory already exists for this SKU and location
       const existingInventory = await prisma.inventory.findFirst({
         where: {
-          itemId: data.itemId,
-          locationId: data.locationId,
+          sku: data.sku,
+          location: data.location,
         },
       });
 
@@ -29,21 +30,29 @@ export class InventoryService {
         const inventory = await prisma.inventory.update({
           where: { id: existingInventory.id },
           data: {
-            quantity: existingInventory.quantity + data.quantity,
+            qtyTotal: (existingInventory.qtyTotal || 0) + (data.qtyTotal || 0),
+            passDevices: (existingInventory.passDevices || 0) + (data.passDevices || 0),
+            failedDevices: (existingInventory.failedDevices || 0) + (data.failedDevices || 0),
+            reserved: data.reserved || existingInventory.reserved,
+            available: data.available || existingInventory.available,
           },
         });
-        logger.info('Inventory record updated', { inventoryId: inventory.id, locationId: inventory.locationId });
+        logger.info('Inventory record updated', { inventoryId: inventory.id, sku: inventory.sku, location: inventory.location });
         return inventory;
       } else {
         // Create new inventory record
         const inventory = await prisma.inventory.create({
           data: {
-            itemId: data.itemId,
-            locationId: data.locationId,
-            quantity: data.quantity,
+            sku: data.sku,
+            location: data.location,
+            qtyTotal: data.qtyTotal || 0,
+            passDevices: data.passDevices || 0,
+            failedDevices: data.failedDevices || 0,
+            reserved: data.reserved || 0,
+            available: data.available || 0,
           }
         });
-        logger.info('Inventory record created', { inventoryId: inventory.id, locationId: inventory.locationId });
+        logger.info('Inventory record created', { inventoryId: inventory.id, sku: inventory.sku, location: inventory.location });
         return inventory;
       }
     } catch (error) {
@@ -66,36 +75,24 @@ export class InventoryService {
     }
   }
 
-  async getInventoryByItemId(itemId: number) {
+  async getInventoryBySku(sku: string) {
     try {
-      return await prisma.inventory.findFirst({
-        where: { itemId },
-        include: {
-          item: true,
-          location: true
-        }
+      return await prisma.inventory.findMany({
+        where: { sku }
       });
     } catch (error) {
-      logger.error('Error getting inventory by item ID', { error, itemId });
+      logger.error('Error getting inventory by SKU', { error, sku });
       throw error;
     }
   }
 
-  async getInventoryByLocation(locationId: number) {
+  async getInventoryByLocation(location: string) {
     try {
       return await prisma.inventory.findMany({
-        where: { locationId },
-        include: {
-          item: true,
-          location: {
-            include: {
-              warehouse: true
-            }
-          }
-        }
+        where: { location }
       });
     } catch (error) {
-      logger.error('Error getting inventory by location', { error, locationId });
+      logger.error('Error getting inventory by location', { error, location });
       throw error;
     }
   }
@@ -103,14 +100,6 @@ export class InventoryService {
   async getAllInventory() {
     try {
       return await prisma.inventory.findMany({
-        include: {
-          item: true,
-          location: {
-            include: {
-              warehouse: true
-            }
-          }
-        },
         orderBy: {
           updatedAt: 'desc'
         }
@@ -135,40 +124,25 @@ export class InventoryService {
 
   async getInventorySummary() {
     try {
-      const inventory = await prisma.inventory.findMany({
-        include: {
-          item: true,
-          location: true
-        }
-      });
+      const inventory = await prisma.inventory.findMany();
 
       const summary = {
         totalItems: inventory.length,
-        availableItems: inventory.reduce((sum, inv) => sum + inv.quantity, 0),
-        reservedItems: 0, // No reserved items in current schema
-        byBrand: {} as Record<string, number>,
-        byModel: {} as Record<string, number>,
-        byCondition: {} as Record<string, number>,
+        totalQuantity: inventory.reduce((sum, inv) => sum + (inv.qtyTotal || 0), 0),
+        passDevices: inventory.reduce((sum, inv) => sum + (inv.passDevices || 0), 0),
+        failedDevices: inventory.reduce((sum, inv) => sum + (inv.failedDevices || 0), 0),
+        reserved: inventory.reduce((sum, inv) => sum + (inv.reserved || 0), 0),
+        available: inventory.reduce((sum, inv) => sum + (inv.available || 0), 0),
+        byLocation: {} as Record<string, number>,
+        bySku: {} as Record<string, number>,
       };
 
       inventory.forEach((inv) => {
-        // Since the current schema doesn't have brand, model, condition directly on item,
-        // we'll use description or status for categorization
-        if (inv.item?.description) {
-          const description = inv.item.description.toLowerCase();
-          if (description.includes('apple') || description.includes('iphone')) {
-            summary.byBrand['Apple'] = (summary.byBrand['Apple'] || 0) + inv.quantity;
-          } else if (description.includes('samsung')) {
-            summary.byBrand['Samsung'] = (summary.byBrand['Samsung'] || 0) + inv.quantity;
-          } else {
-            summary.byBrand['Other'] = (summary.byBrand['Other'] || 0) + inv.quantity;
-          }
-        }
+        // Group by location
+        summary.byLocation[inv.location] = (summary.byLocation[inv.location] || 0) + (inv.qtyTotal || 0);
         
-        // Use status for condition
-        if (inv.item?.status) {
-          summary.byCondition[inv.item.status] = (summary.byCondition[inv.item.status] || 0) + inv.quantity;
-        }
+        // Group by SKU
+        summary.bySku[inv.sku] = (summary.bySku[inv.sku] || 0) + (inv.qtyTotal || 0);
       });
 
       return summary;
@@ -183,15 +157,9 @@ export class InventoryService {
       const inventory = await prisma.inventory.findMany({
         where: {
           OR: [
-            { item: { sku: { contains: query, mode: 'insensitive' } } },
-            { item: { name: { contains: query, mode: 'insensitive' } } },
-            { item: { description: { contains: query, mode: 'insensitive' } } },
-            { item: { imei: { contains: query, mode: 'insensitive' } } },
+            { sku: { contains: query, mode: 'insensitive' } },
+            { location: { contains: query, mode: 'insensitive' } },
           ],
-        },
-        include: {
-          item: true,
-          location: true,
         },
       });
       return inventory;

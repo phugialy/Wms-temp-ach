@@ -142,7 +142,7 @@ class GoogleSheetsService {
     return skus;
   }
 
-  // Parse product description to extract device information
+  // Enhanced product description parsing with tag generation
   parseProductDescription(description, skuCode, sheetName) {
     const desc = (description || '').toLowerCase();
     const sku = (skuCode || '').toUpperCase();
@@ -152,6 +152,8 @@ class GoogleSheetsService {
     let capacity = '';
     let color = '';
     let carrier = '';
+    let post_fix = '';
+    let device_type = 'PHONE';
     
     // Determine brand based on sheet name and description
     if (sheetName.includes('APPLE') || desc.includes('apple') || desc.includes('iphone') || desc.includes('ipad')) {
@@ -190,6 +192,21 @@ class GoogleSheetsService {
       carrier = 'UNLOCKED';
     }
     
+    // Extract postfix (usually at the end after a dash)
+    const postfixMatch = sku.match(/-([A-Z0-9]+)$/);
+    if (postfixMatch) {
+      post_fix = postfixMatch[1];
+    }
+    
+    // Determine device type
+    if (sku.includes('IPAD') || sku.includes('TAB') || desc.includes('tablet')) {
+      device_type = 'TABLET';
+    } else if (sku.includes('WATCH') || sku.includes('AW') || desc.includes('watch')) {
+      device_type = 'WATCH';
+    } else if (sku.includes('MAC') || sku.includes('IMAC') || desc.includes('macbook')) {
+      device_type = 'DESKTOP';
+    }
+    
     // Extract model from description or SKU
     if (desc.includes('iphone')) {
       const iphoneMatch = desc.match(/iphone\s*(\d+)/i) || sku.match(/IP-(\d+)/);
@@ -213,7 +230,88 @@ class GoogleSheetsService {
       }
     }
     
-    return { brand, model, capacity, color, carrier };
+    // Generate tags for SKU matching
+    const tags = this.generateTags({ brand, model, capacity, color, carrier, post_fix, device_type }, sku);
+    
+    return { 
+      brand, 
+      model, 
+      capacity, 
+      color, 
+      carrier, 
+      post_fix, 
+      device_type,
+      sku_tags: tags,
+      tag_count: tags.length
+    };
+  }
+
+  // Generate tags array for SKU matching
+  generateTags(deviceInfo, sku) {
+    const tags = [];
+    
+    // Add brand tag
+    if (deviceInfo.brand) {
+      tags.push(deviceInfo.brand);
+    }
+    
+    // Add model tag (normalized)
+    if (deviceInfo.model) {
+      const normalizedModel = this.normalizeModel(deviceInfo.model);
+      if (normalizedModel) tags.push(normalizedModel);
+    }
+    
+    // Add capacity tag
+    if (deviceInfo.capacity) {
+      tags.push(deviceInfo.capacity);
+    }
+    
+    // Add color tag
+    if (deviceInfo.color) {
+      tags.push(deviceInfo.color);
+    }
+    
+    // Add carrier tag
+    if (deviceInfo.carrier) {
+      tags.push(deviceInfo.carrier);
+    }
+    
+    // Add postfix tag
+    if (deviceInfo.post_fix) {
+      tags.push(deviceInfo.post_fix);
+    }
+    
+    // Add device type tag
+    if (deviceInfo.device_type) {
+      tags.push(deviceInfo.device_type);
+    }
+    
+    // Add SKU segments as individual tags for flexible matching
+    const segments = sku.split(/[-_\/]/).filter(seg => seg.length > 1);
+    segments.forEach(segment => {
+      if (!tags.includes(segment)) {
+        tags.push(segment);
+      }
+    });
+    
+    return tags;
+  }
+
+  // Normalize model names for consistent matching
+  normalizeModel(model) {
+    if (!model) return null;
+    
+    const normalized = model
+      .replace(/\s+/g, ' ')
+      .replace(/\bDUOS\b/gi, 'Duos')
+      .replace(/\b5G\b/gi, '5G')
+      .replace(/\bULTRA\b/gi, 'Ultra')
+      .replace(/\bPLUS\b/gi, 'Plus')
+      .replace(/\bPRO\b/gi, 'Pro')
+      .replace(/\bMAX\b/gi, 'Max')
+      .trim();
+    
+    return normalized;
   }
 
   // Sync all SKUs from Google Sheets
@@ -306,8 +404,11 @@ class GoogleSheetsService {
   // Upsert SKU to database
   async upsertSku(client, skuData) {
     const query = `
-      INSERT INTO sku_master (sku_code, brand, model, capacity, color, carrier, post_fix, is_unlocked, source_tab, sheet_row_id, last_synced)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      INSERT INTO sku_master (
+        sku_code, brand, model, capacity, color, carrier, post_fix, 
+        device_type, source_tab, sheet_row_id, sku_tags, tag_count,
+        is_active, last_synced, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW(), NOW())
       ON CONFLICT (sku_code) 
       DO UPDATE SET 
         brand = EXCLUDED.brand,
@@ -316,9 +417,12 @@ class GoogleSheetsService {
         color = EXCLUDED.color,
         carrier = EXCLUDED.carrier,
         post_fix = EXCLUDED.post_fix,
-        is_unlocked = EXCLUDED.is_unlocked,
+        device_type = EXCLUDED.device_type,
         source_tab = EXCLUDED.source_tab,
         sheet_row_id = EXCLUDED.sheet_row_id,
+        sku_tags = EXCLUDED.sku_tags,
+        tag_count = EXCLUDED.tag_count,
+        is_active = EXCLUDED.is_active,
         last_synced = NOW(),
         updated_at = NOW()
       RETURNING id, (xmax = 0) as is_new
@@ -332,9 +436,12 @@ class GoogleSheetsService {
       skuData.color,
       skuData.carrier,
       skuData.post_fix,
-      skuData.is_unlocked,
+      skuData.device_type,
       skuData.source_tab,
-      skuData.sheet_row_id
+      skuData.sheet_row_id,
+      skuData.sku_tags,
+      skuData.tag_count,
+      true
     ];
     
     const result = await client.query(query, values);

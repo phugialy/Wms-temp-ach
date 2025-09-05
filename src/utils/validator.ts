@@ -1,19 +1,30 @@
 import { z } from 'zod';
 
-// Item validation schemas
+// Item validation schemas - Updated to match actual database structure
 export const createItemSchema = z.object({
-  sku: z.string().optional(), // Now optional - will be auto-generated if not provided
-  name: z.string().min(1, 'Name is required'),
-  description: z.string().optional(),
-  imei: z.string().optional(), // Optional unique IMEI
-  status: z.string().default('active')
+  imei: z.string().min(1, 'IMEI is required'),
+  model: z.string().optional(),
+  modelNumber: z.string().optional(),
+  carrier: z.string().optional(),
+  capacity: z.string().optional(),
+  color: z.string().optional(),
+  batteryHealth: z.string().optional(),
+  batteryCount: z.number().optional(),
+  working: z.string().optional(),
+  location: z.string().optional()
 });
 
 export const updateItemSchema = z.object({
-  name: z.string().min(1, 'Name is required').optional(),
-  description: z.string().optional(),
   imei: z.string().optional(),
-  status: z.string().optional()
+  model: z.string().optional(),
+  modelNumber: z.string().optional(),
+  carrier: z.string().optional(),
+  capacity: z.string().optional(),
+  color: z.string().optional(),
+  batteryHealth: z.string().optional(),
+  batteryCount: z.number().optional(),
+  working: z.string().optional(),
+  location: z.string().optional()
 });
 
 // Inventory validation schemas

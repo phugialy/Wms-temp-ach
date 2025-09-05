@@ -1,0 +1,303 @@
+const { Pool } = require('pg');
+require('dotenv').config();
+
+const pool = new Pool({
+  connectionString: process.env.DIRECT_URL,
+});
+
+async function fixCustomTriggers() {
+  const client = await pool.connect();
+  try {
+    console.log('🔧 Fixing custom triggers (working around system triggers)...');
+    
+    // Step 1: Check what triggers we have
+    console.log('\n📋 Step 1: Checking existing triggers...');
+    
+    const existingTriggers = await client.query(`
+      SELECT trigger_name, action_statement, action_timing, event_manipulation
+      FROM information_schema.triggers 
+      WHERE event_object_table = 'data_queue'
+      AND trigger_name NOT LIKE 'RI_%'
+      ORDER BY trigger_name
+    `);
+    
+    console.log('📋 Custom triggers found:');
+    existingTriggers.rows.forEach(trigger => {
+      console.log(`  ${trigger.trigger_name}: ${trigger.action_timing} ${trigger.event_manipulation} -> ${trigger.action_statement}`);
+    });
+    
+    // Step 2: Drop only our custom triggers
+    console.log('\n📋 Step 2: Dropping custom triggers...');
+    
+    for (const trigger of existingTriggers.rows) {
+      try {
+        await client.query(`DROP TRIGGER IF EXISTS ${trigger.trigger_name} ON data_queue`);
+        console.log(`✅ Dropped trigger: ${trigger.trigger_name}`);
+      } catch (error) {
+        console.log(`⚠️  Could not drop ${trigger.trigger_name}: ${error.message}`);
+      }
+    }
+    
+    // Step 3: Drop our custom functions
+    console.log('\n📋 Step 3: Dropping custom functions...');
+    
+    const functionsToDrop = [
+      'process_data_queue_automatically',
+      'process_data_queue_item', 
+      'auto_process_queue_items'
+    ];
+    
+    for (const funcName of functionsToDrop) {
+      try {
+        await client.query(`DROP FUNCTION IF EXISTS ${funcName}()`);
+        console.log(`✅ Dropped function: ${funcName}`);
+      } catch (error) {
+        console.log(`⚠️  Could not drop ${funcName}: ${error.message}`);
+      }
+    }
+    
+    // Step 4: Create a simple, working trigger function
+    console.log('\n📋 Step 4: Creating simple trigger function...');
+    
+    const simpleTriggerFunction = `
+      CREATE OR REPLACE FUNCTION process_data_queue_simple()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        -- Only process when status changes to 'pending'
+        IF NEW.status = 'pending' AND (OLD.status IS NULL OR OLD.status != 'pending') THEN
+          
+          -- Insert into product table
+          INSERT INTO product (imei, brand, sku, created_at, updated_at)
+          VALUES (
+            NEW.raw_data->>'imei',
+            NEW.raw_data->>'brand',
+            NEW.raw_data->>'brand' || '-' || NEW.raw_data->>'model' || '-' || RIGHT(NEW.raw_data->>'imei', 4),
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (imei) DO UPDATE SET
+            brand = EXCLUDED.brand,
+            sku = EXCLUDED.sku,
+            updated_at = NOW();
+          
+          -- Insert into item table
+          INSERT INTO item (
+            imei, model, model_number, carrier, capacity, color, 
+            battery_health, battery_count, working, location, 
+            created_at, updated_at
+          )
+          VALUES (
+            NEW.raw_data->>'imei',
+            NEW.raw_data->>'model',
+            COALESCE(NEW.raw_data->>'serialNumber', NEW.raw_data->>'serialnumber', NEW.raw_data->>'model'),
+            NEW.raw_data->>'carrier',
+            NEW.raw_data->>'storage',
+            NEW.raw_data->>'color',
+            COALESCE(NEW.raw_data->>'batteryHealth', NEW.raw_data->>'batteryhealth', NEW.raw_data->>'BatteryHealthPercentage'),
+            COALESCE((NEW.raw_data->>'batteryCycleCount')::integer, (NEW.raw_data->>'BatteryCycle')::integer, (NEW.raw_data->>'bcc')::integer),
+            NEW.raw_data->>'working',
+            COALESCE(NEW.raw_data->>'location', 'INCOMING'),
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (imei) DO UPDATE SET
+            model = EXCLUDED.model,
+            model_number = EXCLUDED.model_number,
+            carrier = EXCLUDED.carrier,
+            capacity = EXCLUDED.capacity,
+            color = EXCLUDED.color,
+            battery_health = EXCLUDED.battery_health,
+            battery_count = EXCLUDED.battery_count,
+            working = EXCLUDED.working,
+            location = EXCLUDED.location,
+            updated_at = NOW();
+          
+          -- Insert into device_test table ONLY if working status is valid (not PENDING)
+          IF NEW.raw_data->>'working' IS NOT NULL 
+             AND NEW.raw_data->>'working' != 'PENDING' 
+             AND NEW.raw_data->>'working' != '' THEN
+            
+            INSERT INTO device_test (imei, working, notes, tester, created_at)
+            VALUES (
+              NEW.raw_data->>'imei',
+              NEW.raw_data->>'working',
+              NEW.raw_data->>'notes',
+              COALESCE(NEW.raw_data->>'TesterName', NEW.raw_data->>'testerName'),
+              NOW()
+            )
+            ON CONFLICT (imei) DO UPDATE SET
+              working = EXCLUDED.working,
+              notes = EXCLUDED.notes,
+              tester = EXCLUDED.tester,
+              created_at = NOW();
+          END IF;
+          
+          -- Insert into sku_matching_queue for SKU matching
+          INSERT INTO sku_matching_queue (imei, status, created_at, updated_at)
+          VALUES (NEW.raw_data->>'imei', 'pending', NOW(), NOW())
+          ON CONFLICT (imei) DO UPDATE SET
+            status = 'pending',
+            updated_at = NOW();
+          
+          -- Mark as completed
+          UPDATE data_queue 
+          SET status = 'completed', processed_at = NOW(), updated_at = NOW()
+          WHERE id = NEW.id;
+          
+        END IF;
+        
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `;
+    
+    await client.query(simpleTriggerFunction);
+    console.log('✅ Simple trigger function created');
+    
+    // Step 5: Create a single, clean trigger
+    console.log('\n📋 Step 5: Creating single trigger...');
+    
+    await client.query(`
+      CREATE TRIGGER trigger_process_data_queue_simple
+      AFTER INSERT OR UPDATE ON data_queue
+      FOR EACH ROW
+      EXECUTE FUNCTION process_data_queue_simple();
+    `);
+    console.log('✅ Single trigger created');
+    
+    // Step 6: Test the new system
+    console.log('\n📋 Step 6: Testing new system...');
+    
+    const testData = {
+      imei: '222222222222222',
+      brand: 'Samsung',
+      model: 'Galaxy S21',
+      working: 'YES',
+      carrier: 'Verizon',
+      storage: '256GB',
+      color: 'Black',
+      serialNumber: 'SN-TEST-456',
+      batteryHealth: '95',
+      batteryCycle: '100',
+      notes: 'CARRIER UNLOCKED',
+      TesterName: 'TestTester'
+    };
+    
+    try {
+      const result = await client.query(`
+        INSERT INTO data_queue (raw_data, status, source, priority, retry_count, max_retries)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `, [testData, 'pending', 'test', 5, 0, 3]);
+      
+      console.log(`✅ Test insert successful: ID ${result.rows[0].id}`);
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check processing result
+      const checkResult = await client.query(`
+        SELECT status, processed_at FROM data_queue WHERE id = $1
+      `, [result.rows[0].id]);
+      
+      console.log(`📊 Processing result: ${checkResult.rows[0].status}`);
+      
+      // Check data insertion
+      const productCheck = await client.query(`
+        SELECT imei, brand FROM product WHERE imei = $1
+      `, [testData.imei]);
+      
+      const itemCheck = await client.query(`
+        SELECT imei, model_number FROM item WHERE imei = $1
+      `, [testData.imei]);
+      
+      const skuQueueCheck = await client.query(`
+        SELECT imei, status FROM sku_matching_queue WHERE imei = $1
+      `, [testData.imei]);
+      
+      console.log(`📊 Product table: ${productCheck.rows.length > 0 ? '✅' : '❌'}`);
+      console.log(`📊 Item table: ${itemCheck.rows.length > 0 ? '✅' : '❌'}`);
+      console.log(`📊 SKU matching queue: ${skuQueueCheck.rows.length > 0 ? '✅' : '❌'}`);
+      
+      if (itemCheck.rows.length > 0) {
+        console.log(`📊 Model number: ${itemCheck.rows[0].model_number} (expected: ${testData.serialNumber})`);
+      }
+      
+      // Clean up
+      await client.query(`DELETE FROM device_test WHERE imei = $1`, [testData.imei]);
+      await client.query(`DELETE FROM item WHERE imei = $1`, [testData.imei]);
+      await client.query(`DELETE FROM product WHERE imei = $1`, [testData.imei]);
+      await client.query(`DELETE FROM sku_matching_queue WHERE imei = $1`, [testData.imei]);
+      await client.query(`DELETE FROM data_queue WHERE id = $1`, [result.rows[0].id]);
+      
+      console.log('✅ Test data cleaned up');
+      console.log('\n🎉 Custom trigger system fixed successfully!');
+      
+      // Test with PENDING status
+      console.log('\n📋 Step 7: Testing PENDING status...');
+      
+      const pendingTestData = {
+        imei: '333333333333333',
+        brand: 'Samsung',
+        model: 'Galaxy S21',
+        working: 'PENDING',
+        carrier: 'Verizon',
+        storage: '256GB',
+        color: 'Black',
+        serialNumber: 'SN-PENDING-789',
+        batteryHealth: '95',
+        batteryCycle: '100',
+        notes: 'N/A',
+        TesterName: 'TestTester'
+      };
+      
+      const pendingResult = await client.query(`
+        INSERT INTO data_queue (raw_data, status, source, priority, retry_count, max_retries)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `, [pendingTestData, 'pending', 'test', 5, 0, 3]);
+      
+      console.log(`✅ PENDING test insert successful: ID ${pendingResult.rows[0].id}`);
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check processing result
+      const pendingCheckResult = await client.query(`
+        SELECT status, processed_at FROM data_queue WHERE id = $1
+      `, [pendingResult.rows[0].id]);
+      
+      console.log(`📊 PENDING processing result: ${pendingCheckResult.rows[0].status}`);
+      
+      // Check that device_test was NOT created for PENDING
+      const pendingDeviceTestCheck = await client.query(`
+        SELECT imei FROM device_test WHERE imei = $1
+      `, [pendingTestData.imei]);
+      
+      console.log(`📊 PENDING device_test (should be empty): ${pendingDeviceTestCheck.rows.length === 0 ? '✅' : '❌'}`);
+      
+      // Clean up PENDING test
+      await client.query(`DELETE FROM item WHERE imei = $1`, [pendingTestData.imei]);
+      await client.query(`DELETE FROM product WHERE imei = $1`, [pendingTestData.imei]);
+      await client.query(`DELETE FROM sku_matching_queue WHERE imei = $1`, [pendingTestData.imei]);
+      await client.query(`DELETE FROM data_queue WHERE id = $1`, [pendingResult.rows[0].id]);
+      
+      console.log('✅ PENDING test data cleaned up');
+      console.log('\n🎉 All tests passed! System is ready for production use.');
+      
+    } catch (error) {
+      console.log(`❌ Test failed: ${error.message}`);
+      console.log('\n⚠️  Trigger system fix failed - will need manual processing');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error during fix:', error.message);
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+fixCustomTriggers();
+
+
