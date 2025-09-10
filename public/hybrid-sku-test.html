@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid SKU Matching Test Suite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .header .subtitle {
+            font-size: 1em;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+
+        .header .features {
+            font-size: 0.9em;
+            opacity: 0.7;
+            margin-top: 15px;
+            line-height: 1.4;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .test-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .test-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+        }
+        
+        .test-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+            border-color: #3498db;
+        }
+        
+        .test-card h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .test-card p {
+            color: #6c757d;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .feature-list {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+        
+        .feature-list li {
+            padding: 5px 0;
+            color: #495057;
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .feature-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+        
+        .btn-success:hover {
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+        }
+        
+        .btn-warning:hover {
+            box-shadow: 0 8px 25px rgba(255, 193, 7, 0.4);
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e9ecef;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results {
+            margin-top: 30px;
+            padding: 30px;
+            border-radius: 15px;
+            border-left: 5px solid #3498db;
+            background: #f8f9fa;
+        }
+        
+        .results.success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        
+        .results.error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        
+        .results h2 {
+            margin-bottom: 20px;
+            color: inherit;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .summary-card h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        
+        .summary-item strong {
+            color: #2c3e50;
+        }
+        
+        .confidence-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin: 2px;
+        }
+        
+        .confidence-high { background: #d4edda; color: #155724; }
+        .confidence-medium { background: #fff3cd; color: #856404; }
+        .confidence-low { background: #f8d7da; color: #721c24; }
+        .confidence-very-low { background: #f5c6cb; color: #721c24; }
+        
+        .test-input {
+            margin: 20px 0;
+        }
+        
+        .test-input textarea {
+            width: 100%;
+            height: 200px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+        
+        .test-input textarea:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        
+        .phone-type-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .phone-type-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        
+        .phone-type-card:hover {
+            border-color: #3498db;
+            transform: translateY(-2px);
+        }
+        
+        .phone-type-card h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .match-details {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #e9ecef;
+        }
+        
+        .match-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+
+        .device-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .device-info {
+            flex: 1;
+        }
+
+        .device-details {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        .match-stats {
+            flex: 1;
+            text-align: center;
+        }
+
+        .sku-matched {
+            flex: 1;
+            text-align: right;
+        }
+
+        .top-sku {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .sku-label {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+
+        .sku-code {
+            font-weight: bold;
+            color: #28a745;
+            font-family: monospace;
+        }
+
+        .sku-score {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+
+        .no-match {
+            color: #dc3545;
+            font-style: italic;
+        }
+
+        .clickable-row {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .clickable-row:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .click-hint {
+            flex: 0 0 auto;
+            text-align: right;
+            font-size: 0.8em;
+            color: #6c757d;
+            opacity: 0.7;
+        }
+
+        .undefined-flag {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.8em;
+        }
+
+        .valid-flag {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.8em;
+        }
+        
+        .match-item.high-score {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .match-item.medium-score {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        
+        .match-item.low-score {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        
+        .tag-breakdown {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .tag-item {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .tag-item.has-value {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        details {
+            margin: 20px 0;
+        }
+        
+        summary {
+            cursor: pointer;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        summary:hover {
+            background: #dee2e6;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-size: 12px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .stats-row {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            color: white;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .phone-type-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-row {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Hybrid SKU Matching Test Suite</h1>
+            <p>Advanced tag-first matching with progressive scoring and normalization integration</p>
+            <div class="subtitle">
+                ✨ Now with Smart Suggestions + Undefined Classification
+            </div>
+            <div class="features">
+                🎯 Smart Suggestions: Finds best available match even with missing data<br>
+                ⚠️ Undefined Classification: Flags matches with missing critical data<br>
+                📝 Clear Feedback: Explains why matches are undefined<br>
+                🔍 Enhanced Accuracy: Improved scoring and brand isolation
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="test-grid">
+                <div class="test-card">
+                    <h2>🧪 Comprehensive Test Suite</h2>
+                    <p>Test the hybrid matching system with smart suggestions and undefined classification across 20+ device scenarios.</p>
+                    <ul class="feature-list">
+                        <li>✅ <strong>Valid Matches</strong> - Should work correctly (may be undefined due to missing SKU data)</li>
+                        <li>❌ <strong>Undefined Cases</strong> - Missing critical data (carrier, color, capacity)</li>
+                        <li>🔍 <strong>Model Mismatches</strong> - Suggests closest match but flags as undefined</li>
+                        <li>🚨 <strong>Cross-Brand Detection</strong> - Brand contamination prevention</li>
+                        <li>📱 <strong>Edge Cases</strong> - Complex scenarios & special devices</li>
+                        <li>🎯 <strong>Perfect Matches</strong> - Still undefined if SKU missing critical data</li>
+                    </ul>
+                    <button class="btn" onclick="runComprehensiveTest()">
+                        🚀 Run Full Test Suite
+                    </button>
+                </div>
+                
+                <div class="test-card">
+                    <h2>🔍 Single Device Test</h2>
+                    <p>Test individual devices with detailed matching analysis and tag breakdown.</p>
+                    <ul class="feature-list">
+                        <li>Real-time matching results</li>
+                        <li>Tag array analysis</li>
+                        <li>Confidence scoring</li>
+                        <li>Match type identification</li>
+                        <li>Processing time metrics</li>
+                    </ul>
+                    <button class="btn btn-success" onclick="runSingleTest()">
+                        🔍 Test Single Device
+                    </button>
+                </div>
+                
+                <div class="test-card">
+                    <h2>📦 Bulk Processing Test</h2>
+                    <p>Test bulk device processing with your own data format.</p>
+                    <ul class="feature-list">
+                        <li>Custom bulk-add data format</li>
+                        <li>Batch processing analysis</li>
+                        <li>Performance metrics</li>
+                        <li>Success rate tracking</li>
+                        <li>Error handling validation</li>
+                    </ul>
+                    <button class="btn btn-warning" onclick="runBulkTest()">
+                        📦 Test Bulk Processing
+                    </button>
+                </div>
+                
+                <div class="test-card">
+                    <h2>⚡ Performance Benchmark</h2>
+                    <p>Compare performance between hybrid and original matching systems.</p>
+                    <ul class="feature-list">
+                        <li>Speed comparison</li>
+                        <li>Accuracy analysis</li>
+                        <li>Memory usage tracking</li>
+                        <li>Query optimization metrics</li>
+                        <li>Scalability testing</li>
+                    </ul>
+                    <button class="btn" onclick="runPerformanceTest()">
+                        ⚡ Run Benchmark
+                    </button>
+                </div>
+            </div>
+            
+            <div class="test-input" id="bulkInputSection" style="display: none;">
+                <h3>📝 Bulk Test Data</h3>
+                <textarea id="bulkTestData" placeholder="Paste your bulk test data here (JSON format)">
+[
+  {
+    "imei": "357123456789001",
+    "brand": "Samsung",
+    "model": "Galaxy S23 Ultra",
+    "capacity": "256GB",
+    "color": "Black",
+    "carrier": "Unlocked",
+    "device_notes": "Excellent condition"
+  },
+  {
+    "imei": "357123456789002",
+    "brand": "Apple",
+    "model": "iPhone 13",
+    "capacity": "128GB",
+    "color": "Blue",
+    "carrier": "Verizon",
+    "device_notes": "Good condition"
+  }
+]
+                </textarea>
+                <button class="btn btn-success" onclick="executeBulkTest()">
+                    🚀 Execute Bulk Test
+                </button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <h3>Processing Tests...</h3>
+                <p>This may take a few minutes depending on the test size.</p>
+            </div>
+            
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        // Enhanced test data for dynamic undefined classification testing
+        const testDevices = [
+            // ✅ VALID MATCHES - Should work correctly (but may be undefined due to missing carrier in SKU)
+            { imei: "TEST001", brand: "Samsung", model: "Galaxy S23", capacity: "128GB", color: "Black", carrier: "Unlocked", device_notes: "✅ VALID: Standard model - Should match S23-128-BLK" },
+            { imei: "TEST003", brand: "Samsung", model: "Galaxy S23 Ultra", capacity: "512GB", color: "Green", carrier: "T-Mobile", device_notes: "✅ VALID: Ultra model - Should match S23-ULTRA-512-GRN" },
+            { imei: "TEST006", brand: "Apple", model: "iPhone 13", capacity: "128GB", color: "Blue", carrier: "Unlocked", device_notes: "✅ VALID: Standard iPhone - Should match iPhone 13" },
+            { imei: "TEST010", brand: "Google", model: "Pixel 7", capacity: "128GB", color: "Obsidian", carrier: "Unlocked", device_notes: "✅ VALID: Google flagship - Should match Pixel 7" },
+            
+            // ❌ UNDEFINED CASES - Missing Critical Data (Smart Suggestions + Undefined Classification)
+            { imei: "TEST002", brand: "Samsung", model: "Galaxy Z Fold 5", capacity: "512GB", color: "Black", carrier: "AT&T", device_notes: "❌ UNDEFINED: FOLD 5 with AT&T - Missing carrier in SKU" },
+            { imei: "TEST005", brand: "Samsung", model: "Galaxy S24 Ultra", capacity: "1TB", color: "Titanium", carrier: "AT&T", device_notes: "❌ UNDEFINED: 1TB capacity - Missing capacity in SKU" },
+            { imei: "TEST004", brand: "Samsung", model: "Galaxy S23", capacity: "128GB", color: "Black", carrier: "", device_notes: "❌ UNDEFINED: Missing carrier input - Should flag as undefined" },
+            { imei: "TEST007", brand: "Apple", model: "iPhone 13 Pro", capacity: "256GB", color: "Graphite", carrier: "Verizon", device_notes: "❌ UNDEFINED: iPhone 13 Pro - Missing carrier in SKU" },
+            { imei: "TEST011", brand: "Google", model: "Pixel 7 Pro", capacity: "256GB", color: "Hazel", carrier: "Verizon", device_notes: "❌ UNDEFINED: Pixel 7 Pro - Missing carrier in SKU" },
+            
+            // 🔍 MODEL MISMATCH CASES - Should suggest closest match but flag as undefined
+            { imei: "TEST016", brand: "Samsung", model: "Galaxy S23 Plus", capacity: "256GB", color: "White", carrier: "Verizon", device_notes: "🔍 MODEL MISMATCH: S23 Plus → S23 (should suggest S23)" },
+            { imei: "TEST017", brand: "Samsung", model: "Galaxy S24", capacity: "128GB", color: "Black", carrier: "Unlocked", device_notes: "🔍 MODEL MISMATCH: S24 → S23 (should suggest S23)" },
+            { imei: "TEST018", brand: "Apple", model: "iPhone 13 Pro", capacity: "256GB", color: "Graphite", carrier: "Verizon", device_notes: "🔍 MODEL MISMATCH: iPhone 13 Pro → iPhone 13 (should suggest iPhone 13)" },
+            
+            // 🚨 CROSS-BRAND CONTAMINATION - Should be caught by dynamic system
+            { imei: "TEST019", brand: "Samsung", model: "Galaxy S24", capacity: "256GB", color: "Black", carrier: "Unlocked", device_notes: "🚨 CROSS-BRAND: Samsung → iPhone (should be undefined)" },
+            { imei: "TEST020", brand: "Apple", model: "iPhone 14", capacity: "128GB", color: "Blue", carrier: "Verizon", device_notes: "🚨 CROSS-BRAND: iPhone → Samsung (should be undefined)" },
+            
+            // 📱 EDGE CASES - Complex scenarios with missing data
+            { imei: "TEST012", brand: "Google", model: "Pixel 8", capacity: "128GB", color: "Obsidian", carrier: "Unlocked", device_notes: "📱 EDGE: Latest Pixel - New model testing" },
+            { imei: "TEST013", brand: "Samsung", model: "Galaxy Z Flip 5", capacity: "256GB", color: "Mint", carrier: "Unlocked", device_notes: "📱 EDGE: Foldable phone - Special form factor" },
+            { imei: "TEST014", brand: "Samsung", model: "Galaxy Z Fold 5", capacity: "512GB", color: "Phantom Black", carrier: "AT&T", device_notes: "📱 EDGE: Foldable tablet - Large screen" },
+            { imei: "TEST015", brand: "OnePlus", model: "OnePlus 11", capacity: "256GB", color: "Titan Black", carrier: "Unlocked", device_notes: "📱 EDGE: OnePlus flagship - Alternative brand" },
+            
+            // 🎯 PERFECT MATCH CASES - Should still be undefined due to missing carrier in SKU
+            { imei: "TEST021", brand: "Samsung", model: "Galaxy S23", capacity: "128GB", color: "Black", carrier: "Unlocked", device_notes: "🎯 PERFECT: S23 perfect match - But undefined due to missing carrier in SKU" },
+            { imei: "TEST022", brand: "Samsung", model: "Galaxy S23 Ultra", capacity: "512GB", color: "Green", carrier: "T-Mobile", device_notes: "🎯 PERFECT: S23 Ultra perfect match - But undefined due to missing carrier in SKU" }
+        ];
+
+        async function runComprehensiveTest() {
+            showLoading();
+            clearResults();
+            
+            try {
+                const results = [];
+                const startTime = Date.now();
+                
+                for (const device of testDevices) {
+                    try {
+                        const response = await fetch('/api/hybrid-sku-matching/match', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(device)
+                        });
+                        
+                        const data = await response.json();
+                        if (data.success) {
+                            results.push({
+                                input: device,
+                                output: {
+                                    results: data.data.results,
+                                    matches: data.data.matches
+                                }
+                            });
+                        } else {
+                            results.push({
+                                input: device,
+                                error: data.error
+                            });
+                        }
+                    } catch (error) {
+                        results.push({
+                            input: device,
+                            error: error.message
+                        });
+                    }
+                }
+                
+                const totalTime = Date.now() - startTime;
+                displayComprehensiveResults(results, totalTime);
+                
+            } catch (error) {
+                displayError('Comprehensive test failed: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function runSingleTest() {
+            const device = testDevices[0]; // Use first test device
+            showLoading();
+            clearResults();
+            
+            try {
+                const response = await fetch('/api/hybrid-sku-matching/match', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(device)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    displaySingleResult(data.data);
+                } else {
+                    displayError(data.error);
+                }
+            } catch (error) {
+                displayError('Single test failed: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function runBulkTest() {
+            document.getElementById('bulkInputSection').style.display = 'block';
+        }
+
+        async function executeBulkTest() {
+            const bulkData = document.getElementById('bulkTestData').value;
+            
+            if (!bulkData.trim()) {
+                displayError('Please enter bulk test data');
+                return;
+            }
+            
+            let devices;
+            try {
+                devices = JSON.parse(bulkData);
+            } catch (error) {
+                displayError('Invalid JSON format: ' + error.message);
+                return;
+            }
+            
+            showLoading();
+            clearResults();
+            
+            try {
+                const response = await fetch('/api/hybrid-sku-matching/bulk-match', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ devices })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    displayBulkResults(data.data);
+                } else {
+                    displayError(data.error);
+                }
+            } catch (error) {
+                displayError('Bulk test failed: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function runPerformanceTest() {
+            showLoading();
+            clearResults();
+            
+            try {
+                // Test hybrid service
+                const hybridStart = Date.now();
+                const hybridResponse = await fetch('/api/hybrid-sku-matching/test');
+                const hybridTime = Date.now() - hybridStart;
+                const hybridData = await hybridResponse.json();
+                
+                // Test original service (if available)
+                const originalStart = Date.now();
+                const originalResponse = await fetch('/api/sku-matching/test-specific-device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testDevices[0])
+                });
+                const originalTime = Date.now() - originalStart;
+                const originalData = await originalResponse.json();
+                
+                displayPerformanceResults({
+                    hybrid: { time: hybridTime, data: hybridData },
+                    original: { time: originalTime, data: originalData }
+                });
+                
+            } catch (error) {
+                displayError('Performance test failed: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayComprehensiveResults(results, totalTime) {
+            const successful = results.filter(r => !r.error).length;
+            const failed = results.filter(r => r.error).length;
+            const avgScore = results.filter(r => !r.error && r.output?.results?.highestScore)
+                .reduce((sum, r) => sum + r.output.results.highestScore, 0) / successful;
+            
+            const confidenceDistribution = results.filter(r => !r.error && r.output?.results?.confidenceLevel)
+                .reduce((acc, r) => {
+                    const level = r.output.results.confidenceLevel;
+                    acc[level] = (acc[level] || 0) + 1;
+                    return acc;
+                }, {});
+            
+            document.getElementById('results').innerHTML = `
+                <div class="results success">
+                    <h2>🎯 Comprehensive Test Results</h2>
+                    
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-number">${results.length}</span>
+                            <span class="stat-label">Total Tests</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${successful}</span>
+                            <span class="stat-label">Successful</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${failed}</span>
+                            <span class="stat-label">Failed</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${avgScore.toFixed(1)}</span>
+                            <span class="stat-label">Avg Score</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${totalTime}ms</span>
+                            <span class="stat-label">Total Time</span>
+                        </div>
+                    </div>
+                    
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <h3>📊 Confidence Distribution</h3>
+                            <div class="summary-item">
+                                <span>High Confidence:</span>
+                                <span><span class="confidence-badge confidence-high">${confidenceDistribution.HIGH || 0}</span></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Medium Confidence:</span>
+                                <span><span class="confidence-badge confidence-medium">${confidenceDistribution.MEDIUM || 0}</span></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Low Confidence:</span>
+                                <span><span class="confidence-badge confidence-low">${confidenceDistribution.LOW || 0}</span></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Very Low Confidence:</span>
+                                <span><span class="confidence-badge confidence-very-low">${confidenceDistribution.VERY_LOW || 0}</span></span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <h3>⚡ Performance Metrics</h3>
+                            <div class="summary-item">
+                                <span>Total Processing Time:</span>
+                                <span><strong>${totalTime}ms</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Average per Device:</span>
+                                <span><strong>${Math.round(totalTime / results.length)}ms</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Success Rate:</span>
+                                <span><strong>${((successful / results.length) * 100).toFixed(1)}%</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Average Match Score:</span>
+                                <span><strong>${avgScore.toFixed(1)}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="match-details">
+                        <h3>📱 Device Results</h3>
+                        ${results.map((result, index) => `
+                            <div class="match-item clickable-row ${getScoreClass(result.output?.results?.highestScore || 0)}" 
+                                 onclick="showDeviceDetails(${index})" 
+                                 data-result='${JSON.stringify(result)}'>
+                                <div class="device-row">
+                                    <div class="device-info">
+                                        <strong>${result.input.brand} ${result.input.model}</strong>
+                                        <div class="device-details">
+                                            ${result.input.capacity} ${result.input.color} ${result.input.carrier}
+                                        </div>
+                                    </div>
+                                    <div class="match-stats">
+                                        ${result.error ? 
+                                            `<span style="color: #dc3545;">❌ ${result.error}</span>` :
+                                            `<span>Score: ${result.output.results.highestScore} | Confidence: ${result.output.results.confidenceLevel} | Matches: ${result.output.results.totalMatches}</span>`
+                                        }
+                                    </div>
+                                    <div class="sku-matched">
+                                        ${result.error ? 
+                                            `<div class="no-match">No Match</div>` :
+                                            `<div class="top-sku">
+                                                <span class="sku-label">Top SKU:</span>
+                                                <span class="sku-code">${result.output.matches?.[0]?.sku_code || 'N/A'}</span>
+                                                <span class="sku-score">(${result.output.results.highestScore})</span>
+                                                ${result.output.results.isUndefined ? 
+                                                    `<span class="undefined-flag" style="color: #ff6b35; font-weight: bold; margin-left: 10px;">⚠️ UNDEFINED</span>` : 
+                                                    `<span class="valid-flag" style="color: #28a745; font-weight: bold; margin-left: 10px;">✅ VALID</span>`
+                                                }
+                                            </div>
+                                            ${result.output.results.isUndefined && result.output.results.undefinedReason ? 
+                                                `<div class="undefined-reason" style="color: #ff6b35; font-size: 0.9em; margin-top: 5px; font-style: italic;">
+                                                    📝 ${result.output.results.undefinedReason}
+                                                </div>` : ''
+                                            }`
+                                        }
+                                    </div>
+                                    <div class="click-hint">
+                                        <span>👆 Click for details</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <details>
+                        <summary><strong>📋 Detailed Results</strong></summary>
+                        <pre>${JSON.stringify(results, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+        }
+
+        function displaySingleResult(data) {
+            document.getElementById('results').innerHTML = `
+                <div class="results success">
+                    <h2>🔍 Single Device Test Result</h2>
+                    
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <h3>📊 Input Device</h3>
+                            <div class="summary-item">
+                                <span>IMEI:</span>
+                                <span><strong>${data.imei}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Brand:</span>
+                                <span><strong>${data.input.brand}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Model:</span>
+                                <span><strong>${data.input.model}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Capacity:</span>
+                                <span><strong>${data.input.capacity}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Color:</span>
+                                <span><strong>${data.input.color}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Carrier:</span>
+                                <span><strong>${data.input.carrier}</strong></span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <h3>🎯 Matching Results</h3>
+                            <div class="summary-item">
+                                <span>Total Matches:</span>
+                                <span><strong>${data.results.totalMatches}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Highest Score:</span>
+                                <span><strong>${data.results.highestScore}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Confidence Level:</span>
+                                <span><span class="confidence-badge ${getConfidenceClass(data.results.confidenceLevel)}">${data.results.confidenceLevel}</span></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Match Type:</span>
+                                <span><strong>${data.results.matchType}</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Processing Time:</span>
+                                <span><strong>${data.results.processingTime}ms</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Requires Attention:</span>
+                                <span><strong>${data.results.requiresAttention ? 'Yes' : 'No'}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="match-details">
+                        <h3>🏆 Top Matches</h3>
+                        ${data.matches.slice(0, 10).map(match => `
+                            <div class="match-item ${getScoreClass(match.match_score)}">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>${match.sku_code}</strong>
+                                        <br>
+                                        <small>${match.brand || 'N/A'} ${match.model || 'N/A'} ${match.capacity || 'N/A'} ${match.color || 'N/A'} ${match.carrier || 'N/A'}</small>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div><strong>Score: ${match.match_score}</strong></div>
+                                        <div><span class="confidence-badge ${getConfidenceClass(match.confidence_level)}">${match.confidence_level}</span></div>
+                                        <div><small>Type: ${match.match_type}</small></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="tag-breakdown">
+                                    <div class="tag-item ${match.model_tag ? 'has-value' : ''}">Model Tag: ${match.model_tag || 'N/A'}</div>
+                                    <div class="tag-item ${match.capacity_tag ? 'has-value' : ''}">Capacity Tag: ${match.capacity_tag || 'N/A'}</div>
+                                    <div class="tag-item ${match.color_tag ? 'has-value' : ''}">Color Tag: ${match.color_tag || 'N/A'}</div>
+                                    <div class="tag-item ${match.carrier_tag ? 'has-value' : ''}">Carrier Tag: ${match.carrier_tag || 'N/A'}</div>
+                                    <div class="tag-item ${match.postfix_tag ? 'has-value' : ''}">Postfix Tag: ${match.postfix_tag || 'N/A'}</div>
+                                </div>
+                                
+                                ${match.sku_tags && match.sku_tags.length > 0 ? `
+                                    <div style="margin-top: 10px;">
+                                        <strong>SKU Tags:</strong>
+                                        <div class="tag-breakdown">
+                                            ${match.sku_tags.map(tag => `<div class="tag-item has-value">${tag}</div>`).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayBulkResults(data) {
+            document.getElementById('results').innerHTML = `
+                <div class="results success">
+                    <h2>📦 Bulk Processing Results</h2>
+                    
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-number">${data.summary.totalDevices}</span>
+                            <span class="stat-label">Total Devices</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${data.summary.successfulMatches}</span>
+                            <span class="stat-label">Successful</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${data.summary.requiresAttention}</span>
+                            <span class="stat-label">Need Attention</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${data.summary.totalProcessingTime}ms</span>
+                            <span class="stat-label">Total Time</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${data.summary.averageProcessingTime}ms</span>
+                            <span class="stat-label">Avg per Device</span>
+                        </div>
+                    </div>
+                    
+                    <div class="match-details">
+                        <h3>📱 Device Results</h3>
+                        ${data.results.map((result, index) => `
+                            <div class="match-item ${result.success ? (result.requiresAttention ? 'medium-score' : 'high-score') : 'low-score'}">
+                                <div class="device-row">
+                                    <div class="device-info">
+                                        <strong>${result.imei}</strong>
+                                        <div class="device-details">
+                                            ${result.brand} ${result.model} ${result.capacity} ${result.color} ${result.carrier}
+                                        </div>
+                                    </div>
+                                    <div class="match-stats">
+                                        ${result.success ? 
+                                            `<span>Matches: ${result.totalMatches} | Score: ${result.highestScore} | Time: ${result.processingTime}ms</span>` :
+                                            `<span style="color: #dc3545;">❌ ${result.error}</span>`
+                                        }
+                                    </div>
+                                    <div class="sku-matched">
+                                        ${result.success && result.topMatch ? 
+                                            `<div class="top-sku">
+                                                <span class="sku-label">Top SKU:</span>
+                                                <span class="sku-code">${result.topMatch.sku_code}</span>
+                                                <span class="sku-score">(${result.topMatch.match_score})</span>
+                                            </div>` :
+                                            `<div class="no-match">No Match</div>`
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayPerformanceResults(data) {
+            const hybridTime = data.hybrid.time;
+            const originalTime = data.original.time;
+            const speedImprovement = ((originalTime - hybridTime) / originalTime * 100).toFixed(1);
+            
+            document.getElementById('results').innerHTML = `
+                <div class="results success">
+                    <h2>⚡ Performance Benchmark Results</h2>
+                    
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-number">${hybridTime}ms</span>
+                            <span class="stat-label">Hybrid Time</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${originalTime}ms</span>
+                            <span class="stat-label">Original Time</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">${speedImprovement}%</span>
+                            <span class="stat-label">Speed Improvement</span>
+                        </div>
+                    </div>
+                    
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <h3>🚀 Hybrid Service</h3>
+                            <div class="summary-item">
+                                <span>Processing Time:</span>
+                                <span><strong>${hybridTime}ms</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Match Type:</span>
+                                <span><strong>Tag-First</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Query Strategy:</span>
+                                <span><strong>Single CTE</strong></span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <h3>📊 Original Service</h3>
+                            <div class="summary-item">
+                                <span>Processing Time:</span>
+                                <span><strong>${originalTime}ms</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Match Type:</span>
+                                <span><strong>Field-Based</strong></span>
+                            </div>
+                            <div class="summary-item">
+                                <span>Query Strategy:</span>
+                                <span><strong>Multiple Queries</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayError(message) {
+            document.getElementById('results').innerHTML = `
+                <div class="results error">
+                    <h2>❌ Error</h2>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function getScoreClass(score) {
+            if (score >= 80) return 'high-score';
+            if (score >= 60) return 'medium-score';
+            return 'low-score';
+        }
+
+        function getConfidenceClass(confidence) {
+            switch(confidence) {
+                case 'HIGH': return 'confidence-high';
+                case 'MEDIUM': return 'confidence-medium';
+                case 'LOW': return 'confidence-low';
+                case 'VERY_LOW': return 'confidence-very-low';
+                default: return 'confidence-low';
+            }
+        }
+
+        function showDeviceDetails(index) {
+            const row = document.querySelector(`[onclick="showDeviceDetails(${index})"]`);
+            const resultData = JSON.parse(row.getAttribute('data-result'));
+            
+            if (resultData.error) {
+                alert(`Error: ${resultData.error}`);
+                return;
+            }
+
+            const matches = resultData.output?.matches || [];
+            const deviceInfo = resultData.input;
+            
+            let detailsHtml = `
+                <div style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+                    <h3>📱 ${deviceInfo.brand} ${deviceInfo.model}</h3>
+                    <div style="margin-bottom: 20px;">
+                        <strong>Device Details:</strong><br>
+                        IMEI: ${deviceInfo.imei}<br>
+                        Capacity: ${deviceInfo.capacity}<br>
+                        Color: ${deviceInfo.color}<br>
+                        Carrier: ${deviceInfo.carrier}
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <strong>Match Summary:</strong><br>
+                        Total Matches: ${resultData.output.results.totalMatches}<br>
+                        Highest Score: ${resultData.output.results.highestScore}<br>
+                        Confidence: ${resultData.output.results.confidenceLevel}<br>
+                        Processing Time: ${resultData.output.results.processingTime}ms<br>
+                        ${resultData.output.results.isUndefined ? 
+                            `<span style="color: #ff6b35; font-weight: bold;">⚠️ UNDEFINED</span><br>
+                             <span style="color: #ff6b35; font-style: italic;">Reason: ${resultData.output.results.undefinedReason}</span>` : 
+                            `<span style="color: #28a745; font-weight: bold;">✅ VALID MATCH</span>`
+                        }
+                    </div>
+                    <div>
+                        <strong>All Matched SKUs:</strong>
+                        <div style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
+            `;
+            
+            matches.forEach((match, i) => {
+                detailsHtml += `
+                    <div style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: ${i === 0 ? '#e8f5e8' : '#f8f9fa'};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${match.sku_code}</strong><br>
+                                <small>${match.brand} ${match.model} ${match.capacity} ${match.color} ${match.carrier}</small>
+                            </div>
+                            <div style="text-align: right;">
+                                <div><strong>Score: ${match.match_score}</strong></div>
+                                <div><span style="background: ${getConfidenceColor(match.confidence_level)}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;">${match.confidence_level}</span></div>
+                                <div><small>Type: ${match.match_type}</small></div>
+                            </div>
+                        </div>
+                        ${match.sku_tags && match.sku_tags.length > 0 ? `
+                            <div style="margin-top: 8px;">
+                                <strong>SKU Tags:</strong> ${match.sku_tags.join(', ')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            detailsHtml += `
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.5); display: flex; justify-content: center; 
+                align-items: center; z-index: 1000;
+            `;
+            
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = `
+                background: white; padding: 20px; border-radius: 10px; 
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3); position: relative;
+            `;
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '✕';
+            closeBtn.style.cssText = `
+                position: absolute; top: 10px; right: 15px; background: none; 
+                border: none; font-size: 20px; cursor: pointer; color: #666;
+            `;
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            
+            modalContent.appendChild(closeBtn);
+            modalContent.innerHTML += detailsHtml;
+            modal.appendChild(modalContent);
+            modal.onclick = (e) => {
+                if (e.target === modal) document.body.removeChild(modal);
+            };
+            
+            document.body.appendChild(modal);
+        }
+
+        function getConfidenceColor(confidence) {
+            switch(confidence) {
+                case 'HIGH': return '#28a745';
+                case 'MEDIUM': return '#ffc107';
+                case 'LOW': return '#fd7e14';
+                case 'VERY_LOW': return '#dc3545';
+                default: return '#6c757d';
+            }
+        }
+    </script>
+</body>
+</html>

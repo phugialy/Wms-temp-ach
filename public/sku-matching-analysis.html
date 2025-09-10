@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKU Matching Method Analysis</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .summary {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .summary h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        .method-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .method-card {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .method-card.flexible {
+            border-left: 4px solid #28a745;
+        }
+        .method-card.original {
+            border-left: 4px solid #dc3545;
+        }
+        .method-card h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 5px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        .feature-list li:before {
+            content: "• ";
+            color: #007bff;
+            font-weight: bold;
+        }
+        .strength {
+            color: #28a745;
+        }
+        .weakness {
+            color: #dc3545;
+        }
+        .test-result {
+            background-color: #fff;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .test-result h5 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .test-result.winner-flexible {
+            border-left: 4px solid #28a745;
+        }
+        .test-result.winner-original {
+            border-left: 4px solid #dc3545;
+        }
+        .test-result.winner-tie {
+            border-left: 4px solid #ffc107;
+        }
+        .test-result.winner-no-matches {
+            border-left: 4px solid #6c757d;
+        }
+        .advantage {
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .advantage.flexible {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .advantage.original {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .issue {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .recommendation {
+            background-color: #e7f3ff;
+            color: #0056b3;
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .query-comparison {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .query-comparison h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .query-difference {
+            background-color: #fff;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .query-difference h5 {
+            margin-top: 0;
+            color: #495057;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 SKU Matching Method Analysis</h1>
+        
+        <div class="section">
+            <h2>📊 Method Comparison Analysis</h2>
+            <p>Compare the Flexible SKU Matching Service vs the Complete SKU Matching Service (Original):</p>
+            <button onclick="loadMethodComparison()">🚀 Run Method Comparison</button>
+        </div>
+
+        <div class="section">
+            <h2>🔧 Query Comparison Analysis</h2>
+            <p>Analyze the SQL query differences between the two services:</p>
+            <button onclick="loadQueryComparison()">🔍 Compare SQL Queries</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Running analysis...</p>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function loadMethodComparison() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            loading.style.display = 'block';
+            results.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/sku-matching-analysis/compare-methods');
+                const data = await response.json();
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    displayMethodComparison(data.analysis);
+                } else {
+                    displayError(data.error || 'Failed to load method comparison');
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                displayError('Network error: ' + error.message);
+            }
+        }
+
+        async function loadQueryComparison() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            loading.style.display = 'block';
+            results.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/sku-matching-analysis/query-comparison');
+                const data = await response.json();
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    displayQueryComparison(data.query_analysis);
+                } else {
+                    displayError(data.error || 'Failed to load query comparison');
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                displayError('Network error: ' + error.message);
+            }
+        }
+
+        function displayMethodComparison(analysis) {
+            const results = document.getElementById('results');
+            
+            results.innerHTML = `
+                <div class="results success">
+                    <h2>📊 Method Comparison Results</h2>
+                    
+                    <div class="summary">
+                        <h3>Overall Performance Summary</h3>
+                        <div class="summary-item">
+                            <span>Total Tests:</span>
+                            <span><strong>${analysis.summary.total_tests}</strong></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Flexible Service Wins:</span>
+                            <span><strong>${analysis.summary.flexible_wins}</strong></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Original Service Wins:</span>
+                            <span><strong>${analysis.summary.original_wins}</strong></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Ties:</span>
+                            <span><strong>${analysis.summary.ties}</strong></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>No Matches (Both):</span>
+                            <span><strong>${analysis.summary.no_matches_both}</strong></span>
+                        </div>
+                    </div>
+                    
+                    <div class="method-comparison">
+                        <div class="method-card flexible">
+                            <h4>🟢 Flexible SKU Matching Service</h4>
+                            <p><strong>Description:</strong> ${analysis.method_comparison.flexible_approach.description}</p>
+                            
+                            <h5>Key Features:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.flexible_approach.key_features.map(feature => `<li>${feature}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Strengths:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.flexible_approach.strengths.map(strength => `<li class="strength">${strength}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Weaknesses:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.flexible_approach.weaknesses.map(weakness => `<li class="weakness">${weakness}</li>`).join('')}
+                            </ul>
+                        </div>
+                        
+                        <div class="method-card original">
+                            <h4>🔴 Complete SKU Matching Service (Original)</h4>
+                            <p><strong>Description:</strong> ${analysis.method_comparison.original_approach.description}</p>
+                            
+                            <h5>Key Features:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.original_approach.key_features.map(feature => `<li>${feature}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Strengths:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.original_approach.strengths.map(strength => `<li class="strength">${strength}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Weaknesses:</h5>
+                            <ul class="feature-list">
+                                ${analysis.method_comparison.original_approach.weaknesses.map(weakness => `<li class="weakness">${weakness}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <h3>📱 Detailed Test Results</h3>
+                    ${analysis.detailed_results.map(result => displayTestResult(result)).join('')}
+                    
+                    <h3>🔧 Improvements Analysis</h3>
+                    <div class="summary">
+                        <h4>Flexible Service Improvements:</h4>
+                        ${analysis.improvements_analysis.flexible_improvements.map(improvement => `
+                            <div class="advantage flexible">✅ ${improvement}</div>
+                        `).join('')}
+                        
+                        <h4>Original Service Improvements:</h4>
+                        ${analysis.improvements_analysis.original_improvements.map(improvement => `
+                            <div class="advantage original">✅ ${improvement}</div>
+                        `).join('')}
+                        
+                        <h4>Common Issues:</h4>
+                        ${analysis.improvements_analysis.common_issues.map(issue => `
+                            <div class="issue">⚠️ ${issue}</div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayQueryComparison(queryAnalysis) {
+            const results = document.getElementById('results');
+            
+            results.innerHTML = `
+                <div class="results success">
+                    <h2>🔧 SQL Query Comparison</h2>
+                    
+                    <div class="method-comparison">
+                        <div class="method-card flexible">
+                            <h4>🟢 Flexible Service Queries</h4>
+                            <p><strong>Description:</strong> ${queryAnalysis.flexible_service_queries.description}</p>
+                            <p><strong>Main Approach:</strong> ${queryAnalysis.flexible_service_queries.main_approach}</p>
+                            
+                            <h5>Key Features:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.flexible_service_queries.key_features.map(feature => `<li>${feature}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Advantages:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.flexible_service_queries.advantages.map(advantage => `<li class="strength">${advantage}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Disadvantages:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.flexible_service_queries.disadvantages.map(disadvantage => `<li class="weakness">${disadvantage}</li>`).join('')}
+                            </ul>
+                        </div>
+                        
+                        <div class="method-card original">
+                            <h4>🔴 Original Service Queries</h4>
+                            <p><strong>Description:</strong> ${queryAnalysis.original_service_queries.description}</p>
+                            <p><strong>Main Approach:</strong> ${queryAnalysis.original_service_queries.main_approach}</p>
+                            
+                            <h5>Key Features:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.original_service_queries.key_features.map(feature => `<li>${feature}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Advantages:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.original_service_queries.advantages.map(advantage => `<li class="strength">${advantage}</li>`).join('')}
+                            </ul>
+                            
+                            <h5>Disadvantages:</h5>
+                            <ul class="feature-list">
+                                ${queryAnalysis.original_service_queries.disadvantages.map(disadvantage => `<li class="weakness">${disadvantage}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="query-comparison">
+                        <h3>🔄 Query Differences</h3>
+                        
+                        <h4>Flexible vs Original:</h4>
+                        ${queryAnalysis.query_differences.flexible_vs_original.map(difference => `
+                            <div class="query-difference">
+                                <h5>${difference}</h5>
+                            </div>
+                        `).join('')}
+                        
+                        <h4>Performance Implications:</h4>
+                        ${queryAnalysis.query_differences.performance_implications.map(implication => `
+                            <div class="query-difference">
+                                <h5>${implication}</h5>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayTestResult(result) {
+            if (result.error) {
+                return `
+                    <div class="test-result">
+                        <h5>❌ ${result.test_case.name}</h5>
+                        <div class="error">
+                            <strong>Error:</strong> ${result.error}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            const analysis = result.analysis;
+            const winner = analysis.winner;
+            const winnerClass = `winner-${winner}`;
+            
+            return `
+                <div class="test-result ${winnerClass}">
+                    <h5>📱 ${result.test_case.name}</h5>
+                    <p><strong>Category:</strong> ${result.test_case.category}</p>
+                    <p><strong>Expected Behavior:</strong> ${result.test_case.expected_behavior}</p>
+                    <p><strong>Winner:</strong> ${winner.toUpperCase()}</p>
+                    <p><strong>Improvement Reason:</strong> ${analysis.improvement_reason}</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0;">
+                        <div>
+                            <h6>🟢 Flexible Service:</h6>
+                            <p><strong>Has Matches:</strong> ${result.flexible_result.has_matches ? '✅ Yes' : '❌ No'}</p>
+                            <p><strong>Total Matches:</strong> ${result.flexible_result.total_matches}</p>
+                            <p><strong>Best Score:</strong> ${result.flexible_result.best_score}</p>
+                            <p><strong>Confidence:</strong> ${result.flexible_result.confidence}</p>
+                            <p><strong>Requires Attention:</strong> ${result.flexible_result.requires_attention ? '⚠️ Yes' : '✅ No'}</p>
+                        </div>
+                        <div>
+                            <h6>🔴 Original Service:</h6>
+                            <p><strong>Has Matches:</strong> ${result.original_result.has_matches ? '✅ Yes' : '❌ No'}</p>
+                            <p><strong>Total Matches:</strong> ${result.original_result.total_matches}</p>
+                            <p><strong>Best Score:</strong> ${result.original_result.best_score}</p>
+                            <p><strong>Confidence:</strong> ${result.original_result.confidence}</p>
+                            <p><strong>Requires Attention:</strong> ${result.original_result.requires_attention ? '⚠️ Yes' : '✅ No'}</p>
+                        </div>
+                    </div>
+                    
+                    ${analysis.flexible_advantages.length > 0 ? `
+                        <h6>🟢 Flexible Advantages:</h6>
+                        ${analysis.flexible_advantages.map(advantage => `
+                            <div class="advantage flexible">✅ ${advantage}</div>
+                        `).join('')}
+                    ` : ''}
+                    
+                    ${analysis.original_advantages.length > 0 ? `
+                        <h6>🔴 Original Advantages:</h6>
+                        ${analysis.original_advantages.map(advantage => `
+                            <div class="advantage original">✅ ${advantage}</div>
+                        `).join('')}
+                    ` : ''}
+                    
+                    ${analysis.issues_identified.length > 0 ? `
+                        <h6>⚠️ Issues Identified:</h6>
+                        ${analysis.issues_identified.map(issue => `
+                            <div class="issue">⚠️ ${issue}</div>
+                        `).join('')}
+                    ` : ''}
+                    
+                    ${analysis.recommendations.length > 0 ? `
+                        <h6>💡 Recommendations:</h6>
+                        ${analysis.recommendations.map(recommendation => `
+                            <div class="recommendation">💡 ${recommendation}</div>
+                        `).join('')}
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function displayError(message) {
+            const results = document.getElementById('results');
+            results.innerHTML = `
+                <div class="results error">
+                    <h2>❌ Error</h2>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

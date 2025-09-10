@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample SKU Match Results</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .summary {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .summary h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        .device-result {
+            background-color: #fff;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .device-result h4 {
+            margin-top: 0;
+            color: #495057;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .device-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .device-info h5 {
+            margin-top: 0;
+            color: #6c757d;
+        }
+        .service-result {
+            background-color: #fff;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .service-result h5 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .flexible-service {
+            border-left: 4px solid #28a745;
+        }
+        .original-service {
+            border-left: 4px solid #dc3545;
+        }
+        .match-item {
+            background-color: #f8f9fa;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+        }
+        .match-item.best-match {
+            background-color: #d4edda;
+            border-color: #28a745;
+        }
+        .score-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin: 2px;
+        }
+        .score-high { background-color: #d4edda; color: #155724; }
+        .score-medium { background-color: #fff3cd; color: #856404; }
+        .score-low { background-color: #f8d7da; color: #721c24; }
+        .score-very-low { background-color: #f5c6cb; color: #721c24; }
+        .confidence-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin: 2px;
+        }
+        .confidence-high { background-color: #d4edda; color: #155724; }
+        .confidence-medium { background-color: #fff3cd; color: #856404; }
+        .confidence-low { background-color: #f8d7da; color: #721c24; }
+        .confidence-very-low { background-color: #f5c6cb; color: #721c24; }
+        .comparison {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .comparison h5 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .advantage {
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .advantage.flexible {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .advantage.original {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .custom-test {
+            background-color: #fff3cd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .custom-test h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #495057;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Sample SKU Match Results</h1>
+        
+        <div class="section">
+            <h2>📊 Sample Test Results</h2>
+            <p>View sample match results from both flexible and original SKU matching services:</p>
+            <button onclick="loadSampleResults()">🚀 Load Sample Results</button>
+        </div>
+
+        <div class="custom-test">
+            <h3>🧪 Custom Device Test</h3>
+            <p>Test a specific device and see the match results:</p>
+            <div class="form-group">
+                <label for="imei">IMEI:</label>
+                <input type="text" id="imei" placeholder="357123456789001" value="357123456789001">
+            </div>
+            <div class="form-group">
+                <label for="brand">Brand:</label>
+                <input type="text" id="brand" placeholder="Samsung" value="Samsung">
+            </div>
+            <div class="form-group">
+                <label for="model">Model:</label>
+                <input type="text" id="model" placeholder="Galaxy S23" value="Galaxy S23">
+            </div>
+            <div class="form-group">
+                <label for="capacity">Capacity:</label>
+                <input type="text" id="capacity" placeholder="128GB" value="128GB">
+            </div>
+            <div class="form-group">
+                <label for="color">Color:</label>
+                <input type="text" id="color" placeholder="Black" value="Black">
+            </div>
+            <div class="form-group">
+                <label for="carrier">Carrier:</label>
+                <select id="carrier">
+                    <option value="UNLOCKED">UNLOCKED</option>
+                    <option value="VERIZON">VERIZON</option>
+                    <option value="AT&T">AT&T</option>
+                    <option value="T-MOBILE">T-MOBILE</option>
+                    <option value="SPRINT">SPRINT</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="device_notes">Device Notes:</label>
+                <input type="text" id="device_notes" placeholder="Carrier unlocked device" value="Carrier unlocked device">
+            </div>
+            <button onclick="testCustomDevice()">🔍 Test Custom Device</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading results...</p>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function loadSampleResults() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            loading.style.display = 'block';
+            results.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/sample-match-results/');
+                const data = await response.json();
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    displaySampleResults(data.results);
+                } else {
+                    displayError(data.error || 'Failed to load sample results');
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                displayError('Network error: ' + error.message);
+            }
+        }
+
+        async function testCustomDevice() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            const imei = document.getElementById('imei').value;
+            const brand = document.getElementById('brand').value;
+            const model = document.getElementById('model').value;
+            const capacity = document.getElementById('capacity').value;
+            const color = document.getElementById('color').value;
+            const carrier = document.getElementById('carrier').value;
+            const device_notes = document.getElementById('device_notes').value;
+            
+            if (!imei || !brand || !model) {
+                displayError('Please fill in IMEI, Brand, and Model fields');
+                return;
+            }
+            
+            loading.style.display = 'block';
+            results.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/sample-match-results/test-custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei,
+                        brand,
+                        model,
+                        capacity,
+                        color,
+                        carrier,
+                        device_notes
+                    })
+                });
+                
+                const data = await response.json();
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    displayCustomResult(data.result);
+                } else {
+                    displayError(data.error || 'Failed to test custom device');
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                displayError('Network error: ' + error.message);
+            }
+        }
+
+        function displaySampleResults(results) {
+            const resultsDiv = document.getElementById('results');
+            
+            resultsDiv.innerHTML = `
+                <div class="results success">
+                    <h2>📊 Sample Test Results Summary</h2>
+                    
+                    <div class="summary">
+                        <h3>Overall Performance</h3>
+                        <div class="summary-item">
+                            <span>Total Samples:</span>
+                            <span><strong>${results.summary.total_samples}</strong></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Flexible Service Matches:</span>
+                            <span><strong>${results.summary.flexible_matches}</strong> (${results.summary.flexible_match_rate}%)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Original Service Matches:</span>
+                            <span><strong>${results.summary.original_matches}</strong> (${results.summary.original_match_rate}%)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Flexible Service Wins:</span>
+                            <span><strong>${results.summary.flexible_better}</strong> (${results.summary.flexible_win_rate}%)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Original Service Wins:</span>
+                            <span><strong>${results.summary.original_better}</strong> (${results.summary.original_win_rate}%)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Ties:</span>
+                            <span><strong>${results.summary.ties}</strong></span>
+                        </div>
+                    </div>
+                    
+                    <h3>📱 Detailed Device Results</h3>
+                    ${results.sample_results.map(device => displayDeviceResult(device)).join('')}
+                </div>
+            `;
+        }
+
+        function displayCustomResult(result) {
+            const resultsDiv = document.getElementById('results');
+            
+            resultsDiv.innerHTML = `
+                <div class="results success">
+                    <h2>🧪 Custom Device Test Result</h2>
+                    ${displayDeviceResult(result)}
+                </div>
+            `;
+        }
+
+        function displayDeviceResult(device) {
+            if (device.error) {
+                return `
+                    <div class="device-result">
+                        <h4>❌ ${device.device_info.brand} ${device.device_info.model} (${device.device_info.imei})</h4>
+                        <div class="error">
+                            <strong>Error:</strong> ${device.error}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            const flexibleResult = device.flexible_service_result;
+            const originalResult = device.original_service_result;
+            const comparison = device.comparison;
+            
+            return `
+                <div class="device-result">
+                    <h4>📱 ${device.device_info.brand} ${device.device_info.model} (${device.device_info.imei})</h4>
+                    
+                    <div class="device-info">
+                        <h5>📋 Device Information</h5>
+                        <p><strong>IMEI:</strong> ${device.device_info.imei}</p>
+                        <p><strong>Brand:</strong> ${device.device_info.brand}</p>
+                        <p><strong>Model:</strong> ${device.device_info.model}</p>
+                        <p><strong>Capacity:</strong> ${device.device_info.capacity || 'N/A'}</p>
+                        <p><strong>Color:</strong> ${device.device_info.color || 'N/A'}</p>
+                        <p><strong>Carrier:</strong> ${device.device_info.carrier || 'N/A'}</p>
+                        <p><strong>Notes:</strong> ${device.device_info.device_notes || 'N/A'}</p>
+                        <p><strong>Original SKU:</strong> ${device.device_info.original_sku}</p>
+                    </div>
+                    
+                    <div class="service-result flexible-service">
+                        <h5>🟢 Flexible Service Results</h5>
+                        <p><strong>Has Matches:</strong> ${flexibleResult.has_matches ? '✅ Yes' : '❌ No'}</p>
+                        <p><strong>Total Matches:</strong> ${flexibleResult.total_matches}</p>
+                        <p><strong>Best Score:</strong> ${flexibleResult.best_score}</p>
+                        <p><strong>Confidence:</strong> <span class="confidence-badge confidence-${flexibleResult.confidence}">${flexibleResult.confidence}</span></p>
+                        <p><strong>Requires Attention:</strong> ${flexibleResult.requires_attention ? '⚠️ Yes' : '✅ No'}</p>
+                        ${flexibleResult.no_match_reason ? `<p><strong>No Match Reason:</strong> ${flexibleResult.no_match_reason}</p>` : ''}
+                        
+                        ${flexibleResult.all_matches.length > 0 ? `
+                            <h6>🎯 All Matches Found:</h6>
+                            ${flexibleResult.all_matches.map((match, index) => `
+                                <div class="match-item ${index === 0 ? 'best-match' : ''}">
+                                    <p><strong>SKU Code:</strong> ${match.sku?.sku_code || 'N/A'}</p>
+                                    <p><strong>Brand:</strong> ${match.sku?.brand || 'N/A'}</p>
+                                    <p><strong>Model:</strong> ${match.sku?.model || 'N/A'}</p>
+                                    <p><strong>Capacity:</strong> ${match.sku?.capacity || 'N/A'}</p>
+                                    <p><strong>Color:</strong> ${match.sku?.color || 'N/A'}</p>
+                                    <p><strong>Carrier:</strong> ${match.sku?.carrier || 'N/A'}</p>
+                                    <p><strong>Score:</strong> <span class="score-badge score-${getScoreClass(match.totalScore)}">${match.totalScore}</span></p>
+                                    <p><strong>Method:</strong> ${match.method || 'N/A'}</p>
+                                </div>
+                            `).join('')}
+                        ` : ''}
+                    </div>
+                    
+                    <div class="service-result original-service">
+                        <h5>🔴 Original Service Results</h5>
+                        <p><strong>Has Matches:</strong> ${originalResult.has_matches ? '✅ Yes' : '❌ No'}</p>
+                        <p><strong>Total Matches:</strong> ${originalResult.total_matches}</p>
+                        <p><strong>Best Score:</strong> ${originalResult.best_score}</p>
+                        <p><strong>Confidence:</strong> <span class="confidence-badge confidence-${originalResult.confidence}">${originalResult.confidence}</span></p>
+                        <p><strong>Requires Attention:</strong> ${originalResult.requires_attention ? '⚠️ Yes' : '✅ No'}</p>
+                        ${originalResult.no_match_reason ? `<p><strong>No Match Reason:</strong> ${originalResult.no_match_reason}</p>` : ''}
+                        
+                        ${originalResult.all_matches.length > 0 ? `
+                            <h6>🎯 All Matches Found:</h6>
+                            ${originalResult.all_matches.map((match, index) => `
+                                <div class="match-item ${index === 0 ? 'best-match' : ''}">
+                                    <p><strong>SKU Code:</strong> ${match.sku?.sku_code || 'N/A'}</p>
+                                    <p><strong>Brand:</strong> ${match.sku?.brand || 'N/A'}</p>
+                                    <p><strong>Model:</strong> ${match.sku?.model || 'N/A'}</p>
+                                    <p><strong>Capacity:</strong> ${match.sku?.capacity || 'N/A'}</p>
+                                    <p><strong>Color:</strong> ${match.sku?.color || 'N/A'}</p>
+                                    <p><strong>Carrier:</strong> ${match.sku?.carrier || 'N/A'}</p>
+                                    <p><strong>Score:</strong> <span class="score-badge score-${getScoreClass(match.totalScore)}">${match.totalScore}</span></p>
+                                    <p><strong>Method:</strong> ${match.method || 'N/A'}</p>
+                                </div>
+                            `).join('')}
+                        ` : ''}
+                    </div>
+                    
+                    ${comparison ? `
+                        <div class="comparison">
+                            <h5>⚖️ Comparison Analysis</h5>
+                            ${comparison.flexible_advantages.length > 0 ? `
+                                <h6>🟢 Flexible Service Advantages:</h6>
+                                ${comparison.flexible_advantages.map(advantage => `
+                                    <div class="advantage flexible">✅ ${advantage}</div>
+                                `).join('')}
+                            ` : ''}
+                            ${comparison.original_advantages.length > 0 ? `
+                                <h6>🔴 Original Service Advantages:</h6>
+                                ${comparison.original_advantages.map(advantage => `
+                                    <div class="advantage original">✅ ${advantage}</div>
+                                `).join('')}
+                            ` : ''}
+                            ${comparison.analysis.length > 0 ? `
+                                <h6>📊 Analysis:</h6>
+                                ${comparison.analysis.map(analysis => `
+                                    <p>• ${analysis}</p>
+                                `).join('')}
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function getScoreClass(score) {
+            if (score >= 80) return 'high';
+            if (score >= 60) return 'medium';
+            if (score >= 40) return 'low';
+            return 'very-low';
+        }
+
+        function displayError(message) {
+            const results = document.getElementById('results');
+            results.innerHTML = `
+                <div class="results error">
+                    <h2>❌ Error</h2>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

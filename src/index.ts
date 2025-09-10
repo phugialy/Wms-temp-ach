@@ -7,8 +7,8 @@ import dotenv from 'dotenv';
 // import itemsRoutes from './routes/items.route'; // Temporarily disabled - schema mismatches
 // import inventoryRoutes from './routes/inventory.route'; // Temporarily disabled - will be redesigned
 // import logsRoutes from './routes/logs.route';
-// import adminRoutes from './routes/admin.route'; // Temporarily disabled - schema mismatches
-// import phonecheckRoutes from './routes/phonecheck.route'; // Temporarily disabled - schema mismatches
+import adminRoutes from './routes/admin.route';
+import phonecheckRoutes from './routes/phonecheck.route';
 // import enhancedInventoryRoutes from './routes/enhanced-inventory.route'; // Temporarily disabled - schema mismatches
 // import bulkInventoryRoutes from './routes/bulk-inventory.route'; // Temporarily disabled - schema mismatches
 import imeiQueueRoutes from './routes/imei-queue.route';
@@ -17,6 +17,15 @@ import imeiArchivalRoutes from './routes/imei-archival.route';
 import operatorRoutes from './routes/operator.route';
 import skuMatchingRoutes from './routes/sku-matching.route';
 import enhancedSkuMasterRoutes from './api/enhancedSkuMasterApi';
+import skuManualUpdateRoutes from './api/skuManualUpdateApi';
+import databaseCleanupRoutes from './api/databaseCleanupApi';
+import inventoryApiRoutes from './api/inventoryApi';
+import synchronousWorkflowRoutes from './routes/synchronous-workflow.route';
+import cleanupRoutes from './api/cleanupApi';
+import comprehensiveSkuTestRoutes from './routes/comprehensive-sku-test.route';
+import sampleMatchResultsRoutes from './routes/sample-match-results.route';
+import skuMatchingAnalysisRoutes from './routes/sku-matching-analysis.route';
+import hybridSkuMatchingRoutes from './routes/hybrid-sku-matching.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -58,8 +67,8 @@ app.get('/health', (_req, res) => {
 // app.use('/items', itemsRoutes); // Temporarily disabled - schema mismatches
 // app.use('/inventory', inventoryRoutes); // Temporarily disabled - will be redesigned
 // app.use('/logs', logsRoutes);
-// app.use('/api/admin', adminRoutes); // Temporarily disabled - schema mismatches
-// app.use('/api/phonecheck', phonecheckRoutes); // Temporarily disabled - schema mismatches
+app.use('/api/admin', adminRoutes);
+app.use('/api/phonecheck', phonecheckRoutes);
 // app.use('/api/enhanced-inventory', enhancedInventoryRoutes); // Temporarily disabled - schema mismatches
 // app.use('/api/bulk-inventory', bulkInventoryRoutes); // Temporarily disabled - schema mismatches
 app.use('/api/imei-queue', imeiQueueRoutes);
@@ -68,6 +77,15 @@ app.use('/api/imei-archival', imeiArchivalRoutes);
 app.use('/api/operator', operatorRoutes);
 app.use('/api/sku-matching', skuMatchingRoutes);
 app.use('/api/enhanced-sku-master', enhancedSkuMasterRoutes);
+app.use('/api/sku-manual-update', skuManualUpdateRoutes);
+app.use('/api/database-cleanup', databaseCleanupRoutes);
+app.use('/api/cleanup', cleanupRoutes);
+app.use('/api', inventoryApiRoutes);
+app.use('/api/workflow', synchronousWorkflowRoutes);
+app.use('/api/comprehensive-sku-test', comprehensiveSkuTestRoutes);
+app.use('/api/sample-match-results', sampleMatchResultsRoutes);
+app.use('/api/sku-matching-analysis', skuMatchingAnalysisRoutes);
+app.use('/api/hybrid-sku-matching', hybridSkuMatchingRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
