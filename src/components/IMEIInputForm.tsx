@@ -56,7 +56,7 @@ const IMEIInputForm: React.FC = () => {
 
   // Handle IMEI input change
   const handleImeiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { value } = e.target;
+    const value = (e.target as HTMLInputElement).value;
     // Only allow numbers and limit to 15 characters (standard IMEI length)
     const cleanValue = value.replace(/\D/g, '').slice(0, 15);
     setFormData({ imei: cleanValue });
@@ -134,7 +134,7 @@ const IMEIInputForm: React.FC = () => {
         setFormData({ imei: '' });
         setDeviceInfo(null);
       } else {
-        setToast({ message: result.error || 'Failed to add device', type: 'error' });
+        setToast({ message: (result as any).error || 'Failed to add device', type: 'error' });
       }
     } catch (error) {
       console.error('Error submitting form:', error);

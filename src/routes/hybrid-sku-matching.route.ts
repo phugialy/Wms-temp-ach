@@ -354,4 +354,120 @@ router.get('/test-interface', async (req, res): Promise<void> => {
   }
 });
 
+// GET /api/hybrid-sku-matching/debug/fold-skus - Debug endpoint to check Fold SKUs
+router.get('/debug/fold-skus', async (req, res): Promise<void> => {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: process.env['DIRECT_URL'] });
+    const client = await pool.connect();
+    
+    const result = await client.query(`
+      SELECT sku_code, model, model_tag, sku_tags, capacity, color, carrier 
+      FROM sku_master 
+      WHERE LOWER(sku_code) LIKE '%fold%' 
+      ORDER BY sku_code 
+      LIMIT 50
+    `);
+    
+    client.release();
+    await pool.end();
+    
+    res.json({
+      success: true,
+      fold_skus: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// GET /api/hybrid-sku-matching/debug/carrier-analysis - Analyze all carrier tags
+router.get('/debug/carrier-analysis', async (req, res): Promise<void> => {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: process.env['DIRECT_URL'] });
+    const client = await pool.connect();
+    
+    // Get all unique carrier tags from SKU_MASTER
+    const carrierTagsResult = await client.query(`
+      SELECT carrier_tag, COUNT(*) as count
+      FROM sku_master 
+      WHERE carrier_tag IS NOT NULL AND carrier_tag != ''
+      GROUP BY carrier_tag
+      ORDER BY count DESC
+    `);
+    
+    // Get all unique carrier values
+    const carrierValuesResult = await client.query(`
+      SELECT carrier, COUNT(*) as count
+      FROM sku_master 
+      WHERE carrier IS NOT NULL AND carrier != ''
+      GROUP BY carrier
+      ORDER BY count DESC
+    `);
+    
+    // Get existing carrier references
+    const existingCarriersResult = await client.query(`
+      SELECT DISTINCT carrier_name
+      FROM sku_carrier_reference
+      WHERE carrier_name IS NOT NULL AND carrier_name != ''
+    `);
+    
+    // Get carrier-related tags from sku_tags array
+    const skuTagsResult = await client.query(`
+      SELECT DISTINCT unnest(sku_tags) as tag, COUNT(*) as count
+      FROM sku_master 
+      WHERE sku_tags IS NOT NULL AND array_length(sku_tags, 1) > 0
+      AND (
+        unnest(sku_tags) ILIKE '%att%' 
+        OR unnest(sku_tags) ILIKE '%verizon%' 
+        OR unnest(sku_tags) ILIKE '%tmobile%' 
+        OR unnest(sku_tags) ILIKE '%sprint%' 
+        OR unnest(sku_tags) ILIKE '%unlocked%'
+        OR unnest(sku_tags) ILIKE '%vzw%'
+        OR unnest(sku_tags) ILIKE '%tmo%'
+        OR unnest(sku_tags) ILIKE '%spectrum%'
+        OR unnest(sku_tags) ILIKE '%carrier%'
+      )
+      GROUP BY unnest(sku_tags)
+      ORDER BY count DESC
+    `);
+    
+    client.release();
+    await pool.end();
+    
+    const existingCarriers = new Set(existingCarriersResult.rows.map((row: any) => row.carrier_name.toLowerCase()));
+    
+    // Identify new carrier tags
+    const newCarrierTags = carrierTagsResult.rows.filter((row: any) => 
+      !existingCarriers.has(row.carrier_tag.toLowerCase())
+    );
+    
+    res.json({
+      success: true,
+      analysis: {
+        carrier_tags: {
+          total: carrierTagsResult.rows.length,
+          existing: carrierTagsResult.rows.filter((row: any) => 
+            existingCarriers.has(row.carrier_tag.toLowerCase())
+          ),
+          new: newCarrierTags
+        },
+        carrier_values: carrierValuesResult.rows,
+        sku_tags_carriers: skuTagsResult.rows,
+        existing_references: existingCarriersResult.rows
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 export default router;

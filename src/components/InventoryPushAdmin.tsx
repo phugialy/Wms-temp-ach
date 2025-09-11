@@ -43,15 +43,16 @@ const fetchDeviceInfo = async (imei: string): Promise<DeviceInfo> => {
     const deviceData = await response.json();
     
     // Convert PhoneCheck data to DeviceInfo format
+    const data = deviceData as any;
     return {
-      name: deviceData.title || deviceData.name || 'Unknown Device',
-      brand: deviceData.make || deviceData.brand || 'Unknown',
-      model: deviceData.model || deviceData.model_name || 'Unknown',
-      storage: deviceData.memory || deviceData.storage || '',
-      color: deviceData.color || '',
-      carrier: deviceData.carrier || 'Unlocked',
+      name: data.title || data.name || 'Unknown Device',
+      brand: data.make || data.brand || 'Unknown',
+      model: data.model || data.model_name || 'Unknown',
+      storage: data.memory || data.storage || '',
+      color: data.color || '',
+      carrier: data.carrier || 'Unlocked',
       type: 'phone',
-      condition: deviceData.working?.toLowerCase() === 'yes' ? 'used' : 'damaged'
+      condition: data.working?.toLowerCase() === 'yes' ? 'used' : 'damaged'
     };
   } catch (error) {
     console.error('Error fetching device info:', error);
@@ -116,7 +117,10 @@ const InventoryPushAdmin: React.FC = () => {
 
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
+    const target = e.target as HTMLInputElement | HTMLSelectElement;
+    const name = target.name;
+    const value = target.value;
+    const type = target.type;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'number' ? parseInt(value) || 0 : value
@@ -173,7 +177,7 @@ const InventoryPushAdmin: React.FC = () => {
         setToast({ message: 'Inventory pushed successfully!', type: 'success' });
         handleCancel(); // Reset form
       } else {
-        setToast({ message: result.error || 'Failed to push inventory', type: 'error' });
+        setToast({ message: (result as any).error || 'Failed to push inventory', type: 'error' });
       }
     } catch (error) {
       console.error('Error submitting form:', error);

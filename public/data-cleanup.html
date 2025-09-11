@@ -86,6 +86,9 @@
                         <button onclick="switchTab('filter-delete')" id="tab-filter-delete" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
                             <i class="fas fa-filter mr-2"></i>Filter & Delete
                         </button>
+                        <button onclick="switchTab('database-cleanup')" id="tab-database-cleanup" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            <i class="fas fa-database mr-2"></i>Database Cleanup
+                        </button>
                     </nav>
                 </div>
             </div>
@@ -339,6 +342,170 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Database Cleanup Tab -->
+                <div id="database-cleanup-content" class="tab-content hidden">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                            <i class="fas fa-database mr-2 text-purple-600"></i>Database Cleanup & Management
+                        </h3>
+                        
+                        <p class="text-sm text-gray-600 mb-6">
+                            Comprehensive database cleanup tools for managing IMEI data, SKU data, and system maintenance.
+                        </p>
+
+                        <!-- Database Status -->
+                        <div class="mb-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-md font-medium text-gray-900">Database Status</h4>
+                                <button onclick="loadDatabaseStatus()" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                                    <i class="fas fa-sync-alt mr-1"></i>Refresh Status
+                                </button>
+                            </div>
+                            <div id="database-status" class="bg-gray-50 rounded-lg p-4">
+                                <div class="text-center text-gray-500">
+                                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading database status...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cleanup Options -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <!-- Quick Cleanup -->
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                <h5 class="text-sm font-medium text-red-800 mb-3">
+                                    <i class="fas fa-bolt mr-1"></i>Quick Cleanup
+                                </h5>
+                                <p class="text-sm text-red-600 mb-4">
+                                    Clean IMEI-related data while preserving essential tables (SKU master, reference tables, etc.)
+                                </p>
+                                <div class="space-y-2">
+                                    <button onclick="performQuickCleanup()" class="w-full px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm">
+                                        <i class="fas fa-trash mr-1"></i>Quick IMEI Cleanup
+                                    </button>
+                                    <button onclick="performDryRun()" class="w-full px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm">
+                                        <i class="fas fa-eye mr-1"></i>Dry Run Preview
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Advanced Cleanup -->
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h5 class="text-sm font-medium text-blue-800 mb-3">
+                                    <i class="fas fa-cogs mr-1"></i>Advanced Cleanup
+                                </h5>
+                                <p class="text-sm text-blue-600 mb-4">
+                                    Custom cleanup options with granular control over what gets cleaned
+                                </p>
+                                <div class="space-y-2">
+                                    <button onclick="showAdvancedCleanupModal()" class="w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                                        <i class="fas fa-sliders-h mr-1"></i>Advanced Options
+                                    </button>
+                                    <button onclick="loadDatabaseStatus()" class="w-full px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
+                                        <i class="fas fa-info-circle mr-1"></i>View Status
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cleanup History -->
+                        <div class="mb-6">
+                            <h4 class="text-md font-medium text-gray-900 mb-4">Recent Cleanup Operations</h4>
+                            <div id="cleanup-history" class="bg-gray-50 rounded-lg p-4">
+                                <div class="text-center text-gray-500">
+                                    <i class="fas fa-history mr-2"></i>No cleanup operations yet
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Safety Information -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-yellow-800 mb-2">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>Safety Information
+                            </h4>
+                            <ul class="text-sm text-yellow-700 space-y-1">
+                                <li>• Essential tables (SKU master, reference tables, location hierarchy) are always preserved</li>
+                                <li>• Use "Dry Run" to preview what will be cleaned before making changes</li>
+                                <li>• All cleanup operations are logged and can be reviewed</li>
+                                <li>• Database sequences are automatically reset after cleanup</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Cleanup Modal -->
+    <div id="advanced-cleanup-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Advanced Database Cleanup</h3>
+                    <button onclick="closeAdvancedCleanupModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <!-- Cleanup Options -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-3">
+                            <h4 class="text-sm font-medium text-gray-700">Cleanup Options</h4>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="preserve-essential" checked class="mr-2">
+                                <span class="text-sm text-gray-600">Preserve Essential Tables</span>
+                            </label>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="clean-imei-data" checked class="mr-2">
+                                <span class="text-sm text-gray-600">Clean IMEI Data</span>
+                            </label>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="clean-sku-data" class="mr-2">
+                                <span class="text-sm text-gray-600">Clean SKU Data</span>
+                            </label>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="clean-queue-data" checked class="mr-2">
+                                <span class="text-sm text-gray-600">Clean Queue Data</span>
+                            </label>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="reset-sequences" checked class="mr-2">
+                                <span class="text-sm text-gray-600">Reset Sequences</span>
+                            </label>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <h4 class="text-sm font-medium text-gray-700">Preview Options</h4>
+                            
+                            <label class="flex items-center">
+                                <input type="checkbox" id="dry-run-mode" class="mr-2">
+                                <span class="text-sm text-gray-600">Dry Run (Preview Only)</span>
+                            </label>
+                            
+                            <div class="text-xs text-gray-500">
+                                <p>Dry run will show what would be cleaned without making actual changes.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex space-x-3 pt-4 border-t">
+                        <button onclick="performAdvancedCleanup()" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                            <i class="fas fa-trash mr-1"></i>Execute Cleanup
+                        </button>
+                        <button onclick="previewAdvancedCleanup()" class="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
+                            <i class="fas fa-eye mr-1"></i>Preview
+                        </button>
+                        <button onclick="closeAdvancedCleanupModal()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -382,6 +549,7 @@
             loadStats();
             loadData();
             setupEventListeners();
+            loadDatabaseStatus();
         });
 
         // Setup event listeners
@@ -1093,6 +1261,234 @@
             
             updatePagination();
             updateSelectedCount();
+        }
+
+        // Database Cleanup Functions
+        async function loadDatabaseStatus() {
+            try {
+                const response = await fetch('/api/database-cleanup/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderDatabaseStatus(data.data);
+                } else {
+                    document.getElementById('database-status').innerHTML = `
+                        <div class="text-center text-red-600">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>Error loading database status: ${data.error}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading database status:', error);
+                document.getElementById('database-status').innerHTML = `
+                    <div class="text-center text-red-600">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>Error loading database status
+                    </div>
+                `;
+            }
+        }
+
+        function renderDatabaseStatus(status) {
+            const statusDiv = document.getElementById('database-status');
+            
+            let keyTableHtml = '';
+            Object.entries(status.keyTableCounts).forEach(([table, count]) => {
+                const color = count > 0 ? 'text-red-600' : 'text-green-600';
+                const icon = count > 0 ? 'fas fa-exclamation-circle' : 'fas fa-check-circle';
+                keyTableHtml += `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${table}</span>
+                        <span class="text-sm ${color}">
+                            <i class="${icon} mr-1"></i>${count} rows
+                        </span>
+                    </div>
+                `;
+            });
+            
+            statusDiv.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <h5 class="text-sm font-medium text-gray-700 mb-2">Database Overview</h5>
+                        <div class="space-y-1">
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600">Total Tables:</span>
+                                <span class="text-sm font-medium">${status.totalTables}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600">Last Updated:</span>
+                                <span class="text-sm font-medium">${new Date(status.timestamp).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h5 class="text-sm font-medium text-gray-700 mb-2">Key Table Status</h5>
+                        <div class="max-h-32 overflow-y-auto">
+                            ${keyTableHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function performQuickCleanup() {
+            if (!confirm('This will clean all IMEI-related data while preserving essential tables. Continue?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/database-cleanup/cleanup-imei', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Quick cleanup completed successfully!\n\nTables cleaned: ${data.data.tablesCleaned}\nRows deleted: ${data.data.rowsDeleted}\nSequences reset: ${data.data.sequencesReset}`);
+                    loadDatabaseStatus();
+                    loadStats();
+                    loadData();
+                } else {
+                    alert('Error performing quick cleanup: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error performing quick cleanup:', error);
+                alert('Error performing quick cleanup');
+            }
+        }
+
+        async function performDryRun() {
+            try {
+                const response = await fetch('/api/database-cleanup/dry-run', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        preserveEssential: true,
+                        cleanImeiData: true,
+                        cleanSkuData: false,
+                        cleanQueueData: true,
+                        resetSequences: true
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showDryRunResults(data);
+                } else {
+                    alert('Error performing dry run: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error performing dry run:', error);
+                alert('Error performing dry run');
+            }
+        }
+
+        function showDryRunResults(data) {
+            const resultsHtml = `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h4 class="text-sm font-medium text-yellow-800 mb-2">Dry Run Results</h4>
+                    <div class="text-sm text-yellow-700 space-y-1">
+                        <p><strong>Tables to clean:</strong> ${data.data.tablesCleaned}</p>
+                        <p><strong>Rows to delete:</strong> ${data.data.rowsDeleted}</p>
+                        <p><strong>Sequences to reset:</strong> ${data.data.sequencesReset}</p>
+                    </div>
+                    <div class="mt-3">
+                        <h5 class="text-xs font-medium text-yellow-800 mb-1">Tables that would be cleaned:</h5>
+                        <div class="text-xs text-yellow-600">
+                            ${data.data.cleanedTables.map(table => 
+                                `${table.tableName}: ${table.rowsDeleted} rows`
+                            ).join(', ')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Show results in a modal or alert
+            alert(`Dry Run Preview:\n\nTables to clean: ${data.data.tablesCleaned}\nRows to delete: ${data.data.rowsDeleted}\nSequences to reset: ${data.data.sequencesReset}\n\nTables: ${data.data.cleanedTables.map(t => t.tableName).join(', ')}`);
+        }
+
+        function showAdvancedCleanupModal() {
+            document.getElementById('advanced-cleanup-modal').classList.remove('hidden');
+        }
+
+        function closeAdvancedCleanupModal() {
+            document.getElementById('advanced-cleanup-modal').classList.add('hidden');
+        }
+
+        async function performAdvancedCleanup() {
+            const options = {
+                preserveEssential: document.getElementById('preserve-essential').checked,
+                cleanImeiData: document.getElementById('clean-imei-data').checked,
+                cleanSkuData: document.getElementById('clean-sku-data').checked,
+                cleanQueueData: document.getElementById('clean-queue-data').checked,
+                resetSequences: document.getElementById('reset-sequences').checked,
+                dryRun: document.getElementById('dry-run-mode').checked
+            };
+            
+            if (!options.dryRun && !confirm('This will perform the selected cleanup operations. Continue?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/database-cleanup/cleanup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(options)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    const message = options.dryRun ? 
+                        `Dry run completed!\n\nTables to clean: ${data.data.tablesCleaned}\nRows to delete: ${data.data.rowsDeleted}` :
+                        `Advanced cleanup completed!\n\nTables cleaned: ${data.data.tablesCleaned}\nRows deleted: ${data.data.rowsDeleted}\nSequences reset: ${data.data.sequencesReset}`;
+                    
+                    alert(message);
+                    closeAdvancedCleanupModal();
+                    loadDatabaseStatus();
+                    if (!options.dryRun) {
+                        loadStats();
+                        loadData();
+                    }
+                } else {
+                    alert('Error performing advanced cleanup: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error performing advanced cleanup:', error);
+                alert('Error performing advanced cleanup');
+            }
+        }
+
+        async function previewAdvancedCleanup() {
+            const options = {
+                preserveEssential: document.getElementById('preserve-essential').checked,
+                cleanImeiData: document.getElementById('clean-imei-data').checked,
+                cleanSkuData: document.getElementById('clean-sku-data').checked,
+                cleanQueueData: document.getElementById('clean-queue-data').checked,
+                resetSequences: document.getElementById('reset-sequences').checked,
+                dryRun: true
+            };
+            
+            try {
+                const response = await fetch('/api/database-cleanup/cleanup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(options)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showDryRunResults(data);
+                } else {
+                    alert('Error performing preview: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error performing preview:', error);
+                alert('Error performing preview');
+            }
         }
     </script>
 </body>

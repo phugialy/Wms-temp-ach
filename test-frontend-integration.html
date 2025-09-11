@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Integration Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-8">Frontend Integration Test</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Test Synchronous Workflow</h2>
+            <button id="testBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Test Workflow
+            </button>
+            <div id="results" class="mt-4 p-4 bg-gray-100 rounded hidden">
+                <h3 class="font-semibold mb-2">Results:</h3>
+                <pre id="resultText" class="text-sm"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('testBtn');
+            const results = document.getElementById('results');
+            const resultText = document.getElementById('resultText');
+            
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            results.classList.add('hidden');
+            
+            const testData = {
+                items: [
+                    {
+                        imei: '123456789012345',
+                        brand: 'Samsung',
+                        model: 'Galaxy S24',
+                        color: 'Black',
+                        carrier: 'Unlocked',
+                        working: 'YES',
+                        capacity: '256GB',
+                        location: 'Frontend Test'
+                    }
+                ]
+            };
+            
+            try {
+                console.log('🚀 Testing synchronous workflow...');
+                const startTime = Date.now();
+                
+                const response = await fetch('/api/workflow/process-bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testData)
+                });
+                
+                const endTime = Date.now();
+                const totalTime = endTime - startTime;
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Workflow response:', result);
+                    
+                    const summary = `
+Status: ${response.status}
+Success: ${result.success}
+Total Items: ${result.summary?.totalItems || 0}
+Queue Added: ${result.summary?.queueAdded || 0}
+Processed: ${result.summary?.processedItems || 0}
+SKU Matched: ${result.summary?.skuMatchedItems || 0}
+Processing Time: ${result.summary?.processingTime?.toFixed(2) || 0}ms
+Total Time: ${totalTime}ms
+
+Full Response:
+${JSON.stringify(result, null, 2)}
+                    `;
+                    
+                    resultText.textContent = summary;
+                    results.classList.remove('hidden');
+                    
+                } else {
+                    const errorData = await response.json();
+                    console.error('❌ Error:', errorData);
+                    resultText.textContent = `Error ${response.status}: ${JSON.stringify(errorData, null, 2)}`;
+                    results.classList.remove('hidden');
+                }
+                
+            } catch (error) {
+                console.error('❌ Request failed:', error);
+                resultText.textContent = `Request failed: ${error.message}`;
+                results.classList.remove('hidden');
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Test Workflow';
+        });
+    </script>
+</body>
+</html>

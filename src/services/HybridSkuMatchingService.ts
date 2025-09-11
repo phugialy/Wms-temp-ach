@@ -22,12 +22,28 @@ interface MatchResult {
   undefinedReason?: string | null;
 }
 
+interface CacheEntry {
+  result: MatchResult;
+  timestamp: number;
+  hitCount: number;
+}
+
 export class HybridSkuMatchingService {
   private pool!: Pool;
   private client: PoolClient | null = null;
+  private cache: Map<string, CacheEntry> = new Map();
+  private cacheTTL: number = 5 * 60 * 1000; // 5 minutes
+  private maxCacheSize: number = 1000; // Maximum cache entries
+  private memoryCleanupInterval: NodeJS.Timeout | null = null;
+  private isInitialized: boolean = false;
 
   async initialize(): Promise<void> {
     try {
+      if (this.isInitialized) {
+        logger.info('⚠️ Hybrid SKU Matching Service already initialized');
+        return;
+      }
+
       this.pool = new Pool({
         connectionString: process.env['DIRECT_URL'],
         ssl: { rejectUnauthorized: false },
@@ -39,6 +55,11 @@ export class HybridSkuMatchingService {
       });
       
       this.client = await this.pool.connect();
+      
+      // Start memory cleanup interval
+      this.startMemoryCleanup();
+      
+      this.isInitialized = true;
       logger.info('✅ Hybrid SKU Matching Service initialized successfully');
     } catch (error) {
       logger.error('❌ Failed to initialize Hybrid SKU Matching Service:', error);
@@ -48,6 +69,9 @@ export class HybridSkuMatchingService {
 
   async cleanup(): Promise<void> {
     try {
+      // Stop memory cleanup interval
+      this.stopMemoryCleanup();
+      
       if (this.client) {
         this.client.release();
         this.client = null;
@@ -55,10 +79,186 @@ export class HybridSkuMatchingService {
       if (this.pool) {
         await this.pool.end();
       }
+      
+      // Clear cache on cleanup
+      this.cache.clear();
+      
+      this.isInitialized = false;
       logger.info('✅ Hybrid SKU Matching Service cleaned up');
     } catch (error) {
       logger.error('❌ Error cleaning up Hybrid SKU Matching Service:', error);
     }
+  }
+
+  /**
+   * Start automatic memory cleanup
+   */
+  private startMemoryCleanup(): void {
+    // Clean up every 10 minutes
+    this.memoryCleanupInterval = setInterval(() => {
+      this.performMemoryCleanup();
+    }, 10 * 60 * 1000);
+    
+    logger.info('🧹 Memory cleanup interval started (every 10 minutes)');
+  }
+
+  /**
+   * Stop automatic memory cleanup
+   */
+  private stopMemoryCleanup(): void {
+    if (this.memoryCleanupInterval) {
+      clearInterval(this.memoryCleanupInterval);
+      this.memoryCleanupInterval = null;
+      logger.info('🛑 Memory cleanup interval stopped');
+    }
+  }
+
+  /**
+   * Perform comprehensive memory cleanup
+   */
+  private performMemoryCleanup(): void {
+    try {
+      const startTime = Date.now();
+      let cleanedCount = 0;
+      
+      // Clean expired cache entries
+      const now = Date.now();
+      for (const [key, entry] of this.cache.entries()) {
+        if (now - entry.timestamp > this.cacheTTL) {
+          this.cache.delete(key);
+          cleanedCount++;
+        }
+      }
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        logger.info('🗑️ Forced garbage collection');
+      }
+      
+      // Log memory usage
+      const memUsage = process.memoryUsage();
+      const memUsageMB = {
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024)
+      };
+      
+      const cleanupTime = Date.now() - startTime;
+      logger.info(`🧹 Memory cleanup completed: ${cleanedCount} cache entries removed, ${cleanupTime}ms, Memory: RSS=${memUsageMB.rss}MB, Heap=${memUsageMB.heapUsed}/${memUsageMB.heapTotal}MB, External=${memUsageMB.external}MB`);
+      
+    } catch (error) {
+      logger.error('❌ Error during memory cleanup:', error);
+    }
+  }
+
+  /**
+   * Get memory usage statistics
+   */
+  getMemoryStats(): { 
+    cacheSize: number; 
+    memoryUsage: { rss: number; heapUsed: number; heapTotal: number; external: number };
+    uptime: number;
+  } {
+    const memUsage = process.memoryUsage();
+    return {
+      cacheSize: this.cache.size,
+      memoryUsage: {
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024)
+      },
+      uptime: Math.round(process.uptime())
+    };
+  }
+
+  /**
+   * Generate cache key from IMEI data
+   */
+  private generateCacheKey(imeiData: ImeiData): string {
+    return `${imeiData.imei}_${imeiData.brand}_${imeiData.model}_${imeiData.capacity}_${imeiData.color}_${imeiData.carrier}_${imeiData.device_notes || ''}`;
+  }
+
+  /**
+   * Get cached result if available and not expired
+   */
+  private getCachedResult(cacheKey: string): MatchResult | null {
+    const entry = this.cache.get(cacheKey);
+    if (!entry) return null;
+
+    const now = Date.now();
+    if (now - entry.timestamp > this.cacheTTL) {
+      // Cache expired, remove entry
+      this.cache.delete(cacheKey);
+      return null;
+    }
+
+    // Update hit count
+    entry.hitCount++;
+    logger.info(`🎯 CACHE HIT: ${cacheKey} (hit count: ${entry.hitCount})`);
+    return entry.result;
+  }
+
+  /**
+   * Store result in cache with size management
+   */
+  private setCachedResult(cacheKey: string, result: MatchResult): void {
+    // Check cache size and clean up if necessary
+    if (this.cache.size >= this.maxCacheSize) {
+      this.cleanupCache();
+    }
+
+    this.cache.set(cacheKey, {
+      result,
+      timestamp: Date.now(),
+      hitCount: 0
+    });
+
+    logger.info(`💾 CACHE STORE: ${cacheKey} (cache size: ${this.cache.size})`);
+  }
+
+  /**
+   * Clean up cache by removing least recently used entries
+   */
+  private cleanupCache(): void {
+    const entries = Array.from(this.cache.entries());
+    
+    // Sort by hit count (ascending) and timestamp (ascending)
+    entries.sort((a, b) => {
+      if (a[1].hitCount !== b[1].hitCount) {
+        return a[1].hitCount - b[1].hitCount;
+      }
+      return a[1].timestamp - b[1].timestamp;
+    });
+
+    // Remove 20% of least used entries
+    const removeCount = Math.floor(this.maxCacheSize * 0.2);
+    for (let i = 0; i < removeCount && i < entries.length; i++) {
+      const entry = entries[i];
+      if (entry && entry[0]) {
+        this.cache.delete(entry[0]);
+      }
+    }
+
+    logger.info(`🧹 CACHE CLEANUP: Removed ${removeCount} entries, cache size: ${this.cache.size}`);
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; hitRate: number; totalHits: number } {
+    const entries = Array.from(this.cache.values());
+    const totalHits = entries.reduce((sum, entry) => sum + entry.hitCount, 0);
+    const totalRequests = entries.length + totalHits;
+    const hitRate = totalRequests > 0 ? (totalHits / totalRequests) * 100 : 0;
+
+    return {
+      size: this.cache.size,
+      hitRate: Math.round(hitRate * 100) / 100,
+      totalHits
+    };
   }
 
   private classifyAsUndefined(imeiData: ImeiData, matches: any[]): boolean {
@@ -124,7 +324,51 @@ export class HybridSkuMatchingService {
       { input: 'iphone 14 pro', matched: 'iphone 14' },
       { input: 'iphone 14 pro max', matched: 'iphone 14' },
       { input: 'pixel 7 pro', matched: 'pixel 7' },
-      { input: 'pixel 8 pro', matched: 'pixel 8' }
+      { input: 'pixel 8 pro', matched: 'pixel 8' },
+      // Fold model mismatches (3, 4, 5, 6, 7, 8)
+      { input: 'fold 3', matched: 'fold 4' },
+      { input: 'fold 3', matched: 'fold 5' },
+      { input: 'fold 3', matched: 'fold 6' },
+      { input: 'fold 3', matched: 'fold 7' },
+      { input: 'fold 3', matched: 'fold 8' },
+      { input: 'fold 4', matched: 'fold 3' },
+      { input: 'fold 4', matched: 'fold 5' },
+      { input: 'fold 4', matched: 'fold 6' },
+      { input: 'fold 4', matched: 'fold 7' },
+      { input: 'fold 4', matched: 'fold 8' },
+      { input: 'fold 5', matched: 'fold 3' },
+      { input: 'fold 5', matched: 'fold 4' },
+      { input: 'fold 5', matched: 'fold 6' },
+      { input: 'fold 5', matched: 'fold 7' },
+      { input: 'fold 5', matched: 'fold 8' },
+      { input: 'fold 6', matched: 'fold 3' },
+      { input: 'fold 6', matched: 'fold 4' },
+      { input: 'fold 6', matched: 'fold 5' },
+      { input: 'fold 6', matched: 'fold 7' },
+      { input: 'fold 6', matched: 'fold 8' },
+      { input: 'fold 7', matched: 'fold 3' },
+      { input: 'fold 7', matched: 'fold 4' },
+      { input: 'fold 7', matched: 'fold 5' },
+      { input: 'fold 7', matched: 'fold 6' },
+      { input: 'fold 7', matched: 'fold 8' },
+      { input: 'fold 8', matched: 'fold 3' },
+      { input: 'fold 8', matched: 'fold 4' },
+      { input: 'fold 8', matched: 'fold 5' },
+      { input: 'fold 8', matched: 'fold 6' },
+      { input: 'fold 8', matched: 'fold 7' },
+      // Flip model mismatches (3, 4, 5, 6)
+      { input: 'flip 3', matched: 'flip 4' },
+      { input: 'flip 3', matched: 'flip 5' },
+      { input: 'flip 3', matched: 'flip 6' },
+      { input: 'flip 4', matched: 'flip 3' },
+      { input: 'flip 4', matched: 'flip 5' },
+      { input: 'flip 4', matched: 'flip 6' },
+      { input: 'flip 5', matched: 'flip 3' },
+      { input: 'flip 5', matched: 'flip 4' },
+      { input: 'flip 5', matched: 'flip 6' },
+      { input: 'flip 6', matched: 'flip 3' },
+      { input: 'flip 6', matched: 'flip 4' },
+      { input: 'flip 6', matched: 'flip 5' }
     ];
     
     // Check for cross-model contamination (completely different models)
@@ -203,7 +447,12 @@ export class HybridSkuMatchingService {
       return true;
     }
     
-    // 2. Dynamic pattern analysis
+    // 2. Enhanced Fold/Flip model number detection
+    if (this.detectFoldFlipModelMismatch(inputModel, matchedModel, topMatch.sku_code)) {
+      return true;
+    }
+    
+    // 3. Dynamic pattern analysis
     const inputWords = inputModel.split(/\s+/);
     const matchedWords = matchedModel.split(/\s+/);
     
@@ -219,11 +468,60 @@ export class HybridSkuMatchingService {
       return true;
     }
     
-    // 3. Brand consistency check
+    // 4. Brand consistency check
     const inputBrand = imeiData.brand.toLowerCase();
     const matchedBrand = topMatch.brand?.toLowerCase() || '';
     if (inputBrand && matchedBrand && !inputBrand.includes(matchedBrand) && !matchedBrand.includes(inputBrand)) {
       logger.info(`🔍 DYNAMIC: Brand mismatch - Input: ${inputBrand}, Matched: ${matchedBrand}`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Enhanced detection for Fold/Flip model number mismatches
+   */
+  private detectFoldFlipModelMismatch(inputModel: string, matchedModel: string, matchedSku?: string): boolean {
+    // Extract model numbers from Fold/Flip models in input
+    const inputFoldMatch = inputModel.match(/(?:fold|flip)\s*(\d+)/i);
+    
+    if (inputFoldMatch && inputFoldMatch[1]) {
+      const inputNumber = parseInt(inputFoldMatch[1]);
+      
+      // Check if matched model has a number
+      const matchedFoldMatch = matchedModel.match(/(?:fold|flip)\s*(\d+)/i);
+      if (matchedFoldMatch && matchedFoldMatch[1]) {
+        const matchedNumber = parseInt(matchedFoldMatch[1]);
+        
+        // If both have numbers but they're different, it's a mismatch
+        if (inputNumber !== matchedNumber) {
+          logger.info(`🔍 FOLD/FLIP MISMATCH: Input ${inputModel} (${inputNumber}) vs Matched ${matchedModel} (${matchedNumber})`);
+          return true;
+        }
+      } else {
+        // Input has a number but matched model doesn't - check SKU code
+        if (matchedSku) {
+          const skuFoldMatch = matchedSku.match(/(?:fold|flip)(\d+)/i);
+          if (skuFoldMatch && skuFoldMatch[1]) {
+            const skuNumber = parseInt(skuFoldMatch[1]);
+            if (inputNumber !== skuNumber) {
+              logger.info(`🔍 FOLD/FLIP MISMATCH: Input ${inputModel} (${inputNumber}) vs SKU ${matchedSku} (${skuNumber})`);
+              return true;
+            }
+          }
+        }
+      }
+    }
+    
+    // Check for Fold vs Flip mismatch
+    const inputIsFold = inputModel.includes('fold');
+    const inputIsFlip = inputModel.includes('flip');
+    const matchedIsFold = matchedModel.includes('fold');
+    const matchedIsFlip = matchedModel.includes('flip');
+    
+    if ((inputIsFold && matchedIsFlip) || (inputIsFlip && matchedIsFold)) {
+      logger.info(`🔍 FOLD/FLIP TYPE MISMATCH: Input ${inputModel} vs Matched ${matchedModel}`);
       return true;
     }
     
@@ -500,9 +798,10 @@ export class HybridSkuMatchingService {
   private enhanceMatchesWithFuzzyLogic(imeiData: ImeiData, matches: any[]): any[] {
     // Enhance matches with fuzzy logic for better color and model matching
     return matches.map(match => {
-      let enhancedScore = match.match_score || 0;
-      const inputModel = imeiData.model.toLowerCase();
-      const inputColor = imeiData.color.toLowerCase();
+      // Ensure original score is non-negative
+      let enhancedScore = Math.max(match.match_score || 0, 0);
+      const inputModel = imeiData.model?.toLowerCase() || '';
+      const inputColor = imeiData.color?.toLowerCase() || '';
       const matchedModel = match.model?.toLowerCase() || '';
       const matchedColor = match.color?.toLowerCase() || '';
       const matchedSku = match.sku_code?.toLowerCase() || '';
@@ -531,10 +830,14 @@ export class HybridSkuMatchingService {
         logger.info(`🎯 CORE DEVICE BONUS: Model+Color+Capacity match (+15 points)`);
       }
       
+      // Bounds checking - ensure score is between 0 and 100
+      enhancedScore = Math.max(enhancedScore, 0);
+      enhancedScore = Math.min(enhancedScore, 100);
+      
       return {
         ...match,
-        match_score: Math.min(enhancedScore, 100), // Cap at 100
-        enhanced: enhancedScore > match.match_score
+        match_score: enhancedScore,
+        enhanced: enhancedScore > (match.match_score || 0)
       };
     }).sort((a, b) => b.match_score - a.match_score); // Re-sort by enhanced score
   }
@@ -653,42 +956,34 @@ export class HybridSkuMatchingService {
     const matchedColor = match.color?.trim() || '';
     const matchedCapacity = match.capacity?.trim() || '';
     
-    // Check if input has carrier but match doesn't (or vice versa)
-    // Exception: If input carrier is 'UNLOCKED', it means "no carrier field needed"
-    if (inputCarrier && inputCarrier !== 'UNLOCKED' && !matchedCarrier) {
-      return `Input has carrier '${inputCarrier}' but match has no carrier`;
-    }
-    
-    // Special case: If input carrier is 'UNLOCKED' and match has no carrier, that's OK
-    if (inputCarrier === 'UNLOCKED' && !matchedCarrier) {
-      // This is a valid match, don't flag as undefined
+    // IMPROVED CARRIER LOGIC:
+    // 1. If input carrier is 'UNLOCKED' or 'CARRIER UNLOCKED', can match with any SKU
+    if (inputCarrier === 'UNLOCKED' || inputCarrier === 'CARRIER UNLOCKED') {
+      // UNLOCKED can match with any carrier, don't flag as undefined
       return null;
     }
     
+    // 2. If input has locked carrier but match has no carrier, that's OK (fallback to UNLOCKED)
+    if (inputCarrier && inputCarrier !== 'UNLOCKED' && !matchedCarrier) {
+      // This is a fallback suggestion, flag as undefined but still provide the match
+      return `Input has carrier '${inputCarrier}' but match has no carrier (fallback to UNLOCKED)`;
+    }
+    
+    // 3. If input has no carrier but match has carrier, that's OK (fallback suggestion)
     if (!inputCarrier && matchedCarrier) {
-      return `Input has no carrier but match has carrier '${matchedCarrier}'`;
+      return `Input has no carrier but match has carrier '${matchedCarrier}' (fallback suggestion)`;
     }
     
-    // Check if input has color but match doesn't (or vice versa)
-    if (inputColor && !matchedColor) {
-      return `Input has color '${inputColor}' but match has no color`;
+    // 4. If both have carriers but they don't match, that's OK (fallback suggestion)
+    if (inputCarrier && matchedCarrier && inputCarrier !== matchedCarrier) {
+      return `Input carrier '${inputCarrier}' doesn't match SKU carrier '${matchedCarrier}' (fallback suggestion)`;
     }
     
-    if (!inputColor && matchedColor) {
-      return `Input has no color but match has color '${matchedColor}'`;
-    }
-    
-    // Check if input has capacity but match doesn't (or vice versa)
-    if (inputCapacity && !matchedCapacity) {
-      return `Input has capacity '${inputCapacity}' but match has no capacity`;
-    }
-    
-    if (!inputCapacity && matchedCapacity) {
-      return `Input has no capacity but match has capacity '${matchedCapacity}'`;
-    }
+    // COLOR AND CAPACITY LOGIC:
+    // Colors and capacities can be fallback suggestions, don't flag as undefined
+    // The system will pick the first available option for the same model
     
     // Check for empty/null critical fields in input
-    // Exception: "UNLOCKED" is a valid carrier, not missing
     if (!inputCarrier || inputCarrier === '') {
       return `Input carrier is missing/null`;
     }
@@ -704,68 +999,288 @@ export class HybridSkuMatchingService {
     return null; // No missing critical data
   }
 
-  private processCarrierFromNotes(carrier: string, device_notes?: string): string {
-    // Original device_notes logic:
-    // IF "CARRIER" 
-    //   IF "UNLOCKED" then override as "UNLOCKED" 
-    //   IF "LOCKED" then leave CARRIER AS IS 
-    // IF "UNLOCKED" THEN No CARRIER FIELD NEEDED
+  private applyFallbackLogic(imeiData: ImeiData, matches: any[]): any[] {
+    if (matches.length === 0) return matches;
     
+    const processedCarrier = this.processCarrierFromNotes(imeiData.carrier, imeiData.device_notes);
+    const inputCarrier = processedCarrier?.trim() || '';
+    
+    // Group matches by model for fallback logic
+    const modelGroups = new Map<string, any[]>();
+    matches.forEach(match => {
+      const modelKey = `${match.brand}-${match.model}`;
+      if (!modelGroups.has(modelKey)) {
+        modelGroups.set(modelKey, []);
+      }
+      modelGroups.get(modelKey)!.push(match);
+    });
+    
+    const improvedMatches: any[] = [];
+    
+    // Process each model group
+    for (const [modelKey, modelMatches] of modelGroups) {
+      // Sort matches within each model group by priority
+      const sortedMatches = modelMatches.sort((a, b) => {
+        // Priority 1: Exact carrier match
+        const aCarrierMatch = this.getCarrierMatchPriority(inputCarrier, a.carrier);
+        const bCarrierMatch = this.getCarrierMatchPriority(inputCarrier, b.carrier);
+        if (aCarrierMatch !== bCarrierMatch) {
+          return aCarrierMatch - bCarrierMatch;
+        }
+        
+        // Priority 2: Match score
+        if (a.match_score !== b.match_score) {
+          return b.match_score - a.match_score;
+        }
+        
+        // Priority 3: No post-fix preferred
+        const aHasPostfix = a.post_fix && a.post_fix.trim() !== '';
+        const bHasPostfix = b.post_fix && b.post_fix.trim() !== '';
+        if (aHasPostfix !== bHasPostfix) {
+          return aHasPostfix ? 1 : -1;
+        }
+        
+        // Priority 4: Alphabetical
+        return a.sku_code.localeCompare(b.sku_code);
+      });
+      
+      improvedMatches.push(...sortedMatches);
+    }
+    
+    return improvedMatches;
+  }
+
+  private getCarrierMatchPriority(inputCarrier: string, skuCarrier: string): number {
+    const input = inputCarrier?.toUpperCase() || '';
+    const sku = skuCarrier?.toUpperCase() || '';
+    
+    // Priority 1: Exact match or both empty
+    if (input === sku || (input === '' && sku === '')) {
+      return 1;
+    }
+    
+    // Priority 2: UNLOCKED can match with anything
+    if (input === 'UNLOCKED' || sku === 'UNLOCKED') {
+      return 2;
+    }
+    
+    // Priority 3: Fallback suggestions
+    return 3;
+  }
+
+  private adjustScoresForUndefined(imeiData: ImeiData, matches: any[]): any[] {
+    if (matches.length === 0) return matches;
+    
+    const processedCarrier = this.processCarrierFromNotes(imeiData.carrier, imeiData.device_notes);
+    const inputCarrier = processedCarrier?.trim() || '';
+    const inputColor = imeiData.color?.trim() || '';
+    const inputCapacity = imeiData.capacity?.trim() || '';
+    
+    return matches.map(match => {
+      // Ensure original score is non-negative
+      let adjustedScore = Math.max(match.match_score || 0, 0);
+      let adjustmentReason = '';
+      
+      const matchedCarrier = match.carrier?.trim() || '';
+      const matchedColor = match.color?.trim() || '';
+      const matchedCapacity = match.capacity?.trim() || '';
+      
+      // CARRIER MISMATCH PENALTIES
+      if (inputCarrier && inputCarrier !== 'UNLOCKED' && !matchedCarrier) {
+        // Locked carrier but SKU has no carrier (fallback to UNLOCKED)
+        adjustedScore = Math.min(adjustedScore, 75);
+        adjustmentReason = 'Carrier fallback penalty';
+      } else if (!inputCarrier && matchedCarrier) {
+        // No input carrier but SKU has carrier
+        adjustedScore = Math.min(adjustedScore, 80);
+        adjustmentReason = 'Missing carrier penalty';
+      } else if (inputCarrier && matchedCarrier && inputCarrier !== matchedCarrier) {
+        // Carrier mismatch
+        adjustedScore = Math.min(adjustedScore, 70);
+        adjustmentReason = 'Carrier mismatch penalty';
+      }
+      
+      // COLOR MISMATCH PENALTIES
+      if (inputColor && !matchedColor) {
+        // Input has color but SKU doesn't
+        adjustedScore = Math.min(adjustedScore, 85);
+        adjustmentReason = adjustmentReason ? `${adjustmentReason}, Color missing` : 'Color missing penalty';
+      } else if (!inputColor && matchedColor) {
+        // No input color but SKU has color
+        adjustedScore = Math.min(adjustedScore, 90);
+        adjustmentReason = adjustmentReason ? `${adjustmentReason}, Color fallback` : 'Color fallback penalty';
+      }
+      
+      // CAPACITY MISMATCH PENALTIES
+      if (inputCapacity && !matchedCapacity) {
+        // Input has capacity but SKU doesn't
+        adjustedScore = Math.min(adjustedScore, 80);
+        adjustmentReason = adjustmentReason ? `${adjustmentReason}, Capacity missing` : 'Capacity missing penalty';
+      } else if (!inputCapacity && matchedCapacity) {
+        // No input capacity but SKU has capacity
+        adjustedScore = Math.min(adjustedScore, 85);
+        adjustmentReason = adjustmentReason ? `${adjustmentReason}, Capacity fallback` : 'Capacity fallback penalty';
+      }
+      
+      // MODEL MISMATCH PENALTIES (most severe)
+      const inputModel = imeiData.model?.toLowerCase() || '';
+      const matchedModel = match.model?.toLowerCase() || '';
+      if (inputModel && matchedModel && !this.modelsMatch(inputModel, matchedModel)) {
+        adjustedScore = Math.min(adjustedScore, 60);
+        adjustmentReason = adjustmentReason ? `${adjustmentReason}, Model mismatch` : 'Model mismatch penalty';
+      }
+      
+      // Final bounds checking - ensure score is never negative
+      adjustedScore = Math.max(adjustedScore, 0);
+      
+      return {
+        ...match,
+        match_score: adjustedScore,
+        original_score: match.match_score,
+        score_adjustment: adjustmentReason
+      };
+    });
+  }
+
+  private processCarrierFromNotes(carrier: string, device_notes?: string): string {
+    // Enhanced carrier logic to handle more edge cases
     const notes = device_notes?.toLowerCase() || '';
     const carrierUpper = carrier?.toUpperCase() || '';
     
-    // If device_notes contains "unlocked", override carrier to "UNLOCKED"
-    if (notes.includes('unlocked')) {
+    // Comprehensive UNLOCKED detection in device_notes
+    const unlockedPatterns = [
+      'unlocked', 'carrier unlocked', 'device unlocked', 'phone unlocked',
+      'sim unlocked', 'network unlocked', 'factory unlocked', 'fully unlocked'
+    ];
+    
+    if (unlockedPatterns.some(pattern => notes.includes(pattern))) {
       return 'UNLOCKED';
     }
     
-    // If device_notes contains "locked", keep the original carrier
-    if (notes.includes('locked')) {
-      return carrier;
+    // Comprehensive LOCKED detection in device_notes
+    const lockedPatterns = [
+      'locked', 'carrier locked', 'device locked', 'phone locked',
+      'sim locked', 'network locked', 'carrier specific', 'locked to'
+    ];
+    
+    if (lockedPatterns.some(pattern => notes.includes(pattern))) {
+      return carrier; // Keep original carrier for locked devices
     }
     
-    // If carrier is already "UNLOCKED", it's a valid carrier
-    if (carrierUpper === 'UNLOCKED') {
+    // Enhanced UNLOCKED carrier detection
+    const unlockedCarrierPatterns = [
+      'UNLOCKED', 'CARRIER UNLOCKED', 'DEVICE UNLOCKED', 'PHONE UNLOCKED',
+      'SIM UNLOCKED', 'NETWORK UNLOCKED', 'FACTORY UNLOCKED', 'FULLY UNLOCKED'
+    ];
+    
+    if (unlockedCarrierPatterns.some(pattern => carrierUpper.includes(pattern))) {
       return 'UNLOCKED';
+    }
+    
+    // Handle carrier variations and abbreviations
+    const carrierVariations = this.normalizeCarrierName(carrier);
+    if (carrierVariations) {
+      return carrierVariations;
     }
     
     // Default: return original carrier
     return carrier;
   }
 
+  /**
+   * Normalize carrier names to handle variations and abbreviations
+   */
+  private normalizeCarrierName(carrier: string): string | null {
+    if (!carrier) return null;
+    
+    const carrierUpper = carrier.toUpperCase();
+    
+    // AT&T variations
+    if (carrierUpper.includes('ATT') || carrierUpper.includes('AT&T') || carrierUpper.includes('AT&T')) {
+      return 'AT&T';
+    }
+    
+    // Verizon variations
+    if (carrierUpper.includes('VERIZON') || carrierUpper.includes('VZW') || carrierUpper.includes('VZ')) {
+      return 'VERIZON';
+    }
+    
+    // T-Mobile variations
+    if (carrierUpper.includes('TMOBILE') || carrierUpper.includes('T-MOBILE') || carrierUpper.includes('TMO')) {
+      return 'T-MOBILE';
+    }
+    
+    // Sprint variations
+    if (carrierUpper.includes('SPRINT') || carrierUpper.includes('SPR')) {
+      return 'SPRINT';
+    }
+    
+    // Cricket variations
+    if (carrierUpper.includes('CRICKET') || carrierUpper.includes('CRK')) {
+      return 'CRICKET';
+    }
+    
+    // MetroPCS variations
+    if (carrierUpper.includes('METROPCS') || carrierUpper.includes('METRO') || carrierUpper.includes('MPCS')) {
+      return 'METROPCS';
+    }
+    
+    // Boost Mobile variations
+    if (carrierUpper.includes('BOOST') || carrierUpper.includes('BOOSTMOBILE')) {
+      return 'BOOST';
+    }
+    
+    // Virgin Mobile variations
+    if (carrierUpper.includes('VIRGIN') || carrierUpper.includes('VIRGINMOBILE')) {
+      return 'VIRGIN';
+    }
+    
+    // Straight Talk variations
+    if (carrierUpper.includes('STRAIGHTTALK') || carrierUpper.includes('STRAIGHT') || carrierUpper.includes('ST')) {
+      return 'STRAIGHTTALK';
+    }
+    
+    // Generic unlocked patterns
+    if (carrierUpper.includes('UNLOCKED') || carrierUpper.includes('UNL')) {
+      return 'UNLOCKED';
+    }
+    
+    return null; // No normalization found
+  }
+
   private getUndefinedReason(imeiData: ImeiData, matches: any[]): string {
     if (matches.length === 0) {
-      return "No matches found";
+      return "No matching record";
     }
     
     const topMatch = matches[0];
     
-    // Check for missing critical data first
+    // PRIORITY 1: Check for missing critical data first (carrier, color, capacity issues)
     const missingData = this.detectMissingCriticalData(imeiData, topMatch);
     if (missingData) {
       return missingData;
     }
     
-    // Check for model mismatch
+    // PRIORITY 2: Check for model mismatch (only if no critical data issues)
     const inputModel = imeiData.model.toLowerCase();
     const matchedModel = topMatch.model?.toLowerCase() || '';
     if (this.detectModelMismatchDynamic(inputModel, matchedModel, imeiData, topMatch)) {
       return `Model mismatch: Input '${imeiData.model}' vs Match '${topMatch.model}'`;
     }
     
-    // Check for capacity mismatch
+    // PRIORITY 3: Check for capacity mismatch (only if no critical data or model issues)
     const inputCapacity = imeiData.capacity.toLowerCase();
     const matchedCapacity = topMatch.capacity?.toLowerCase() || '';
     if (this.detectCapacityMismatchDynamic(inputCapacity, matchedCapacity, imeiData, topMatch)) {
       return `Capacity mismatch: Input '${imeiData.capacity}' vs Match '${topMatch.capacity}'`;
     }
     
-    // Check for non-existent pattern
+    // PRIORITY 4: Check for non-existent pattern
     if (this.detectNonExistentPatternDynamic(imeiData, topMatch)) {
       return `Non-existent SKU pattern for ${imeiData.model} ${imeiData.capacity}`;
     }
     
-    // Check for low confidence
+    // PRIORITY 5: Check for low confidence
     if (this.classifyByConfidence(imeiData, matches)) {
       return `Low confidence match (Score: ${topMatch.match_score})`;
     }
@@ -776,11 +1291,26 @@ export class HybridSkuMatchingService {
   /**
    * CORE METHOD: Tag-first hybrid matching with single query
    * Uses sku_tags array and individual tag columns for maximum accuracy
+   * Includes graceful degradation and comprehensive error handling
    */
   async matchImeiToSku(imeiData: ImeiData, options: any = {}): Promise<MatchResult> {
     const startTime = Date.now();
     
     try {
+      // Validate input data
+      if (!imeiData || !imeiData.imei) {
+        throw new Error('Invalid input data: IMEI is required');
+      }
+
+      // Check cache first
+      const cacheKey = this.generateCacheKey(imeiData);
+      const cachedResult = this.getCachedResult(cacheKey);
+      if (cachedResult) {
+        logger.info(`⚡ CACHE HIT: Returning cached result for ${imeiData.imei} (${Date.now() - startTime}ms)`);
+        return cachedResult;
+      }
+
+      // Ensure database connection
       if (!this.client) {
         if (this.pool) {
           this.client = await this.pool.connect();
@@ -794,10 +1324,11 @@ export class HybridSkuMatchingService {
       const minScore = options.minScore || 40;
       const maxResults = options.maxResults || 10;
 
-      const result = await this.executeHybridQuery(imeiData, minScore, maxResults);
+      // Primary matching attempt
+      const queryResult = await this.executeHybridQuery(imeiData, minScore, maxResults);
       
       const processingTime = Date.now() - startTime;
-      let matches = result.rows || [];
+      let matches = queryResult.rows || [];
       
       // Filter out SKUs with post-fix values (should not be selected)
       matches = matches.filter((sku: any) => {
@@ -809,6 +1340,12 @@ export class HybridSkuMatchingService {
       // Post-process matches with enhanced logic
       matches = this.enhanceMatchesWithFuzzyLogic(imeiData, matches);
       
+      // Apply improved fallback logic for better suggestions
+      matches = this.applyFallbackLogic(imeiData, matches);
+      
+      // Apply score adjustments for undefined cases
+      matches = this.adjustScoresForUndefined(imeiData, matches);
+      
       const highestScore = matches.length > 0 ? matches[0].match_score : 0;
       
       // Enhanced undefined classification logic
@@ -817,7 +1354,7 @@ export class HybridSkuMatchingService {
 
       logger.info(`✅ HYBRID MATCHING: Found ${matches.length} matches for ${imeiData.imei} (${processingTime}ms)`);
 
-      return {
+      const matchResult: MatchResult = {
         matches,
         requiresAttention,
         totalMatches: matches.length,
@@ -828,8 +1365,109 @@ export class HybridSkuMatchingService {
         undefinedReason: isUndefined ? this.getUndefinedReason(imeiData, matches) : null
       };
 
+      // Store result in cache
+      this.setCachedResult(cacheKey, matchResult);
+
+      return matchResult;
+
     } catch (error) {
       logger.error(`❌ HYBRID MATCHING ERROR for ${imeiData.imei}:`, error);
+      
+      // Graceful degradation - attempt fallback matching
+      try {
+        logger.info(`🔄 Attempting fallback matching for ${imeiData.imei}...`);
+        return await this.executeFallbackMatching(imeiData, options, startTime);
+      } catch (fallbackError) {
+        logger.error(`❌ FALLBACK MATCHING FAILED for ${imeiData.imei}:`, fallbackError);
+        
+        // Return empty result with error information
+        const processingTime = Date.now() - startTime;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+          matches: [],
+          requiresAttention: true,
+          totalMatches: 0,
+          highestScore: 0,
+          matchType: 'error',
+          processingTime,
+          isUndefined: true,
+          undefinedReason: `Matching failed: ${errorMessage}`
+        };
+      }
+    }
+  }
+
+  /**
+   * FALLBACK MATCHING: Simple field-based matching when primary query fails
+   * Provides basic functionality even when complex queries fail
+   */
+  private async executeFallbackMatching(imeiData: ImeiData, options: any, startTime: number): Promise<MatchResult> {
+    try {
+      logger.info(`🔄 FALLBACK MATCHING: Using simple field matching for ${imeiData.imei}`);
+      
+      const minScore = options.minScore || 30; // Lower threshold for fallback
+      const maxResults = options.maxResults || 5; // Fewer results for fallback
+      
+      // Simple field-based query as fallback
+      const result = await this.client!.query(`
+        SELECT 
+          sku_code, brand, model, capacity, color, carrier, post_fix, device_type,
+          CASE 
+            WHEN LOWER(brand) = LOWER($1) THEN 20
+            WHEN LOWER(model) = LOWER($2) THEN 30
+            WHEN LOWER(capacity) = LOWER($3) THEN 25
+            WHEN LOWER(color) = LOWER($4) THEN 15
+            WHEN LOWER(carrier) = LOWER($5) THEN 10
+            ELSE 0
+          END as match_score,
+          'fallback' as match_type
+        FROM sku_master 
+        WHERE is_active = true
+          AND (
+            LOWER(brand) ILIKE '%' || LOWER($1) || '%' OR
+            LOWER(model) ILIKE '%' || LOWER($2) || '%' OR
+            LOWER(capacity) ILIKE '%' || LOWER($3) || '%' OR
+            LOWER(color) ILIKE '%' || LOWER($4) || '%' OR
+            LOWER(carrier) ILIKE '%' || LOWER($5) || '%'
+          )
+        ORDER BY match_score DESC, sku_code
+        LIMIT $6
+      `, [
+        imeiData.brand || '',
+        imeiData.model || '',
+        imeiData.capacity || '',
+        imeiData.color || '',
+        imeiData.carrier || '',
+        maxResults
+      ]);
+      
+      const processingTime = Date.now() - startTime;
+      let matches = result.rows || [];
+      
+      // Filter out SKUs with post-fix values
+      matches = matches.filter((sku: any) => {
+        const postfix = sku.post_fix || '';
+        return !postfix || postfix.trim() === '';
+      });
+      
+      const highestScore = matches.length > 0 ? matches[0].match_score : 0;
+      const isUndefined = matches.length === 0 || highestScore < 50;
+      
+      logger.info(`✅ FALLBACK MATCHING: Found ${matches.length} matches for ${imeiData.imei} (${processingTime}ms)`);
+      
+      return {
+        matches,
+        requiresAttention: isUndefined,
+        totalMatches: matches.length,
+        highestScore,
+        matchType: 'fallback',
+        processingTime,
+        isUndefined,
+        undefinedReason: isUndefined ? 'Fallback matching - low confidence' : null
+      };
+      
+    } catch (error) {
+      logger.error(`❌ FALLBACK MATCHING ERROR for ${imeiData.imei}:`, error);
       throw error;
     }
   }
@@ -1005,7 +1643,18 @@ export class HybridSkuMatchingService {
               WHEN COALESCE(sm.model, '') != '' AND COALESCE(nd.norm_model, '') != '' 
                    AND LOWER(sm.model) ILIKE '%' || LOWER(nd.norm_model) || '%' THEN 35
               WHEN (COALESCE(sm.model, '') = '') AND COALESCE(nd.norm_model, '') != '' 
-                   AND LOWER(sm.sku_code) ILIKE '%' || LOWER(nd.norm_model) || '%' THEN 30
+                   AND LOWER(sm.sku_code) ILIKE '%' || LOWER(nd.norm_model) || '%'
+                   -- CRITICAL: For Fold/Flip models, require exact model number match
+                   AND (
+                     -- If input has Fold/Flip number, SKU must have the same number
+                     (LOWER(nd.norm_model) ~ '(fold|flip)\s*(\d+)' AND 
+                      LOWER(sm.sku_code) ~ '(fold|flip)(\d+)' AND
+                      REGEXP_REPLACE(LOWER(nd.norm_model), '.*(fold|flip)\s*(\d+).*', '\\2', 'g') = 
+                      REGEXP_REPLACE(LOWER(sm.sku_code), '.*(fold|flip)(\d+).*', '\\2', 'g'))
+                     OR
+                     -- If input doesn't have Fold/Flip number, allow generic matching
+                     (LOWER(nd.norm_model) !~ '(fold|flip)\s*(\d+)')
+                   ) THEN 30
               ELSE 0
             END +
             
@@ -1047,7 +1696,7 @@ export class HybridSkuMatchingService {
              LOWER(sm.capacity) = LOWER(nd.norm_capacity))
           )
       )
-      -- Combine all matching strategies
+      -- Combine all matching strategies with improved fallback logic
       SELECT 
         sku_code, sku_tags, brand, model, capacity, color, carrier, post_fix, device_type,
         model_tag, capacity_tag, color_tag, carrier_tag, postfix_tag,
@@ -1066,7 +1715,13 @@ export class HybridSkuMatchingService {
         UNION ALL
         SELECT * FROM field_matches WHERE match_score >= $10
       ) combined_matches
-      ORDER BY match_score DESC, sku_code
+      ORDER BY 
+        -- Priority 1: Match score (highest first)
+        match_score DESC,
+        -- Priority 2: Prefer SKUs without post-fix
+        CASE WHEN post_fix = '' OR post_fix IS NULL THEN 1 ELSE 2 END,
+        -- Priority 3: Alphabetical by SKU code
+        sku_code
       LIMIT $11
     `, [
       imeiData.imei, imeiData.brand, imeiData.model, imeiData.capacity,

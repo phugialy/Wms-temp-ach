@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Workflow Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // Progress Modal Component
+        const ProgressModal = ({ isOpen, progress, currentStep, onClose }) => {
+            if (!isOpen) return null;
+
+            const getStepName = (step) => {
+                switch (step) {
+                    case 1: return 'Adding to Queue';
+                    case 2: return 'Processing Database';
+                    case 3: return 'SKU Matching';
+                    default: return 'Processing';
+                }
+            };
+
+            const getStepIcon = (step) => {
+                switch (step) {
+                    case 1: return '📥';
+                    case 2: return '⚙️';
+                    case 3: return '🎯';
+                    default: return '⏳';
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+                        <div className="text-center">
+                            <div className="text-4xl mb-4">{getStepIcon(currentStep)}</div>
+                            <h3 className="text-xl font-semibold mb-4">Processing Items</h3>
+                            <p className="text-gray-600 mb-6">{getStepName(currentStep)}</p>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                                <div 
+                                    className="bg-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
+                                    style={{ width: `${progress}%` }}
+                                ></div>
+                            </div>
+                            
+                            <p className="text-sm text-gray-500">{progress.toFixed(0)}% Complete</p>
+                            
+                            {currentStep === 3 && progress >= 100 && (
+                                <div className="mt-4">
+                                    <button 
+                                        onClick={onClose}
+                                        className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600"
+                                    >
+                                        ✅ Complete
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Test Component
+        const WorkflowTest = () => {
+            const [showProgress, setShowProgress] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const [currentStep, setCurrentStep] = useState(1);
+            const [result, setResult] = useState(null);
+
+            const testWorkflow = async () => {
+                setShowProgress(true);
+                setProgress(0);
+                setCurrentStep(1);
+                setResult(null);
+
+                const testData = {
+                    items: [
+                        {
+                            imei: '123456789012345',
+                            brand: 'Samsung',
+                            model: 'Galaxy S24',
+                            color: 'Black',
+                            carrier: 'Unlocked',
+                            working: 'YES',
+                            capacity: '256GB',
+                            location: 'Test Location'
+                        }
+                    ]
+                };
+
+                try {
+                    // Step 1: Adding to Queue
+                    setCurrentStep(1);
+                    setProgress(10);
+
+                    const response = await fetch('/api/workflow/process-bulk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(testData)
+                    });
+
+                    // Step 2: Processing Database
+                    setCurrentStep(2);
+                    setProgress(50);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Step 3: SKU Matching
+                        setCurrentStep(3);
+                        setProgress(80);
+                        
+                        // Complete
+                        setProgress(100);
+                        setResult(data);
+                        
+                        console.log('✅ Workflow completed:', data);
+                    } else {
+                        const errorData = await response.json();
+                        setResult({ error: errorData });
+                        setProgress(100);
+                    }
+                } catch (error) {
+                    console.error('❌ Error:', error);
+                    setResult({ error: error.message });
+                    setProgress(100);
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <h1 className="text-3xl font-bold mb-8">Frontend Workflow Test</h1>
+                    
+                    <div className="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 className="text-xl font-semibold mb-4">Test Synchronous Workflow</h2>
+                        <button 
+                            onClick={testWorkflow}
+                            className="bg-blue-500 text-white px-6 py-3 rounded hover:bg-blue-600 font-semibold"
+                        >
+                            Test Workflow
+                        </button>
+                    </div>
+
+                    {result && (
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-semibold mb-4">Results:</h3>
+                            <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+                                {JSON.stringify(result, null, 2)}
+                            </pre>
+                        </div>
+                    )}
+
+                    {/* Progress Modal */}
+                    <ProgressModal 
+                        isOpen={showProgress}
+                        progress={progress}
+                        currentStep={currentStep}
+                        onClose={() => setShowProgress(false)}
+                    />
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<WorkflowTest />);
+    </script>
+</body>
+</html>

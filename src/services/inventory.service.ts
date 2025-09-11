@@ -30,9 +30,9 @@ export class InventoryService {
         const inventory = await prisma.inventory.update({
           where: { id: existingInventory.id },
           data: {
-            qtyTotal: (existingInventory.qtyTotal || 0) + (data.qtyTotal || 0),
-            passDevices: (existingInventory.passDevices || 0) + (data.passDevices || 0),
-            failedDevices: (existingInventory.failedDevices || 0) + (data.failedDevices || 0),
+            qty_total: (existingInventory.qty_total || 0) + (data.qtyTotal || 0),
+            pass_devices: (existingInventory.pass_devices || 0) + (data.passDevices || 0),
+            failed_devices: (existingInventory.failed_devices || 0) + (data.failedDevices || 0),
             reserved: data.reserved || existingInventory.reserved,
             available: data.available || existingInventory.available,
           },
@@ -45,9 +45,9 @@ export class InventoryService {
           data: {
             sku: data.sku,
             location: data.location,
-            qtyTotal: data.qtyTotal || 0,
-            passDevices: data.passDevices || 0,
-            failedDevices: data.failedDevices || 0,
+            qty_total: data.qtyTotal || 0,
+            pass_devices: data.passDevices || 0,
+            failed_devices: data.failedDevices || 0,
             reserved: data.reserved || 0,
             available: data.available || 0,
           }
@@ -67,7 +67,7 @@ export class InventoryService {
         where: { id },
         data
       });
-      logger.info('Inventory record updated', { inventoryId: inventory.id, locationId: inventory.locationId });
+      logger.info('Inventory record updated', { inventoryId: inventory.id, location: inventory.location });
       return inventory;
     } catch (error) {
       logger.error('Error updating inventory', { error, id, data });
@@ -128,9 +128,9 @@ export class InventoryService {
 
       const summary = {
         totalItems: inventory.length,
-        totalQuantity: inventory.reduce((sum, inv) => sum + (inv.qtyTotal || 0), 0),
-        passDevices: inventory.reduce((sum, inv) => sum + (inv.passDevices || 0), 0),
-        failedDevices: inventory.reduce((sum, inv) => sum + (inv.failedDevices || 0), 0),
+        totalQuantity: inventory.reduce((sum, inv) => sum + (inv.qty_total || 0), 0),
+        passDevices: inventory.reduce((sum, inv) => sum + (inv.pass_devices || 0), 0),
+        failedDevices: inventory.reduce((sum, inv) => sum + (inv.failed_devices || 0), 0),
         reserved: inventory.reduce((sum, inv) => sum + (inv.reserved || 0), 0),
         available: inventory.reduce((sum, inv) => sum + (inv.available || 0), 0),
         byLocation: {} as Record<string, number>,
@@ -139,10 +139,10 @@ export class InventoryService {
 
       inventory.forEach((inv) => {
         // Group by location
-        summary.byLocation[inv.location] = (summary.byLocation[inv.location] || 0) + (inv.qtyTotal || 0);
+        summary.byLocation[inv.location] = (summary.byLocation[inv.location] || 0) + (inv.qty_total || 0);
         
         // Group by SKU
-        summary.bySku[inv.sku] = (summary.bySku[inv.sku] || 0) + (inv.qtyTotal || 0);
+        summary.bySku[inv.sku] = (summary.bySku[inv.sku] || 0) + (inv.qty_total || 0);
       });
 
       return summary;
@@ -165,6 +165,29 @@ export class InventoryService {
       return inventory;
     } catch (error) {
       logger.error('Error searching inventory', { error, query });
+      throw error;
+    }
+  }
+
+  async getItemsByImei(imei: string) {
+    try {
+      // Get items by IMEI and return as inventory-like objects
+      const items = await prisma.item.findMany({
+        where: { imei }
+      });
+
+      return items.map(item => ({
+        id: item.imei,
+        sku: `SKU-${item.imei}`,
+        location: item.location || 'Default Location',
+        quantity: 1, // Each item represents 1 unit
+        passDevices: item.working === 'PASSED' ? 1 : 0,
+        failedDevices: item.working === 'FAILED' ? 1 : 0,
+        reserved: 0,
+        available: 1
+      }));
+    } catch (error) {
+      logger.error('Error getting items by IMEI', { error, imei });
       throw error;
     }
   }

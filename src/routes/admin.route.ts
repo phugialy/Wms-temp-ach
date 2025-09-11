@@ -8,7 +8,7 @@ const supabaseAdminController = new SupabaseAdminController(supabaseAdminService
 
 // Admin inventory management routes (using Supabase API)
 router.post('/inventory-push', supabaseAdminController.pushInventory);
-router.get('/inventory', supabaseAdminController.getInventory);
+// Note: /inventory route moved to inventoryApi.ts for better SKU matching integration
 router.get('/locations', supabaseAdminController.getLocations);
 router.post('/cleanup-imei', supabaseAdminController.cleanupImeiData);
 router.get('/search-imei', supabaseAdminController.searchAllImeiData);

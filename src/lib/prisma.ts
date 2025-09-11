@@ -3,10 +3,10 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env['DATABASE_URL'],
+      url: process.env['DIRECT_URL'],
     },
   },
-  // Connection pooling configuration for Supabase
+  // Direct connection configuration for Supabase
   log: process.env['NODE_ENV'] === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
 });
 

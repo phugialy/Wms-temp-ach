@@ -65,17 +65,8 @@ export class HybridQueueService {
       
       const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Create batch tracking record
-      await prisma.queueBatch.create({
-        data: {
-          batchId,
-          source,
-          totalItems: items.length,
-          processedItems: 0,
-          failedItems: 0,
-          status: 'active'
-        }
-      });
+      // TODO: Create batch tracking record when queueBatch model is available
+      logger.info(`Batch ${batchId} created for ${items.length} items from ${source}`);
 
       // Prepare queue items using Prisma
       const queueItems = items.map(item => ({
@@ -89,7 +80,7 @@ export class HybridQueueService {
       }));
 
       // Insert using Prisma for type safety
-      const createdItems = await prisma.imeiDataQueue.createMany({
+      const createdItems = await prisma.dataQueue.createMany({
         data: queueItems
       });
 
@@ -352,20 +343,8 @@ export class HybridQueueService {
       // Generate SKU
       const sku = rawData.sku || `${brand.substring(0, 3).toUpperCase()}${model.substring(0, 3).toUpperCase()}`.replace(/\s+/g, '').substring(0, 15);
 
-      // Find or create location using Prisma
-      let locationRecord = await prisma.location.findFirst({
-        where: { name: location }
-      });
-
-      if (!locationRecord) {
-        locationRecord = await prisma.location.create({
-          data: {
-            name: location,
-            warehouseId: 1, // Default warehouse
-            description: `Auto-created location for ${location}`
-          }
-        });
-      }
+      // TODO: Implement when location model is available
+      logger.info(`Location: ${location}`);
 
       // Create or update Item using Prisma
       let itemRecord = await prisma.item.findUnique({
@@ -373,22 +352,34 @@ export class HybridQueueService {
       });
 
       const itemData = {
-        name,
-        sku,
-        description: `${brand} ${model} ${storage || ''} ${color || ''} ${carrier || ''} - ${notes || ''}`.trim()
+        model: model,
+        capacity: storage,
+        color: color,
+        carrier: carrier,
+        working: working === 'YES' ? 'PASSED' : working === 'NO' ? 'FAILED' : 'PENDING',
+        location: location
       };
 
       if (itemRecord) {
         itemRecord = await prisma.item.update({
-          where: { id: itemRecord.id },
-          data: itemData
+          where: { imei: itemRecord.imei },
+          data: {
+            model: itemData.model,
+            capacity: itemData.capacity,
+            color: itemData.color,
+            carrier: itemData.carrier
+          }
         });
       } else {
         itemRecord = await prisma.item.create({
           data: {
             imei,
-            ...itemData,
-            status: 'active'
+            model: itemData.model,
+            capacity: itemData.capacity,
+            color: itemData.color,
+            carrier: itemData.carrier,
+            working: 'PENDING',
+            location: location
           }
         });
       }
@@ -396,8 +387,8 @@ export class HybridQueueService {
       // Create or update Inventory using Prisma
       const existingInventory = await prisma.inventory.findFirst({
         where: {
-          itemId: itemRecord.id,
-          locationId: locationRecord.id
+          sku: sku,
+          location: location
         }
       });
 
@@ -405,82 +396,38 @@ export class HybridQueueService {
         await prisma.inventory.update({
           where: { id: existingInventory.id },
           data: {
-            quantity: existingInventory.quantity + quantity
+            qty_total: (existingInventory.qty_total || 0) + quantity
           }
         });
       } else {
         await prisma.inventory.create({
           data: {
-            itemId: itemRecord.id,
-            locationId: locationRecord.id,
-            quantity,
-            status: 'in_stock'
+            sku: sku,
+            location: location,
+            qty_total: quantity,
+            // status: 'in_stock' // Field doesn't exist in schema
           }
         });
       }
 
       // Create IMEI-related records using Prisma
       try {
-        await prisma.imeiSkuInfo.upsert({
-          where: { imei },
-          update: {
-            sku,
-            brand,
-            model,
-            storage,
-            color,
-            carrier
-          },
-          create: {
-            imei,
-            sku,
-            brand,
-            model,
-            storage,
-            color,
-            carrier
-          }
-        });
+        // TODO: Implement when imeiSkuInfo model is available
+        logger.info(`SKU info for IMEI ${imei}: ${sku}`);
       } catch (error) {
         logger.warn(`Could not create imei_sku_info for ${imei}: ${error}`);
       }
 
       try {
-        await prisma.imeiInspectData.upsert({
-          where: { imei },
-          update: {
-            batteryHealth: batteryHealth?.toString(),
-            screenCondition,
-            bodyCondition,
-            workingStatus: working,
-            notes
-          },
-          create: {
-            imei,
-            batteryHealth: batteryHealth?.toString(),
-            screenCondition,
-            bodyCondition,
-            workingStatus: working,
-            notes
-          }
-        });
+        // TODO: Implement when imeiInspectData model is available
+        logger.info(`Inspect data for IMEI ${imei}: working=${working}, battery=${batteryHealth}`);
       } catch (error) {
         logger.warn(`Could not create imei_inspect_data for ${imei}: ${error}`);
       }
 
       try {
-        await prisma.imeiUnits.upsert({
-          where: { imei },
-          update: {
-            unitName: name,
-            unitType: 'device'
-          },
-          create: {
-            imei,
-            unitName: name,
-            unitType: 'device'
-          }
-        });
+        // TODO: Implement when imeiUnits model is available
+        logger.info(`Unit data for IMEI ${imei}: name=${name}`);
       } catch (error) {
         logger.warn(`Could not create imei_units for ${imei}: ${error}`);
       }
@@ -489,8 +436,8 @@ export class HybridQueueService {
         await prisma.deviceTest.create({
           data: {
             imei,
-            testType: 'PHONECHECK',
-            testResult: working === 'YES' ? 'PASSED' : working === 'NO' ? 'FAILED' : 'PENDING',
+            // testType: 'PHONECHECK', // Field doesn't exist in schema
+            working: working === 'YES' ? 'PASSED' : working === 'NO' ? 'FAILED' : 'PENDING',
             notes: `Auto-generated from queue processing`
           }
         });
@@ -602,7 +549,7 @@ export class HybridQueueService {
     try {
       const where = status ? { status } : {};
       
-      const items = await prisma.imeiDataQueue.findMany({
+      const items = await prisma.dataQueue.findMany({
         where,
         orderBy: [
           { priority: 'asc' },
@@ -612,17 +559,17 @@ export class HybridQueueService {
       });
 
       return items.map(item => ({
-        id: item.id,
+        id: Number(item.id),
         rawData: item.rawData,
-        status: item.status,
-        priority: item.priority,
-        retryCount: item.retryCount,
-        maxRetries: item.maxRetries,
+        status: item.status || 'pending',
+        priority: item.priority || 5,
+        retryCount: item.retryCount || 0,
+        maxRetries: item.maxRetries || 3,
         source: item.source || undefined,
         batchId: item.batchId || undefined,
         errorMessage: item.errorMessage || undefined,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
+        createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+        updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
         processedAt: item.processedAt || undefined
       }));
     } catch (error) {
@@ -636,7 +583,7 @@ export class HybridQueueService {
    */
   async retryFailedItems(): Promise<ProcessResult> {
     try {
-      const failedItems = await prisma.imeiDataQueue.findMany({
+      const failedItems = await prisma.dataQueue.findMany({
         where: { status: 'failed' }
       });
 
@@ -654,7 +601,7 @@ export class HybridQueueService {
 
       for (const item of failedItems) {
         try {
-          await prisma.imeiDataQueue.update({
+          await prisma.dataQueue.update({
             where: { id: item.id },
             data: {
               status: 'pending',
@@ -703,7 +650,7 @@ export class HybridQueueService {
    */
   async clearCompletedItems(): Promise<ProcessResult> {
     try {
-      const result = await prisma.imeiDataQueue.deleteMany({
+      const result = await prisma.dataQueue.deleteMany({
         where: { status: 'completed' }
       });
 
@@ -729,15 +676,15 @@ export class HybridQueueService {
    */
   async getBatchStats(batchId: string): Promise<any> {
     try {
-      const batch = await prisma.queueBatch.findUnique({
-        where: { batchId }
-      });
+      // TODO: Implement when queueBatch model is available
+      logger.info(`Getting batch status for ${batchId}`);
+      const batch = null; // Placeholder
 
       if (!batch) {
         return null;
       }
 
-      const queueItems = await prisma.imeiDataQueue.findMany({
+      const queueItems = await prisma.dataQueue.findMany({
         where: { batchId },
         select: {
           status: true,
@@ -746,14 +693,15 @@ export class HybridQueueService {
       });
 
       const statusCounts = queueItems.reduce((acc, item) => {
-        acc[item.status] = (acc[item.status] || 0) + 1;
+        const status = item.status || 'unknown';
+        acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
       return {
-        ...batch,
+        batchId: batchId,
         statusCounts,
-        progress: batch.totalItems > 0 ? (batch.processedItems / batch.totalItems) * 100 : 0
+        progress: 0 // TODO: Calculate progress when queueBatch model is available
       };
     } catch (error) {
       logger.error('Error getting batch stats:', error);

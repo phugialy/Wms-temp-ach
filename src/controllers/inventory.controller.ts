@@ -28,9 +28,17 @@ export class InventoryController {
     try {
       const { imei } = req.params;
       
-      // For now, we'll get all inventory and filter by IMEI
-      const allInventory = await this.inventoryService.getAllInventory();
-      const inventory = allInventory.filter(inv => inv.item.imei === imei);
+      if (!imei) {
+        res.status(400).json({
+          success: false,
+          error: 'IMEI parameter is required'
+        });
+        return;
+      }
+      
+      // Get inventory by IMEI - need to find items with this IMEI first
+      const items = await this.inventoryService.getItemsByImei(imei);
+      const inventory = items;
       
       if (inventory.length === 0) {
         res.status(404).json({
@@ -57,12 +65,16 @@ export class InventoryController {
 
   createInventory = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { itemId, locationId, quantity } = req.body;
+      const { sku, location, quantity } = req.body;
       
       const inventory = await this.inventoryService.createInventory({
-        itemId,
-        locationId,
-        quantity
+        sku: sku || `TEMP-${Date.now()}`,
+        location: location || 'Default Location',
+        qtyTotal: quantity || 1,
+        passDevices: 0,
+        failedDevices: 0,
+        reserved: 0,
+        available: quantity || 1
       });
 
       res.status(201).json({

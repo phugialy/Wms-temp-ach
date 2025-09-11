@@ -61,7 +61,7 @@ export async function addBulkDataToQueue(jobData: BulkDataJob): Promise<void> {
       data: {
         rawData: jobData.data,
         source: jobData.source,
-        batch_id: jobData.batchId,
+        batchId: jobData.batchId,
         priority: jobData.priority || 5,
         status: 'pending'
       }

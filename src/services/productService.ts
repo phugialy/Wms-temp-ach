@@ -1,217 +1,143 @@
-import { PrismaClient, Product } from '@prisma/client';
-import { CreateProductInput, UpdateProductInput, QueryParams } from '../utils/validation';
-import { throwNotFoundError, throwConflictError } from '../utils/errorHandler';
+import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+
+export interface CreateProductInput {
+  imei: string;
+  sku: string;
+  brand?: string;
+}
+
+export interface UpdateProductInput {
+  sku?: string;
+  brand?: string;
+}
 
 export class ProductService {
   constructor(private prisma: PrismaClient) {}
 
-  async createProduct(data: CreateProductInput): Promise<Product> {
+  async createProduct(data: CreateProductInput) {
     try {
-      // Check if SKU already exists
+      // Check if IMEI already exists
       const existingProduct = await this.prisma.product.findUnique({
-        where: { sku: data.sku }
+        where: { imei: data.imei }
       });
 
       if (existingProduct) {
-        throwConflictError(`Product with SKU ${data.sku} already exists`);
+        throw new Error(`Product with IMEI ${data.imei} already exists`);
       }
 
       const product = await this.prisma.product.create({
         data
       });
 
-      logger.info('Product created', { productId: product.id, sku: product.sku });
+      logger.info('Product created', { imei: product.imei, sku: product.sku });
       return product;
     } catch (error) {
-      logger.error('Error creating product', { error: error.message, data });
+      logger.error('Error creating product', { error, data });
       throw error;
     }
   }
 
-  async getProductById(id: string): Promise<Product> {
+  async getProductByImei(imei: string) {
     try {
       const product = await this.prisma.product.findUnique({
-        where: { id }
+        where: { imei }
       });
 
       if (!product) {
-        throwNotFoundError('Product');
+        throw new Error(`Product with IMEI ${imei} not found`);
       }
 
       return product;
     } catch (error) {
-      logger.error('Error getting product by ID', { error: error.message, id });
+      logger.error('Error getting product by IMEI', { error, imei });
       throw error;
     }
   }
 
-  async getProductBySku(sku: string): Promise<Product> {
+  async getProductBySku(sku: string) {
     try {
-      const product = await this.prisma.product.findUnique({
+      const product = await this.prisma.product.findFirst({
         where: { sku }
       });
 
       if (!product) {
-        throwNotFoundError('Product');
+        throw new Error(`Product with SKU ${sku} not found`);
       }
 
       return product;
     } catch (error) {
-      logger.error('Error getting product by SKU', { error: error.message, sku });
+      logger.error('Error getting product by SKU', { error, sku });
       throw error;
     }
   }
 
-  async getAllProducts(query: QueryParams): Promise<{ products: Product[]; total: number; page: number; limit: number }> {
+  async updateProduct(imei: string, data: UpdateProductInput) {
     try {
-      const { page, limit, search, category } = query;
-      const skip = (page - 1) * limit;
-
-      // Build where clause
-      const where: any = {};
-      if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-      if (category) {
-        where.category = category;
-      }
-
-      const [products, total] = await Promise.all([
-        this.prisma.product.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        this.prisma.product.count({ where })
-      ]);
-
-      logger.info('Products retrieved', { count: products.length, total, page, limit });
-      return { products, total, page, limit };
-    } catch (error) {
-      logger.error('Error getting all products', { error: error.message, query });
-      throw error;
-    }
-  }
-
-  async updateProduct(id: string, data: UpdateProductInput): Promise<Product> {
-    try {
-      // Check if product exists
-      const existingProduct = await this.prisma.product.findUnique({
-        where: { id }
-      });
-
-      if (!existingProduct) {
-        throwNotFoundError('Product');
-      }
-
-      // If SKU is being updated, check for conflicts
-      if (data.sku && data.sku !== existingProduct.sku) {
-        const skuExists = await this.prisma.product.findUnique({
-          where: { sku: data.sku }
-        });
-
-        if (skuExists) {
-          throwConflictError(`Product with SKU ${data.sku} already exists`);
-        }
-      }
-
       const product = await this.prisma.product.update({
-        where: { id },
+        where: { imei },
         data
       });
 
-      logger.info('Product updated', { productId: product.id, sku: product.sku });
+      logger.info('Product updated', { imei: product.imei, sku: product.sku });
       return product;
     } catch (error) {
-      logger.error('Error updating product', { error: error.message, id, data });
+      logger.error('Error updating product', { error, imei, data });
       throw error;
     }
   }
 
-  async deleteProduct(id: string): Promise<void> {
+  async deleteProduct(imei: string) {
     try {
-      // Check if product exists
-      const existingProduct = await this.prisma.product.findUnique({
-        where: { id },
-        include: {
-          inventoryItems: true,
-          orderItems: true
-        }
-      });
-
-      if (!existingProduct) {
-        throwNotFoundError('Product');
-      }
-
-      // Check if product is in use
-      if (existingProduct.inventoryItems.length > 0) {
-        throw new Error('Cannot delete product that has inventory items');
-      }
-
-      if (existingProduct.orderItems.length > 0) {
-        throw new Error('Cannot delete product that has order items');
-      }
-
       await this.prisma.product.delete({
-        where: { id }
+        where: { imei }
       });
 
-      logger.info('Product deleted', { productId: id });
+      logger.info('Product deleted', { imei });
     } catch (error) {
-      logger.error('Error deleting product', { error: error.message, id });
+      logger.error('Error deleting product', { error, imei });
+      throw error;
+    }
+  }
+
+  async getAllProducts() {
+    try {
+      const products = await this.prisma.product.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return products;
+    } catch (error) {
+      logger.error('Error getting all products', { error });
       throw error;
     }
   }
 
   async getProductCategories(): Promise<string[]> {
     try {
-      const categories = await this.prisma.product.findMany({
-        select: { category: true },
-        distinct: ['category']
+      const products = await this.prisma.product.findMany({
+        select: { brand: true },
+        where: { brand: { not: null } },
+        distinct: ['brand']
       });
 
-      return categories.map(cat => cat.category);
+      return products.map(p => p.brand).filter(Boolean) as string[];
     } catch (error) {
-      logger.error('Error getting product categories', { error: error.message });
+      logger.error('Error getting product categories', { error });
       throw error;
     }
   }
 
-  async getProductsByCategory(category: string, query: QueryParams): Promise<{ products: Product[]; total: number; page: number; limit: number }> {
+  async getProductsByCategory(category: string, queryParams: any): Promise<any[]> {
     try {
-      const { page, limit, search } = query;
-      const skip = (page - 1) * limit;
+      const products = await this.prisma.product.findMany({
+        where: { brand: category }
+      });
 
-      const where: any = { category };
-      if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-
-      const [products, total] = await Promise.all([
-        this.prisma.product.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        this.prisma.product.count({ where })
-      ]);
-
-      logger.info('Products by category retrieved', { category, count: products.length, total });
-      return { products, total, page, limit };
+      return products;
     } catch (error) {
-      logger.error('Error getting products by category', { error: error.message, category });
+      logger.error('Error getting products by category', { error, category });
       throw error;
     }
   }
-} 
+}

@@ -80,11 +80,11 @@ async function processDataToDatabase(data: any): Promise<void> {
         carrier: data.carrier,
         capacity: data.capacity || data.storage,
         color: data.color,
-        battery_health: data.battery_health,
-        battery_count: data.battery_count || data.bcc,
+        batteryHealth: data.battery_health,
+        batteryCount: data.battery_count || data.bcc,
         working: data.working || 'PENDING',
         location: data.location || 'Default Location',
-        updated_at: new Date()
+        updatedAt: new Date()
       },
       create: {
         imei,
@@ -93,8 +93,8 @@ async function processDataToDatabase(data: any): Promise<void> {
         carrier: data.carrier,
         capacity: data.capacity || data.storage,
         color: data.color,
-        battery_health: data.battery_health,
-        battery_count: data.battery_count || data.bcc,
+        batteryHealth: data.battery_health,
+        batteryCount: data.battery_count || data.bcc,
         working: data.working || 'PENDING',
         location: data.location || 'Default Location'
       }
@@ -102,18 +102,17 @@ async function processDataToDatabase(data: any): Promise<void> {
     
     // 3. Insert/Update Device Test table
     await tx.deviceTest.upsert({
-      where: { id: 1 }, // DeviceTest uses id as primary key, not imei
+      where: { imei }, // DeviceTest uses imei as unique key
       update: {
-        testResult: data.working,
+        working: data.working,
         notes: data.notes || data.defects || data.screen_condition || data.body_condition,
-        testDate: new Date()
+        test_date: new Date()
       },
       create: {
         imei,
-        testType: 'working_status',
-        testResult: data.working,
+        working: data.working,
         notes: data.notes || data.defects || data.screen_condition || data.body_condition,
-        testDate: new Date()
+        test_date: new Date()
       }
     });
     
@@ -128,12 +127,12 @@ async function processDataToDatabase(data: any): Promise<void> {
     
     if (existingInventory) {
       // Update existing inventory
-      const newQtyTotal = (existingInventory.quantity || 0) + 1;
+      const newQtyTotal = (existingInventory.qty_total || 0) + 1;
       
       await tx.inventory.update({
         where: { id: existingInventory.id },
         data: {
-          quantity: newQtyTotal,
+          qty_total: newQtyTotal,
           updatedAt: new Date()
         }
       });
@@ -141,8 +140,9 @@ async function processDataToDatabase(data: any): Promise<void> {
       // Create new inventory record
       await tx.inventory.create({
         data: {
-          quantity: 1,
-          status: 'in_stock'
+          sku: `TEMP-${Date.now()}`, // Required field
+          location: 'Default Location', // Required field
+          qty_total: 1
         }
       });
     }

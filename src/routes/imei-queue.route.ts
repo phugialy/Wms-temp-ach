@@ -5,7 +5,9 @@ const router = Router();
 
 // Queue management routes
 router.post('/add', ImeiQueueController.addToQueue);
+router.post('/bulkadd', ImeiQueueController.addToQueue);
 router.get('/queue-stats', ImeiQueueController.getQueueStats);
+router.get('/stats', ImeiQueueController.getQueueStats);
 router.get('/items', ImeiQueueController.getQueueItems);
 router.post('/process-pending', ImeiQueueController.processAllPending);
 router.post('/retry-failed', ImeiQueueController.retryFailedItems);

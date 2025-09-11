@@ -23,7 +23,7 @@ export const supabaseDirect = createClient(
     ...(directUrl && {
       db: {
         schema: 'public',
-        connectionString: directUrl
+        // connectionString: directUrl // Not supported in current version
       }
     })
   }

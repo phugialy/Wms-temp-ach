@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
-import DirectQueueService from '../services/direct-queue.service';
+import OptimizedDirectQueueService from '../services/optimized-direct-queue.service';
 import { queueProcessorService } from '../services/queue-processor.service';
 // const ApiProcessingLogger = require('../services/ApiProcessingLogger');
 
@@ -36,53 +36,18 @@ export class ImeiQueueController {
       
       logger.info('Adding items to IMEI queue', { count: items.length, source, batchId });
       
-      // Process items in chunks to handle large payloads
-      const CHUNK_SIZE = 50; // Process 50 items at a time
-      const chunks = [];
+      // Use optimized service with adaptive processing
+      const queueItems = items.map(item => ({
+        raw_data: item,
+        source: source as 'bulk-add' | 'single-phonecheck' | 'api' | 'test'
+      }));
       
-      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-        chunks.push(items.slice(i, i + CHUNK_SIZE));
-      }
+      logger.info(`Processing ${items.length} items with optimized service`, { batchId });
       
-      logger.info(`Processing ${items.length} items in ${chunks.length} chunks`, { batchId });
+      const result = await OptimizedDirectQueueService.addToQueue(queueItems);
       
-      let totalAdded = 0;
-      let totalErrors: string[] = [];
-      
-      // Process each chunk
-      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-        const chunk = chunks[chunkIndex];
-        
-        if (!chunk) continue;
-        
-        try {
-          const queueItems = chunk.map(item => ({
-            raw_data: item,
-            source: source as 'bulk-add' | 'single-phonecheck' | 'api' | 'test'
-          }));
-          
-          const result = await DirectQueueService.addToQueue(queueItems);
-          
-          totalAdded += result.added;
-          totalErrors.push(...result.errors);
-          
-          logger.info(`Chunk ${chunkIndex + 1}/${chunks.length} processed`, { 
-            added: result.added, 
-            errors: result.errors.length,
-            batchId
-          });
-          
-          // Small delay between chunks to prevent overwhelming the database
-          if (chunkIndex < chunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-        } catch (chunkError) {
-          const errorMessage = chunkError instanceof Error ? chunkError.message : 'Unknown chunk error';
-          logger.error(`Error processing chunk ${chunkIndex + 1}`, { error: errorMessage, batchId });
-          totalErrors.push(`Chunk ${chunkIndex + 1}: ${errorMessage}`);
-        }
-      }
+      const totalAdded = result.added;
+      const totalErrors = result.errors;
       
       // Safe auto-trigger queue processing
       const processingTriggered = await ImeiQueueController.safeTriggerQueueProcessing(batchId, source);
@@ -94,10 +59,10 @@ export class ImeiQueueController {
         success: totalAdded > 0,
         added: totalAdded,
         errors: totalErrors,
-        chunks: chunks.length,
+        chunks: result.chunks || 1,
         batch_id: batchId,
         processing_triggered: processingTriggered,
-        message: `Processed ${items.length} items in ${chunks.length} chunks: ${totalAdded} added${totalErrors.length > 0 ? `, ${totalErrors.length} errors` : ''}`
+        message: `Processed ${items.length} items in ${result.chunks || 1} chunks: ${totalAdded} added${totalErrors.length > 0 ? `, ${totalErrors.length} errors` : ''}`
       };
       
       res.status(200).json(response);
@@ -333,7 +298,7 @@ export class ImeiQueueController {
     try {
       logger.info('Getting queue statistics');
       
-      const stats = await DirectQueueService.getQueueStats();
+      const stats = await OptimizedDirectQueueService.getQueueStats();
       
       res.status(200).json({
         success: true,
@@ -361,7 +326,7 @@ export class ImeiQueueController {
       
       logger.info('Getting queue items', { status, limit });
       
-      const items = await DirectQueueService.getQueueItems(
+      const items = await OptimizedDirectQueueService.getQueueItems(
         status as string | undefined,
         Number(limit)
       );
@@ -419,7 +384,7 @@ export class ImeiQueueController {
     try {
       logger.info('Retrying failed queue items');
       
-      const result = await DirectQueueService.retryFailedItems();
+      const result = await OptimizedDirectQueueService.retryFailedItems();
       
       res.status(200).json({
         success: true,
@@ -445,7 +410,7 @@ export class ImeiQueueController {
     try {
       logger.info('Clearing completed queue items');
       
-      const result = await DirectQueueService.clearCompletedItems();
+      const result = await OptimizedDirectQueueService.clearCompletedItems();
       
       res.status(200).json({
         success: true,

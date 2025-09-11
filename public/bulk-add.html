@@ -55,6 +55,62 @@
             );
         };
 
+        // Progress Modal Component
+        const ProgressModal = ({ isOpen, progress, currentStep, totalSteps, onClose }) => {
+            if (!isOpen) return null;
+
+            const getStepName = (step) => {
+                switch (step) {
+                    case 1: return 'Adding to Queue';
+                    case 2: return 'Processing Database';
+                    case 3: return 'SKU Matching';
+                    default: return 'Processing';
+                }
+            };
+
+            const getStepIcon = (step) => {
+                switch (step) {
+                    case 1: return '📥';
+                    case 2: return '⚙️';
+                    case 3: return '🎯';
+                    default: return '⏳';
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+                        <div className="text-center">
+                            <div className="text-4xl mb-4">{getStepIcon(currentStep)}</div>
+                            <h3 className="text-xl font-semibold mb-4">Processing Items</h3>
+                            <p className="text-gray-600 mb-6">{getStepName(currentStep)}</p>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                                <div 
+                                    className="bg-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
+                                    style={{ width: `${progress}%` }}
+                                ></div>
+                            </div>
+                            
+                            <p className="text-sm text-gray-500">{progress.toFixed(0)}% Complete</p>
+                            
+                            {currentStep === 3 && progress >= 100 && (
+                                <div className="mt-4">
+                                    <button 
+                                        onClick={onClose}
+                                        className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600"
+                                    >
+                                        ✅ Complete
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         // Bulk Add Component
         const BulkAddForm = () => {
             const [toast, setToast] = useState(null);
@@ -69,6 +125,11 @@
             const [processedData, setProcessedData] = useState([]);
             const [showResults, setShowResults] = useState(false);
             const [step, setStep] = useState(1); // 1: Pull IMEIs, 2: Process Devices, 3: Show Results
+            
+            // Progress modal state
+            const [showProgress, setShowProgress] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const [currentStep, setCurrentStep] = useState(1);
 
             // Helper function to convert various formats to boolean
             const convertToBoolean = (value) => {
@@ -307,26 +368,17 @@
                 console.log('  - Items with other statuses:', processedData.filter(item => item && item.status && item.status !== 'success').length);
                 console.log('  - Items with no status:', processedData.filter(item => item && !item.status).length);
                 
-                // Debug: Log the first few items to understand the structure
-                console.log('🔍 Sample processed data structure:');
-                processedData.slice(0, 3).forEach((item, index) => {
-                    console.log(`  Item ${index + 1}:`, {
-                        imei: item?.imei,
-                        name: item?.name,
-                        working: item?.working,
-                        workingStatus: item?.workingStatus,
-                        failed: item?.failed,
-                        status: item?.status,
-                        keys: item ? Object.keys(item) : []
-                    });
-                });
-                
                 if (validItems.length === 0) {
                     setToast({ message: 'No valid items to add', type: 'warning' });
                     return;
                 }
 
+                // Show progress modal
+                setShowProgress(true);
+                setProgress(0);
+                setCurrentStep(1);
                 setLoading(true);
+                
                 let addedCount = 0;
                 let errorCount = 0;
 
@@ -487,34 +539,53 @@
                     }
                 }
 
-                // Process all items through the new queue system
+                // Process all items through the new synchronous workflow
                 if (itemsToProcess.length > 0) {
-                    console.log(`🚀 Adding ${itemsToProcess.length} items to processing queue...`);
+                    console.log(`🚀 Processing ${itemsToProcess.length} items through synchronous workflow...`);
                     
                     try {
-                        const response = await fetch('/api/imei-queue/add', {
+                        // Simulate progress updates
+                        setCurrentStep(1);
+                        setProgress(10);
+                        
+                        const response = await fetch('/api/workflow/process-bulk', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                items: itemsToProcess,
-                                source: 'bulk-add'
+                                items: itemsToProcess
                             })
                         });
 
+                        // Update progress during processing
+                        setCurrentStep(2);
+                        setProgress(50);
+
                         if (response.ok) {
                             const result = await response.json();
-                            console.log('✅ Items processed by queue:', result);
+                            console.log('✅ Items processed by synchronous workflow:', result);
                             
-                            addedCount = result.added;
-                            errorCount = result.errors.length;
+                            // Update progress to show SKU matching
+                            setCurrentStep(3);
+                            setProgress(80);
                             
-                            if (result.added > 0) {
-                                console.log(`✅ Successfully processed ${result.added} items in ${result.chunks} chunks`);
+                            addedCount = result.summary?.queueAdded || 0;
+                            errorCount = (result.errors?.queueErrors?.length || 0) + 
+                                       (result.errors?.processingErrors?.length || 0) + 
+                                       (result.errors?.skuMatchingErrors?.length || 0);
+                            
+                            if (result.summary?.queueAdded > 0) {
+                                console.log(`✅ Successfully processed ${result.summary.queueAdded} items`);
+                                console.log(`⚙️ Database processing: ${result.summary.processedItems} items`);
+                                console.log(`🎯 SKU matching: ${result.summary.skuMatchedItems} matched, ${result.summary.undefinedItems} undefined, ${result.summary.noMatchItems} no match`);
+                                console.log(`⏱️ Total time: ${result.summary.totalTime?.toFixed(2)}ms`);
                             }
                             
-                            if (result.errors && result.errors.length > 0) {
-                                console.log('⚠️ Processing errors:', result.errors);
+                            if (errorCount > 0) {
+                                console.warn('⚠️ Some items had errors:', result.errors);
                             }
+                            
+                            // Complete progress
+                            setProgress(100);
                         } else {
                             const errorData = await response.json();
                             console.error('❌ Failed to process items:', {
@@ -523,26 +594,42 @@
                                 error: errorData
                             });
                             errorCount = itemsToProcess.length;
+                            setProgress(100);
                         }
                     } catch (error) {
                         console.error('❌ Batch processing error:', error);
                         errorCount = itemsToProcess.length;
+                        setProgress(100);
                     }
                 }
 
-                setLoading(false);
-                setToast({ 
-                    message: `Processed ${validItems.length} items: ${addedCount} added to queue${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 
-                    type: addedCount > 0 ? 'success' : 'error' 
-                });
+                // Hide progress modal after a short delay
+                setTimeout(() => {
+                    setShowProgress(false);
+                    setLoading(false);
+                    
+                    // Create detailed message with new counts
+                    let message = `Processed ${validItems.length} items: ${addedCount} added to queue and processed`;
+                    if (result?.summary) {
+                        message += ` (${result.summary.skuMatchedItems} matched, ${result.summary.undefinedItems} undefined, ${result.summary.noMatchItems} no match)`;
+                    }
+                    if (errorCount > 0) {
+                        message += `, ${errorCount} failed`;
+                    }
+                    
+                    setToast({ 
+                        message: message, 
+                        type: addedCount > 0 ? 'success' : 'error' 
+                    });
 
-                if (addedCount > 0) {
-                    // Clear data after successful addition
-                    setPulledDevices([]);
-                    setProcessedData([]);
-                    setShowResults(false);
-                    setStep(1);
-                }
+                    if (addedCount > 0) {
+                        // Clear data after successful addition
+                        setPulledDevices([]);
+                        setProcessedData([]);
+                        setShowResults(false);
+                        setStep(1);
+                    }
+                }, 1000);
             };
 
             // Clear all data
@@ -582,6 +669,14 @@
 
             return (
                 <div className="max-w-7xl mx-auto">
+                    {/* Progress Modal */}
+                    <ProgressModal 
+                        isOpen={showProgress}
+                        progress={progress}
+                        currentStep={currentStep}
+                        totalSteps={3}
+                        onClose={() => setShowProgress(false)}
+                    />
                     <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
                         <h2 className="text-2xl font-bold text-gray-900 mb-6">Bulk Add Devices from Phonecheck Station</h2>
                         

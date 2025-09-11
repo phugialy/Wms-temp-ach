@@ -34,15 +34,26 @@ router.post('/sync', async (req: Request<{}, any, SyncRequestBody>, res: Respons
     
     console.log('🔄 Enhanced SKU Master API: Starting enhanced sync');
     console.log(`⚙️ Force full sync: ${forceFullSync}`);
+    console.log(`📅 Sync started at: ${new Date().toISOString()}`);
     
+    const startTime = Date.now();
     const result = await enhancedGoogleSheetsService.syncSkusWithTags('enhanced', forceFullSync);
+    const endTime = Date.now();
+    const duration = endTime - startTime;
     
     console.log('✅ Enhanced SKU Master API: Enhanced sync completed');
+    console.log(`⏱️ Sync duration: ${duration}ms (${(duration / 1000).toFixed(2)}s)`);
     
     res.json({
       success: true,
       message: 'Enhanced SKU sync completed successfully',
-      data: result
+      data: {
+        ...result,
+        sync_duration_ms: duration,
+        sync_duration_seconds: (duration / 1000).toFixed(2),
+        sync_timestamp: new Date().toISOString(),
+        force_full_sync: forceFullSync
+      }
     });
     
   } catch (error: any) {
@@ -50,6 +61,139 @@ router.post('/sync', async (req: Request<{}, any, SyncRequestBody>, res: Respons
     res.status(500).json({
       success: false,
       error: 'Failed to sync SKUs with enhanced logic',
+      details: error.message,
+      sync_timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// POST /api/enhanced-sku-master/sync-all - Sync all sheets with enhanced parsing
+router.post('/sync-all', async (req: Request, res: Response) => {
+  try {
+    console.log('🔄 Enhanced SKU Master API: Starting full sync of all sheets');
+    console.log(`📅 Full sync started at: ${new Date().toISOString()}`);
+    
+    const startTime = Date.now();
+    
+    // Get all available sheets and sync them
+    const sheets = ['enhanced', 'phones', 'tablets', 'watches', 'accessories']; // Add your sheet names
+    const results = [];
+    
+    for (const sheetName of sheets) {
+      try {
+        console.log(`📊 Syncing sheet: ${sheetName}`);
+        const sheetResult = await enhancedGoogleSheetsService.syncSkusWithTags(sheetName, true);
+        results.push({
+          sheet_name: sheetName,
+          success: true,
+          data: sheetResult
+        });
+        console.log(`✅ Sheet ${sheetName} synced successfully`);
+      } catch (sheetError: any) {
+        console.error(`❌ Error syncing sheet ${sheetName}:`, sheetError.message);
+        results.push({
+          sheet_name: sheetName,
+          success: false,
+          error: sheetError.message
+        });
+      }
+    }
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    const successfulSheets = results.filter(r => r.success).length;
+    const failedSheets = results.filter(r => !r.success).length;
+    
+    console.log('✅ Enhanced SKU Master API: Full sync completed');
+    console.log(`⏱️ Total sync duration: ${duration}ms (${(duration / 1000).toFixed(2)}s)`);
+    console.log(`📊 Results: ${successfulSheets} successful, ${failedSheets} failed`);
+    
+    res.json({
+      success: true,
+      message: `Full sync completed: ${successfulSheets} successful, ${failedSheets} failed`,
+      data: {
+        total_sheets: sheets.length,
+        successful_sheets: successfulSheets,
+        failed_sheets: failedSheets,
+        sync_duration_ms: duration,
+        sync_duration_seconds: (duration / 1000).toFixed(2),
+        sync_timestamp: new Date().toISOString(),
+        sheet_results: results
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Error during full SKU sync:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sync all SKU sheets',
+      details: error.message,
+      sync_timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// GET /api/enhanced-sku-master/sync-status - Get current sync status
+router.get('/sync-status', async (req: Request, res: Response) => {
+  try {
+    const pool = new Pool({
+      connectionString: process.env['DIRECT_URL'],
+      max: 1,
+      idleTimeoutMillis: 0,
+      connectionTimeoutMillis: 30000,
+    });
+    
+    const client = await pool.connect();
+    
+    try {
+      // Get last sync information
+      const lastSyncResult = await client.query(`
+        SELECT 
+          MAX(last_synced) as last_sync_time,
+          COUNT(*) as total_skus,
+          COUNT(CASE WHEN sku_tags IS NOT NULL AND array_length(sku_tags, 1) > 0 THEN 1 END) as tagged_skus
+        FROM sku_master 
+        WHERE is_active = true
+      `);
+      
+      const lastSync = lastSyncResult.rows[0];
+      
+      // Get sync statistics by sheet
+      const sheetStatsResult = await client.query(`
+        SELECT 
+          source_tab,
+          COUNT(*) as sku_count,
+          MAX(last_synced) as last_synced
+        FROM sku_master 
+        WHERE is_active = true
+        GROUP BY source_tab
+        ORDER BY last_synced DESC
+      `);
+      
+      res.json({
+        success: true,
+        data: {
+          last_sync_time: lastSync.last_sync_time,
+          total_skus: parseInt(lastSync.total_skus),
+          tagged_skus: parseInt(lastSync.tagged_skus),
+          tag_coverage: lastSync.total_skus > 0 ? 
+            ((parseInt(lastSync.tagged_skus) / parseInt(lastSync.total_skus)) * 100).toFixed(2) + '%' : '0%',
+          sheet_statistics: sheetStatsResult.rows,
+          status_timestamp: new Date().toISOString()
+        }
+      });
+      
+    } finally {
+      client.release();
+      await pool.end();
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Error getting sync status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get sync status',
       details: error.message
     });
   }

@@ -394,3 +394,61 @@ model undefined_tag_review {
   @@unique([tag_value, original_sku])
   @@index([status], map: "idx_undefined_tag_review_status")
 }
+
+model normalization_tags {
+  id               Int       @id @default(autoincrement())
+  category         String    @db.VarChar(50)
+  input_value      String    @db.VarChar(255)
+  normalized_value String    @db.VarChar(255)
+  tags             String[]
+  is_postfix       Boolean?  @default(false)
+  is_active        Boolean?  @default(true)
+  priority         Int?      @default(0)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([category], map: "idx_normalization_tags_category")
+  @@index([input_value], map: "idx_normalization_tags_input")
+  @@index([tags], map: "idx_normalization_tags_tags", type: Gin)
+}
+
+model NoMatchQueue {
+  id                Int       @id @default(autoincrement())
+  imei              String    @unique @db.VarChar(15)
+  brand             String?   @db.VarChar(100)
+  model             String?   @db.VarChar(200)
+  capacity          String?   @db.VarChar(50)
+  color             String?   @db.VarChar(100)
+  carrier           String?   @db.VarChar(100)
+  device_notes      String?   @db.Text
+  original_sku      String?   @db.VarChar(200)
+  
+  // Normalization results (what we tried to match)
+  normalized_model     String? @db.VarChar(100)
+  normalized_capacity  String? @db.VarChar(50)
+  normalized_color     String? @db.VarChar(100)
+  normalized_carrier   String? @db.VarChar(100)
+  
+  // Fallback attempts
+  fallback_attempts Json?     @default("[]")
+  fallback_reason   String?   @db.Text
+  
+  // Status tracking
+  status      String?  @default("pending") @db.VarChar(50)
+  priority    Int?     @default(5)
+  
+  // Metadata
+  created_at   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updated_at   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reviewed_at  DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewed_by  String?   @map("reviewed_by") @db.VarChar(100)
+  resolved_at  DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolved_sku String?   @map("resolved_sku") @db.VarChar(200)
+
+  @@index([status], map: "idx_no_match_queue_status")
+  @@index([priority], map: "idx_no_match_queue_priority")
+  @@index([created_at], map: "idx_no_match_queue_created_at")
+  @@index([brand], map: "idx_no_match_queue_brand")
+  @@index([model], map: "idx_no_match_queue_model")
+  @@map("no_match_queue")
+}

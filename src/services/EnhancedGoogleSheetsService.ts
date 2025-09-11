@@ -211,18 +211,34 @@ export class EnhancedGoogleSheetsService {
     }
   }
 
-  parseSkuWithTags(skuCode: string, description: string, sheetName: string): DeviceInfo {
+  async parseSkuWithTags(skuCode: string, description: string, sheetName: string): Promise<DeviceInfo> {
     const sku = (skuCode || '').toUpperCase().trim();
     const desc = (description || '').toLowerCase();
     
-    // Extract basic device information
+    // Always try to parse using our enhanced database reference tables first
+    const dbParsedInfo = await this.parseUsingDatabaseReference(sku);
+    
+    // If database parsing found complete info, use it
+    if (dbParsedInfo && this.isCompleteDeviceInfo(dbParsedInfo)) {
+      const tags = this.generateTags(dbParsedInfo, sku);
+      return {
+        ...dbParsedInfo,
+        sku_tags: tags,
+        tag_count: tags.length
+      };
+    }
+    
+    // Fallback to enhanced local parsing
     const deviceInfo = this.extractDeviceInfo(sku, desc, sheetName);
     
+    // Merge database results with local parsing (database takes priority)
+    const mergedInfo = this.mergeDeviceInfo(dbParsedInfo, deviceInfo);
+    
     // Generate tags array for SKU matching
-    const tags = this.generateTags(deviceInfo, sku);
+    const tags = this.generateTags(mergedInfo, sku);
     
     return {
-      ...deviceInfo,
+      ...mergedInfo,
       sku_tags: tags,
       tag_count: tags.length
     };
@@ -237,74 +253,26 @@ export class EnhancedGoogleSheetsService {
     let post_fix = '';
     let device_type = 'PHONE';
     
-    // Determine brand
-    for (const [brandName, pattern] of Object.entries(this.brandPatterns)) {
-      if (pattern.test(sku) || pattern.test(desc) || sheetName.includes(brandName)) {
-        brand = brandName;
-        break;
-      }
-    }
+    // Enhanced brand detection with better logic
+    brand = this.detectBrand(sku, desc, sheetName);
     
-    // Extract capacity
-    for (const { pattern, format } of this.capacityPatterns) {
-      const match = sku.match(pattern) || desc.match(pattern);
-      if (match && match[1] && match[2]) {
-        capacity = format(match[1], match[2]);
-        break;
-      }
-    }
+    // Extract capacity with improved patterns
+    capacity = this.extractCapacity(sku, desc);
     
-    // Extract color
-    for (const [abbrev, fullColor] of Object.entries(this.colorMappings)) {
-      if (sku.includes(abbrev) || desc.includes(abbrev.toLowerCase())) {
-        color = fullColor;
-        break;
-      }
-    }
+    // Extract color with improved mapping
+    color = this.extractColor(sku, desc);
     
-    // Extract carrier
-    for (const [abbrev, fullCarrier] of Object.entries(this.carrierMappings)) {
-      if (sku.includes(abbrev) || desc.includes(abbrev.toLowerCase())) {
-        carrier = fullCarrier;
-        break;
-      }
-    }
+    // Extract carrier with improved mapping
+    carrier = this.extractCarrier(sku, desc);
     
-    // Extract postfix (usually at the end after a dash)
-    const postfixMatch = sku.match(/-([A-Z0-9]+)$/);
-    if (postfixMatch && postfixMatch[1]) {
-      post_fix = postfixMatch[1];
-    }
+    // Extract postfix (condition/grade indicators)
+    post_fix = this.extractPostfix(sku);
     
     // Determine device type
-    if (sku.includes('IPAD') || sku.includes('TAB') || desc.includes('tablet')) {
-      device_type = 'TABLET';
-    } else if (sku.includes('WATCH') || sku.includes('AW') || desc.includes('watch')) {
-      device_type = 'WATCH';
-    } else if (sku.includes('MAC') || sku.includes('IMAC') || desc.includes('macbook')) {
-      device_type = 'DESKTOP';
-    }
+    device_type = this.detectDeviceType(sku, desc);
     
-    // Extract model (simplified)
-    if (brand === 'APPLE') {
-      if (sku.includes('IPHONE')) {
-        const iphoneMatch = sku.match(/IPHONE(\d+)/) || desc.match(/iphone\s*(\d+)/);
-        if (iphoneMatch) model = `iPhone ${iphoneMatch[1]}`;
-      } else if (sku.includes('IPAD')) {
-        if (sku.includes('PRO')) model = 'iPad Pro';
-        else if (sku.includes('AIR')) model = 'iPad Air';
-        else if (sku.includes('MINI')) model = 'iPad Mini';
-        else model = 'iPad';
-      }
-    } else if (brand === 'SAMSUNG') {
-      if (sku.includes('GALAXY')) {
-        const galaxyMatch = sku.match(/GALAXY\s*([A-Z0-9\s]+)/);
-        if (galaxyMatch && galaxyMatch[1]) model = `Galaxy ${galaxyMatch[1].trim()}`;
-      }
-    } else if (brand === 'GOOGLE') {
-      const pixelMatch = sku.match(/PIXEL\s*(\d+[A-Z]?)/) || desc.match(/pixel\s*(\d+[a-z]?)/);
-      if (pixelMatch) model = `Pixel ${pixelMatch[1]}`;
-    }
+    // Enhanced model extraction
+    model = this.extractModel(sku, desc, brand, device_type);
     
     return {
       brand,
@@ -315,6 +283,397 @@ export class EnhancedGoogleSheetsService {
       post_fix,
       device_type
     };
+  }
+
+  private detectBrand(sku: string, desc: string, sheetName: string): string {
+    // Check sheet name first (most reliable)
+    const sheetLower = sheetName.toLowerCase();
+    if (sheetLower.includes('samsung') || sheetLower.includes('galaxy')) return 'SAMSUNG';
+    if (sheetLower.includes('apple') || sheetLower.includes('iphone')) return 'APPLE';
+    if (sheetLower.includes('google') || sheetLower.includes('pixel')) return 'GOOGLE';
+    
+    // Enhanced brand detection from SKU
+    if (sku.includes('IP-') || sku.includes('IPHONE') || sku.includes('IPAD') || sku.includes('MAC') || sku.includes('AIRPODS')) {
+      return 'APPLE';
+    }
+    
+    if (sku.includes('SAMSUNG') || sku.includes('GALAXY') || sku.includes('S25') || sku.includes('S24') || 
+        sku.includes('S23') || sku.includes('S22') || sku.includes('S21') || sku.includes('S20') || 
+        sku.includes('S10') || sku.includes('NOTE') || sku.includes('TAB-') || sku.includes('WATCH-') || 
+        sku.includes('ZFLIP') || sku.includes('FOLD')) {
+      return 'SAMSUNG';
+    }
+    
+    if (sku.includes('PIXEL') || sku.includes('GOOGLE')) {
+      return 'GOOGLE';
+    }
+    
+    if (sku.includes('ONEPLUS') || sku.includes('ONE-')) {
+      return 'ONEPLUS';
+    }
+    
+    if (sku.includes('XIAOMI') || sku.includes('MI-') || sku.includes('REDMI') || sku.includes('POCO')) {
+      return 'XIAOMI';
+    }
+    
+    if (sku.includes('HUAWEI') || sku.includes('HONOR')) {
+      return 'HUAWEI';
+    }
+    
+    // Fallback to original pattern matching
+    for (const [brandName, pattern] of Object.entries(this.brandPatterns)) {
+      if (pattern.test(sku) || pattern.test(desc)) {
+        return brandName;
+      }
+    }
+    
+    return '';
+  }
+
+  private extractCapacity(sku: string, desc: string): string {
+    // Enhanced capacity extraction
+    const capacityPatterns = [
+      { pattern: /(\d+)\s*(GB|TB)/i, format: (num: string, unit: string) => `${num}${unit.toUpperCase()}` },
+      { pattern: /(\d+)\s*(G|T)/i, format: (num: string, unit: string) => `${num}${unit.toUpperCase()}B` },
+      { pattern: /-(\d+)-/i, format: (num: string) => `${num}GB` }, // For patterns like IP-13-128-BLK
+      { pattern: /-(\d+)$/i, format: (num: string) => `${num}GB` }  // For patterns like WATCH-6-44
+    ];
+    
+    for (const { pattern, format } of capacityPatterns) {
+      const match = sku.match(pattern) || desc.match(pattern);
+      if (match && match[1]) {
+        return format(match[1], match[2] || '');
+      }
+    }
+    
+    return '';
+  }
+
+  private extractColor(sku: string, desc: string): string {
+    // Enhanced color extraction with more patterns
+    const colorPatterns = [
+      // Direct color codes
+      { pattern: /BLK|BLACK/i, color: 'BLACK' },
+      { pattern: /WHT|WHITE/i, color: 'WHITE' },
+      { pattern: /SLV|SILVER/i, color: 'SILVER' },
+      { pattern: /GLD|GOLD/i, color: 'GOLD' },
+      { pattern: /PINK|ROSE/i, color: 'PINK' },
+      { pattern: /BLU|BLUE/i, color: 'BLUE' },
+      { pattern: /GRN|GREEN/i, color: 'GREEN' },
+      { pattern: /RED/i, color: 'RED' },
+      { pattern: /PUR|PURPLE/i, color: 'PURPLE' },
+      { pattern: /YLW|YELLOW/i, color: 'YELLOW' },
+      { pattern: /ORG|ORANGE/i, color: 'ORANGE' },
+      { pattern: /GRY|GRAY|GREY/i, color: 'GRAY' },
+      { pattern: /CREAM|BEIGE/i, color: 'CREAM' },
+      { pattern: /BURGUNDY|BURG/i, color: 'BURGUNDY' }
+    ];
+    
+    for (const { pattern, color } of colorPatterns) {
+      if (pattern.test(sku) || pattern.test(desc)) {
+        return color;
+      }
+    }
+    
+    return '';
+  }
+
+  private extractCarrier(sku: string, desc: string): string {
+    // Enhanced carrier extraction
+    const carrierPatterns = [
+      { pattern: /UNLOCKED|UNLOCK/i, carrier: 'UNLOCKED' },
+      { pattern: /VERIZON|VZW|VRZ/i, carrier: 'VERIZON' },
+      { pattern: /ATT|AT&T/i, carrier: 'ATT' },
+      { pattern: /TMOBILE|T-MOBILE|TMO|T-MO/i, carrier: 'T-MOBILE' },
+      { pattern: /SPRINT|SPR/i, carrier: 'SPRINT' },
+      { pattern: /WIFI|WI-FI/i, carrier: 'WIFI' },
+      { pattern: /4G|LTE/i, carrier: '4G' },
+      { pattern: /5G/i, carrier: '5G' }
+    ];
+    
+    for (const { pattern, carrier } of carrierPatterns) {
+      if (pattern.test(sku) || pattern.test(desc)) {
+        return carrier;
+      }
+    }
+    
+    return '';
+  }
+
+  private extractPostfix(sku: string): string {
+    // Extract postfix (condition/grade indicators)
+    const postfixMatch = sku.match(/-([A-Z0-9]+)$/);
+    if (postfixMatch && postfixMatch[1]) {
+      const postfix = postfixMatch[1];
+      // Only keep condition/grade indicators
+      const validPostfixes = ['VG', 'NEW', 'ACCEPTABLE', 'UL', 'LN', 'OPENBOX', 'USED', 'REFURB'];
+      if (validPostfixes.includes(postfix)) {
+        return postfix;
+      }
+    }
+    return '';
+  }
+
+  private detectDeviceType(sku: string, desc: string): string {
+    if (sku.includes('IPAD') || sku.includes('TAB-') || desc.includes('tablet')) {
+      return 'TABLET';
+    } else if (sku.includes('WATCH-') || sku.includes('AW') || desc.includes('watch')) {
+      return 'WATCH';
+    } else if (sku.includes('MAC') || sku.includes('IMAC') || desc.includes('macbook')) {
+      return 'DESKTOP';
+    } else if (sku.includes('AIRPODS') || desc.includes('airpods')) {
+      return 'AUDIO';
+    }
+    return 'PHONE';
+  }
+
+  private extractModel(sku: string, desc: string, brand: string, deviceType: string): string {
+    // Enhanced model extraction based on brand and device type
+    
+    if (brand === 'APPLE') {
+      return this.extractAppleModel(sku, desc, deviceType);
+    } else if (brand === 'SAMSUNG') {
+      return this.extractSamsungModel(sku, desc, deviceType);
+    } else if (brand === 'GOOGLE') {
+      return this.extractGoogleModel(sku, desc, deviceType);
+    }
+    
+    return '';
+  }
+
+  private extractAppleModel(sku: string, desc: string, deviceType: string): string {
+    if (deviceType === 'PHONE') {
+      // iPhone models
+      const iphoneMatch = sku.match(/IP-(\d+)(?:-PRO)?(?:-MAX)?/i) || desc.match(/iphone\s*(\d+)/i);
+      if (iphoneMatch) {
+        let model = `iPhone ${iphoneMatch[1]}`;
+        if (sku.includes('PRO')) model += ' Pro';
+        if (sku.includes('MAX')) model += ' Max';
+        return model;
+      }
+    } else if (deviceType === 'TABLET') {
+      // iPad models
+      if (sku.includes('PRO')) return 'iPad Pro';
+      if (sku.includes('AIR')) return 'iPad Air';
+      if (sku.includes('MINI')) return 'iPad Mini';
+      return 'iPad';
+    } else if (deviceType === 'WATCH') {
+      // Apple Watch models
+      const watchMatch = sku.match(/WATCH-(\d+)/i);
+      if (watchMatch) return `Apple Watch Series ${watchMatch[1]}`;
+      return 'Apple Watch';
+    }
+    
+    return '';
+  }
+
+  private extractSamsungModel(sku: string, desc: string, deviceType: string): string {
+    if (deviceType === 'PHONE') {
+      // Galaxy S series (including S24/S25)
+      const sMatch = sku.match(/S(\d+)(?:-ULTRA|-PLUS|-EDGE)?/i);
+      if (sMatch) {
+        let model = `Galaxy S${sMatch[1]}`;
+        if (sku.includes('ULTRA')) model += ' Ultra';
+        else if (sku.includes('PLUS')) model += ' Plus';
+        else if (sku.includes('EDGE')) model += ' Edge';
+        return model;
+      }
+      
+      // Galaxy Note series
+      const noteMatch = sku.match(/NOTE-(\d+)/i);
+      if (noteMatch) return `Galaxy Note ${noteMatch[1]}`;
+      
+      // Galaxy Flip/Fold series
+      if (sku.includes('ZFLIP')) {
+        const flipMatch = sku.match(/ZFLIP(\d+)/i);
+        if (flipMatch) return `Galaxy Z Flip ${flipMatch[1]}`;
+        return 'Galaxy Z Flip';
+      }
+      
+      if (sku.includes('FOLD')) {
+        const foldMatch = sku.match(/FOLD(\d+)/i);
+        if (foldMatch) return `Galaxy Z Fold ${foldMatch[1]}`;
+        return 'Galaxy Z Fold';
+      }
+      
+      // Generic Galaxy
+      if (sku.includes('GALAXY')) {
+        const galaxyMatch = sku.match(/GALAXY\s*([A-Z0-9\s]+)/i);
+        if (galaxyMatch && galaxyMatch[1]) return `Galaxy ${galaxyMatch[1].trim()}`;
+        return 'Galaxy';
+      }
+    } else if (deviceType === 'TABLET') {
+      // Galaxy Tab series
+      const tabMatch = sku.match(/TAB-([A-Z0-9-]+)/i);
+      if (tabMatch && tabMatch[1]) return `Galaxy Tab ${tabMatch[1].replace(/-/g, ' ')}`;
+      return 'Galaxy Tab';
+    } else if (deviceType === 'WATCH') {
+      // Galaxy Watch series
+      const watchMatch = sku.match(/WATCH-(\d+)/i);
+      if (watchMatch) return `Galaxy Watch ${watchMatch[1]}`;
+      return 'Galaxy Watch';
+    }
+    
+    return '';
+  }
+
+  private extractGoogleModel(sku: string, desc: string, deviceType: string): string {
+    if (deviceType === 'PHONE') {
+      // Pixel phones
+      const pixelMatch = sku.match(/PIXEL-(\d+)(?:-PRO)?/i) || desc.match(/pixel\s*(\d+)/i);
+      if (pixelMatch) {
+        let model = `Pixel ${pixelMatch[1]}`;
+        if (sku.includes('PRO')) model += ' Pro';
+        return model;
+      }
+    } else if (deviceType === 'WATCH') {
+      // Pixel Watch
+      if (sku.includes('PIXEL-WATCH')) return 'Pixel Watch';
+    }
+    
+    return '';
+  }
+
+  /**
+   * Parse SKU using database reference tables
+   */
+  private async parseUsingDatabaseReference(sku: string): Promise<Omit<DeviceInfo, 'sku_tags' | 'tag_count'> | null> {
+    try {
+      const client = this.createClient();
+      await client.connect();
+      
+      try {
+        const result = await client.query('SELECT * FROM parse_sku_complete($1::text)', [sku]);
+        const parsed = result.rows[0];
+        
+        if (parsed) {
+          return {
+            brand: parsed.brand || '',
+            model: parsed.model || '',
+            capacity: parsed.capacity || '',
+            color: parsed.color || '',
+            carrier: parsed.carrier || '',
+            post_fix: parsed.postfix || '',
+            device_type: parsed.device_type || 'PHONE'
+          };
+        }
+      } finally {
+        await client.end();
+      }
+    } catch (error) {
+      console.warn(`⚠️ Database parsing failed for SKU ${sku}:`, error instanceof Error ? error.message : String(error));
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if device info is complete enough
+   */
+  private isCompleteDeviceInfo(info: Omit<DeviceInfo, 'sku_tags' | 'tag_count'>): boolean {
+    return !!(info.brand && info.model && info.capacity && info.color);
+  }
+
+  /**
+   * Merge database parsing results with local parsing (database takes priority)
+   */
+  private mergeDeviceInfo(
+    dbInfo: Omit<DeviceInfo, 'sku_tags' | 'tag_count'> | null,
+    localInfo: Omit<DeviceInfo, 'sku_tags' | 'tag_count'>
+  ): Omit<DeviceInfo, 'sku_tags' | 'tag_count'> {
+    if (!dbInfo) return localInfo;
+    
+    return {
+      brand: dbInfo.brand || localInfo.brand,
+      model: dbInfo.model || localInfo.model,
+      capacity: dbInfo.capacity || localInfo.capacity,
+      color: dbInfo.color || localInfo.color,
+      carrier: dbInfo.carrier || localInfo.carrier,
+      post_fix: dbInfo.post_fix || localInfo.post_fix,
+      device_type: dbInfo.device_type || localInfo.device_type
+    };
+  }
+
+  /**
+   * Enhanced SKU segmentation - break down complex SKUs into components
+   */
+  private segmentSku(sku: string): string[] {
+    // Remove common separators and split
+    const segments = sku
+      .replace(/[-_\/]/g, ' ')
+      .split(/\s+/)
+      .filter(segment => segment.length > 0);
+    
+    // Further break down segments that might contain multiple components
+    const expandedSegments: string[] = [];
+    
+    for (const segment of segments) {
+      // Handle patterns like "ZFLIP5" -> ["ZFLIP", "5"]
+      if (segment.match(/^[A-Z]+\d+$/)) {
+        const match = segment.match(/^([A-Z]+)(\d+)$/);
+        if (match && match[1] && match[2]) {
+          expandedSegments.push(match[1], match[2]);
+        } else {
+          expandedSegments.push(segment);
+        }
+      }
+      // Handle patterns like "S23ULTRA" -> ["S23", "ULTRA"]
+      else if (segment.match(/^[A-Z]\d+[A-Z]+$/)) {
+        const match = segment.match(/^([A-Z]\d+)([A-Z]+)$/);
+        if (match && match[1] && match[2]) {
+          expandedSegments.push(match[1], match[2]);
+        } else {
+          expandedSegments.push(segment);
+        }
+      }
+      // Handle patterns like "128GB" -> ["128", "GB"]
+      else if (segment.match(/^\d+[A-Z]+$/)) {
+        const match = segment.match(/^(\d+)([A-Z]+)$/);
+        if (match && match[1] && match[2]) {
+          expandedSegments.push(match[1], match[2]);
+        } else {
+          expandedSegments.push(segment);
+        }
+      }
+      else {
+        expandedSegments.push(segment);
+      }
+    }
+    
+    return expandedSegments;
+  }
+
+  /**
+   * Enhanced pattern matching using segmented SKU
+   */
+  private matchSegmentedPatterns(segments: string[], patterns: string[]): boolean {
+    for (const pattern of patterns) {
+      const patternUpper = pattern.toUpperCase();
+      
+      // Direct segment match
+      if (segments.some(segment => segment === patternUpper)) {
+        return true;
+      }
+      
+      // Partial match within segments
+      if (segments.some(segment => segment.includes(patternUpper) || patternUpper.includes(segment))) {
+        return true;
+      }
+      
+      // Combined segment match (e.g., "S23" + "ULTRA" matches "S23ULTRA")
+      for (let i = 0; i < segments.length - 1; i++) {
+        const segment1 = segments[i];
+        const segment2 = segments[i + 1];
+        if (segment1 && segment2) {
+          const combined = segment1 + segment2;
+          if (combined === patternUpper || patternUpper.includes(combined)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
   }
 
   private generateTags(deviceInfo: Omit<DeviceInfo, 'sku_tags' | 'tag_count'>, sku: string): string[] {
@@ -587,7 +946,7 @@ export class EnhancedGoogleSheetsService {
           // Process each SKU with enhanced parsing
           for (const row of rows) {
             try {
-              const deviceInfo = this.parseSkuWithTags(row.sku_code, row.description, sheetName);
+              const deviceInfo = await this.parseSkuWithTags(row.sku_code, row.description, sheetName);
               const skuData: SkuData = {
                 ...deviceInfo,
                 sku_code: row.sku_code,
@@ -677,3 +1036,4 @@ export class EnhancedGoogleSheetsService {
     }
   }
 }
+

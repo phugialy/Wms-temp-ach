@@ -1,279 +1,148 @@
-import { PrismaClient, Item } from '@prisma/client';
-import { throwNotFoundError, throwConflictError } from '../utils/errorHandler';
+import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 export interface CreateItemInput {
-  sku: string;
-  name: string;
-  description?: string | null;
-  upc?: string | null;
-  brand?: string | null;
-  model?: string | null;
-  condition?: string | null;
-  cost?: number | null;
-  price?: number | null;
-  weightOz?: number | null;
-  dimensions?: string | null;
-  imageUrl?: string | null;
-  isActive?: boolean | null;
+  imei: string;
+  model?: string;
+  modelNumber?: string;
+  carrier?: string;
+  capacity?: string;
+  color?: string;
+  batteryHealth?: string;
+  batteryCount?: number;
+  working?: string;
+  location?: string;
 }
 
 export interface UpdateItemInput {
-  name?: string | null;
-  description?: string | null;
-  upc?: string | null;
-  brand?: string | null;
-  model?: string | null;
-  condition?: string | null;
-  cost?: number | null;
-  price?: number | null;
-  weightOz?: number | null;
-  dimensions?: string | null;
-  imageUrl?: string | null;
-  isActive?: boolean | null;
-}
-
-export interface QueryParams {
-  page?: number | undefined;
-  limit?: number | undefined;
-  search?: string | undefined;
-  brand?: string | undefined;
-  condition?: string | undefined;
+  model?: string;
+  modelNumber?: string;
+  carrier?: string;
+  capacity?: string;
+  color?: string;
+  batteryHealth?: string;
+  batteryCount?: number;
+  working?: string;
+  location?: string;
 }
 
 export class ItemService {
   constructor(private prisma: PrismaClient) {}
 
-  async createItem(data: CreateItemInput): Promise<Item> {
+  async createItem(data: CreateItemInput) {
     try {
-      // Check if SKU already exists
+      // Check if IMEI already exists
       const existingItem = await this.prisma.item.findUnique({
-        where: { sku: data.sku }
+        where: { imei: data.imei }
       });
 
       if (existingItem) {
-        throwConflictError(`Item with SKU ${data.sku} already exists`);
+        throw new Error(`Item with IMEI ${data.imei} already exists`);
       }
 
-      // Transform data to match Prisma expectations
-      const prismaData = {
-        sku: data.sku,
-        name: data.name,
-        description: data.description ?? null,
-        upc: data.upc ?? null,
-        brand: data.brand ?? null,
-        model: data.model ?? null,
-        condition: data.condition ?? 'used',
-        cost: data.cost ?? null,
-        price: data.price ?? null,
-        weightOz: data.weightOz ?? null,
-        dimensions: data.dimensions ?? null,
-        imageUrl: data.imageUrl ?? null,
-        isActive: data.isActive ?? true
-      };
-
+      // Create item (Product will be created separately due to schema constraints)
       const item = await this.prisma.item.create({
-        data: prismaData
+        data: {
+          imei: data.imei,
+          model: data.model,
+          modelNumber: data.modelNumber,
+          carrier: data.carrier,
+          capacity: data.capacity,
+          color: data.color,
+          batteryHealth: data.batteryHealth,
+          batteryCount: data.batteryCount,
+          working: data.working || 'PENDING',
+          location: data.location || 'Default Location'
+        }
       });
 
-      logger.info('Item created', { itemId: item.id, sku: item.sku });
+      // Create associated product
+      await this.prisma.product.create({
+        data: {
+          imei: data.imei,
+          sku: `SKU-${data.imei}`, // Generate a basic SKU
+          brand: data.model?.split(' ')[0] || 'Unknown'
+        }
+      });
+
+      logger.info('Item created', { imei: item.imei });
       return item;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error creating item', { error: errorMessage, data });
+      logger.error('Error creating item', { error, data });
       throw error;
     }
   }
 
-  async getItemById(id: number): Promise<Item> {
+  async getItemByImei(imei: string) {
     try {
       const item = await this.prisma.item.findUnique({
-        where: { id }
+        where: { imei }
       });
 
       if (!item) {
-        throwNotFoundError('Item');
+        throw new Error(`Item with IMEI ${imei} not found`);
       }
 
-      return item!;
+      return item;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting item by ID', { error: errorMessage, id });
+      logger.error('Error getting item by IMEI', { error, imei });
       throw error;
     }
   }
 
-  async getItemBySku(sku: string): Promise<Item> {
+  async updateItem(imei: string, data: UpdateItemInput) {
     try {
-      const item = await this.prisma.item.findUnique({
-        where: { sku }
-      });
-
-      if (!item) {
-        throwNotFoundError('Item');
-      }
-
-      return item!;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting item by SKU', { error: errorMessage, sku });
-      throw error;
-    }
-  }
-
-  async getAllItems(query: QueryParams): Promise<{ items: Item[]; total: number; page: number; limit: number }> {
-    try {
-      const { page = 1, limit = 10, search, brand, condition } = query;
-      const skip = (page - 1) * limit;
-
-      // Build where clause
-      const where: any = {};
-      if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { brand: { contains: search, mode: 'insensitive' } },
-          { model: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-      if (brand) {
-        where.brand = brand;
-      }
-      if (condition) {
-        where.condition = condition;
-      }
-
-      const [items, total] = await Promise.all([
-        this.prisma.item.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        this.prisma.item.count({ where })
-      ]);
-
-      logger.info('Items retrieved', { count: items.length, total, page, limit });
-      return { items, total, page, limit };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting all items', { error: errorMessage, query });
-      throw error;
-    }
-  }
-
-  async updateItem(id: number, data: UpdateItemInput): Promise<Item> {
-    try {
-      // Check if item exists
-      const existingItem = await this.prisma.item.findUnique({
-        where: { id }
-      });
-
-      if (!existingItem) {
-        throwNotFoundError('Item');
-      }
-
-      // Transform data to match Prisma expectations
-      const prismaData: any = {};
-      if (data.name !== undefined) prismaData.name = data.name;
-      if (data.description !== undefined) prismaData.description = data.description;
-      if (data.upc !== undefined) prismaData.upc = data.upc;
-      if (data.brand !== undefined) prismaData.brand = data.brand;
-      if (data.model !== undefined) prismaData.model = data.model;
-      if (data.condition !== undefined) prismaData.condition = data.condition;
-      if (data.cost !== undefined) prismaData.cost = data.cost;
-      if (data.price !== undefined) prismaData.price = data.price;
-      if (data.weightOz !== undefined) prismaData.weightOz = data.weightOz;
-      if (data.dimensions !== undefined) prismaData.dimensions = data.dimensions;
-      if (data.imageUrl !== undefined) prismaData.imageUrl = data.imageUrl;
-      if (data.isActive !== undefined) prismaData.isActive = data.isActive;
-
       const item = await this.prisma.item.update({
-        where: { id },
-        data: prismaData
+        where: { imei },
+        data
       });
 
-      logger.info('Item updated', { itemId: item.id, sku: item.sku });
+      logger.info('Item updated', { imei: item.imei });
       return item;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error updating item', { error: errorMessage, id, data });
+      logger.error('Error updating item', { error, imei, data });
       throw error;
     }
   }
 
-  async deleteItem(id: number): Promise<void> {
+  async deleteItem(imei: string) {
     try {
-      // Check if item exists
-      const existingItem = await this.prisma.item.findUnique({
-        where: { id }
-      });
-
-      if (!existingItem) {
-        throwNotFoundError('Item');
-      }
-
       await this.prisma.item.delete({
-        where: { id }
+        where: { imei }
       });
 
-      logger.info('Item deleted', { itemId: id });
+      logger.info('Item deleted', { imei });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error deleting item', { error: errorMessage, id });
+      logger.error('Error deleting item', { error, imei });
       throw error;
     }
   }
 
-  async getItemBrands(): Promise<string[]> {
+  async getAllItems() {
     try {
-      const brands = await this.prisma.item.findMany({
-        select: { brand: true },
-        where: { brand: { not: null } },
-        distinct: ['brand']
+      const items = await this.prisma.item.findMany({
+        orderBy: { createdAt: 'desc' }
       });
 
-      return brands.map(item => item.brand!).filter(Boolean);
+      return items;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting item brands', { error: errorMessage });
+      logger.error('Error getting all items', { error });
       throw error;
     }
   }
 
-  async getItemsByBrand(brand: string, query: QueryParams): Promise<{ items: Item[]; total: number; page: number; limit: number }> {
+  async getItemsByBrand() {
     try {
-      const { page = 1, limit = 10, search } = query;
-      const skip = (page - 1) * limit;
+      const items = await this.prisma.item.findMany({
+        select: { model: true },
+        where: { model: { not: null } },
+        distinct: ['model']
+      });
 
-      // Build where clause
-      const where: any = { brand };
-      if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { model: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-
-      const [items, total] = await Promise.all([
-        this.prisma.item.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        this.prisma.item.count({ where })
-      ]);
-
-      logger.info('Items by brand retrieved', { brand, count: items.length, total, page, limit });
-      return { items, total, page, limit };
+      return items.map(item => item.model).filter(Boolean);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      logger.error('Error getting items by brand', { error: errorMessage, brand, query });
+      logger.error('Error getting items by brand', { error });
       throw error;
     }
   }
-} 
+}

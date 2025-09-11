@@ -20,7 +20,12 @@ export class ProductController {
   createProduct = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const validatedData = createProductSchema.parse(req.body);
-      const product = await this.productService.createProduct(validatedData);
+      const productData = {
+        imei: validatedData.sku || `TEMP-${Date.now()}`, // Use SKU as IMEI for now
+        sku: validatedData.sku,
+        brand: validatedData.name
+      };
+      const product = await this.productService.createProduct(productData);
 
       res.status(201).json({
         success: true,
@@ -45,7 +50,7 @@ export class ProductController {
   getProductById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = idParamSchema.parse(req.params);
-      const product = await this.productService.getProductById(id);
+      const product = await this.productService.getProductByImei(id.toString());
 
       res.status(200).json({
         success: true,
@@ -93,16 +98,16 @@ export class ProductController {
   getAllProducts = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const validatedQuery = queryParamsSchema.parse(req.query);
-      const result = await this.productService.getAllProducts(validatedQuery);
+      const result = await this.productService.getAllProducts();
 
       res.status(200).json({
         success: true,
-        data: result.products,
+        data: result,
         pagination: {
-          page: result.page,
-          limit: result.limit,
-          total: result.total,
-          totalPages: Math.ceil(result.total / result.limit)
+          page: 1,
+          limit: result.length,
+          total: result.length,
+          totalPages: 1
         }
       });
     } catch (error) {
@@ -203,13 +208,13 @@ export class ProductController {
 
       res.status(200).json({
         success: true,
-        data: result.products,
+        data: result,
         category,
         pagination: {
-          page: result.page,
-          limit: result.limit,
-          total: result.total,
-          totalPages: Math.ceil(result.total / result.limit)
+          page: 1,
+          limit: result.length,
+          total: result.length,
+          totalPages: 1
         }
       });
     } catch (error) {

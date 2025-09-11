@@ -39,9 +39,13 @@ export class InventoryService {
         throwConflictError(`Inventory record for SKU ${data.sku} at location ${data.location} already exists`);
       }
 
-      // Check if item exists
-      const item = await this.prisma.item.findUnique({
-        where: { sku: data.sku }
+      // Check if item exists (using IMEI as primary key)
+      const item = await this.prisma.item.findFirst({
+        where: { 
+          product: {
+            sku: data.sku
+          }
+        }
       });
 
       if (!item) {
@@ -122,9 +126,7 @@ export class InventoryService {
           skip,
           take: limit,
           orderBy: { updatedAt: 'desc' },
-          include: {
-            item: true
-          }
+        // include: { item: true } // Item relation not available in current schema
         }),
         this.prisma.inventory.count({ where })
       ]);
@@ -195,9 +197,7 @@ export class InventoryService {
     try {
       const inventory = await this.prisma.inventory.findMany({
         where: { sku },
-        include: {
-          item: true
-        },
+        // include: { item: true } // Item relation not available in current schema,
         orderBy: { updatedAt: 'desc' }
       });
 
@@ -214,9 +214,7 @@ export class InventoryService {
     try {
       const inventory = await this.prisma.inventory.findMany({
         where: { location },
-        include: {
-          item: true
-        },
+        // include: { item: true } // Item relation not available in current schema,
         orderBy: { updatedAt: 'desc' }
       });
 
@@ -225,6 +223,29 @@ export class InventoryService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       logger.error('Error getting inventory by location', { error: errorMessage, location });
+      throw error;
+    }
+  }
+
+  async getItemsByImei(imei: string) {
+    try {
+      // Get items by IMEI and return as inventory-like objects
+      const items = await this.prisma.item.findMany({
+        where: { imei }
+      });
+
+      return items.map(item => ({
+        id: item.imei,
+        sku: `SKU-${item.imei}`,
+        location: item.location || 'Default Location',
+        quantity: 1, // Each item represents 1 unit
+        passDevices: item.working === 'PASSED' ? 1 : 0,
+        failedDevices: item.working === 'FAILED' ? 1 : 0,
+        reserved: 0,
+        available: 1
+      }));
+    } catch (error) {
+      logger.error('Error getting items by IMEI', { error, imei });
       throw error;
     }
   }

@@ -106,8 +106,8 @@ export class BulkInventoryService {
         maxResults: 1
       });
       
-      if (results && results.length > 0) {
-        const bestMatch = results[0];
+      if (results && results.matches && results.matches.length > 0) {
+        const bestMatch = results.matches[0];
         if (bestMatch) {
           logger.info(`🎯 SKU match found for ${item.imei}: ${item.sku} -> ${bestMatch.skuCode} (Score: ${bestMatch.score})`);
           

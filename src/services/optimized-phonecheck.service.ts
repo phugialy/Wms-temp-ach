@@ -156,11 +156,11 @@ export class OptimizedPhoneCheckService {
           const firstItem = items[0];
           return {
             sku,
-            brand: firstItem.brand,
-            model: firstItem.model,
-            storage: firstItem.storage,
-            color: firstItem.color,
-            carrier: firstItem.carrier,
+            brand: firstItem?.brand || 'Unknown',
+            model: firstItem?.model || 'Unknown',
+            storage: firstItem?.storage || 'Unknown',
+            color: firstItem?.color || 'Unknown',
+            carrier: firstItem?.carrier || 'Unknown',
             total_quantity: items.length,
             available_quantity: items.length, // Assuming all are available initially
             last_updated: new Date().toISOString()

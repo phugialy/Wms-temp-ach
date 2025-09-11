@@ -61,16 +61,16 @@ export class LogsController {
   getAllInboundLogs = async (req: Request, res: Response): Promise<void> => {
     try {
       const queryParams = logQueryParamsSchema.parse(req.query);
-      const result = await this.logsService.getAllInboundLogs(queryParams);
+      const result = await this.logsService.getInboundLogs(queryParams);
 
       res.status(200).json({
         success: true,
         data: result.logs,
         pagination: {
-          page: result.page,
-          limit: result.limit,
+          page: 1,
+          limit: result.total,
           total: result.total,
-          pages: Math.ceil(result.total / result.limit)
+          pages: 1
         }
       });
     } catch (error) {
@@ -86,16 +86,16 @@ export class LogsController {
   getAllOutboundLogs = async (req: Request, res: Response): Promise<void> => {
     try {
       const queryParams = logQueryParamsSchema.parse(req.query);
-      const result = await this.logsService.getAllOutboundLogs(queryParams);
+      const result = await this.logsService.getOutboundLogs(queryParams);
 
       res.status(200).json({
         success: true,
         data: result.logs,
         pagination: {
-          page: result.page,
-          limit: result.limit,
+          page: 1,
+          limit: result.total,
           total: result.total,
-          pages: Math.ceil(result.total / result.limit)
+          pages: 1
         }
       });
     } catch (error) {

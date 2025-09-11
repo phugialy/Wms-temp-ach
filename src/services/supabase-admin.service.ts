@@ -353,16 +353,10 @@ export class SupabaseAdminService {
 
   async getInventory(): Promise<any[]> {
     try {
+      // Query inventory table directly since it contains the inventory data
       const { data, error } = await supabase
-        .from('Item')
-        .select(`
-          *,
-          inventory:Inventory(
-            *,
-            location:Location(*)
-          )
-        `)
-        .eq('status', 'active')
+        .from('inventory')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
