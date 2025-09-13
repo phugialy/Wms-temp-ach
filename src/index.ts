@@ -26,6 +26,8 @@ import comprehensiveSkuTestRoutes from './routes/comprehensive-sku-test.route';
 import sampleMatchResultsRoutes from './routes/sample-match-results.route';
 import skuMatchingAnalysisRoutes from './routes/sku-matching-analysis.route';
 import hybridSkuMatchingRoutes from './routes/hybrid-sku-matching.route';
+import inventoryManagementRoutes from './routes/inventory-management.route';
+import skuMasterRoutes from './routes/sku-master.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -86,6 +88,8 @@ app.use('/api/comprehensive-sku-test', comprehensiveSkuTestRoutes);
 app.use('/api/sample-match-results', sampleMatchResultsRoutes);
 app.use('/api/sku-matching-analysis', skuMatchingAnalysisRoutes);
 app.use('/api/hybrid-sku-matching', hybridSkuMatchingRoutes);
+app.use('/api/inventory-management', inventoryManagementRoutes);
+app.use('/api/sku-master', skuMasterRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

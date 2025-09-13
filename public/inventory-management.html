@@ -1,0 +1,2200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKU View - Inventory Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0;
+            background: white;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-bottom: 1px solid #34495e;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+            font-weight: 400;
+        }
+
+        .header p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 10px;
+            border-radius: 6px;
+            min-width: 100px;
+        }
+
+        .stat-card.matched { background: #d4edda; color: #155724; }
+        .stat-card.undefined { background: #fff3cd; color: #856404; }
+        .stat-card.no-match { background: #f8d7da; color: #721c24; }
+        .stat-card.total { background: #d1ecf1; color: #0c5460; }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            margin-top: 3px;
+        }
+
+        .controls {
+            padding: 15px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-group label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+
+        select, input, button {
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+
+        .content {
+            padding: 0;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .sku-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        .sku-table th {
+            background: #f8f9fa;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            font-size: 0.9rem;
+        }
+
+        .sku-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.85rem;
+        }
+
+        .sku-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .sku-table tr.undefined-row {
+            background: #fffbf0;
+            border-left: 4px solid #ffc107;
+        }
+
+        .sku-table tr.matched-row {
+            background: #f8fff8;
+            opacity: 0.7;
+        }
+
+        .sku-table tr.matched-row:hover {
+            opacity: 0.9;
+        }
+
+        .sku-table tr.matched-row td {
+            color: #6c757d;
+        }
+
+        .sku-table tr.matched-row .action-btn {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Enhanced Selection Styles */
+        .sku-table tr.selectable {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .sku-table tr.selectable:hover {
+            background-color: #f0f8ff !important;
+        }
+
+        .sku-table tr.selected {
+            background-color: #e3f2fd !important;
+            border-left: 4px solid #2196f3 !important;
+        }
+
+        .sku-table tr.selected:hover {
+            background-color: #bbdefb !important;
+        }
+
+        .sku-table tr.range-selection {
+            background-color: #fff3e0 !important;
+        }
+
+        /* Bulk Action Toolbar */
+        .bulk-toolbar {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+
+        .bulk-toolbar.show {
+            display: flex;
+        }
+
+        .bulk-toolbar .selection-count {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .bulk-toolbar .bulk-actions {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .bulk-toolbar .bulk-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .bulk-toolbar .bulk-btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .bulk-toolbar .bulk-btn-success:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+        }
+
+        .bulk-toolbar .bulk-btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+        .bulk-toolbar .bulk-btn-warning:hover {
+            background: #f57c00;
+            transform: translateY(-1px);
+        }
+
+        .bulk-toolbar .bulk-btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .bulk-toolbar .bulk-btn-danger:hover {
+            background: #da190b;
+            transform: translateY(-1px);
+        }
+
+        .bulk-toolbar .clear-selection {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .bulk-toolbar .clear-selection:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Smart Selection Panel */
+        .smart-selection {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+        }
+
+        .smart-selection h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 1rem;
+        }
+
+        .smart-selection .selection-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .smart-selection .selection-btn {
+            padding: 6px 12px;
+            border: 1px solid #007bff;
+            background: white;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+
+        .smart-selection .selection-btn:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        /* Progress Indicator */
+        .bulk-progress {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .bulk-progress.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        /* Keyboard Shortcuts Help */
+        .shortcuts-help {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            z-index: 1000;
+            display: none;
+            max-width: 300px;
+        }
+
+        .shortcuts-help.show {
+            display: block;
+        }
+
+        .shortcuts-help h4 {
+            margin: 0 0 10px 0;
+            color: #4caf50;
+        }
+
+        .shortcuts-help .shortcut {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .shortcuts-help .key {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        /* Action Info Styles */
+        .action-info {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #1976d2;
+        }
+
+        .action-info.warning {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+            color: #f57c00;
+        }
+
+        .action-info.error {
+            background: #ffebee;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+
+        .sku-table tr.matched-row input[type="checkbox"] {
+            opacity: 0.3;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+
+        .status-badge {
+            padding: 3px 6px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-matched { background: #d4edda; color: #155724; }
+        .status-undefined { background: #fff3cd; color: #856404; }
+        .status-no-match { background: #f8d7da; color: #721c24; }
+
+        .imei-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .imei-cell:hover {
+            overflow: visible;
+            white-space: normal;
+            background: #f8f9fa;
+            position: relative;
+            z-index: 10;
+        }
+
+        .device-info {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .device-info:hover {
+            overflow: visible;
+            white-space: normal;
+            background: #f8f9fa;
+            position: relative;
+            z-index: 10;
+        }
+
+        .action-btn {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+            border-radius: 3px;
+            margin: 1px;
+        }
+
+        .checkbox-cell {
+            text-align: center;
+            width: 40px;
+        }
+
+        .checkbox-cell input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+        }
+
+        .pagination-info {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 2% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .device-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .device-item {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+
+        .device-item.undefined {
+            border-left: 4px solid #ffc107;
+            background: #fffbf0;
+        }
+
+        .device-item.matched {
+            border-left: 4px solid #28a745;
+            background: #f8fff8;
+            opacity: 0.8;
+        }
+
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .device-imei {
+            font-family: monospace;
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        .device-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .device-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        .device-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .device-detail-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+        }
+
+        .device-detail-value {
+            color: #6c757d;
+            padding: 5px 8px;
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+        }
+
+        .device-detail-value.editable {
+            background: #fff;
+            border: 2px solid #007bff;
+            cursor: pointer;
+        }
+
+        .device-detail-value.editable:hover {
+            background: #f8f9fa;
+        }
+
+        .edit-form {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .edit-form input, .edit-form select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .sku-autocomplete {
+            position: relative;
+        }
+
+        .sku-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ced4da;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .sku-suggestion {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 0.9rem;
+        }
+
+        .sku-suggestion:hover {
+            background: #f8f9fa;
+        }
+
+        .sku-suggestion:last-child {
+            border-bottom: none;
+        }
+
+        .sku-code {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .sku-details {
+            color: #6c757d;
+            font-size: 0.8rem;
+            margin-top: 2px;
+        }
+
+        .loading-suggestions {
+            padding: 10px 12px;
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .edit-form .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .edit-form .form-actions button {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
+        .bulk-actions {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .bulk-actions.active {
+            display: block;
+        }
+
+        .selected-count {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .sku-details {
+                grid-template-columns: 1fr;
+            }
+
+            .sku-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 SKU View - Inventory Management</h1>
+            <p>View and manage SKU matches with undefined item resolution</p>
+            <div style="margin-top: 10px; font-size: 0.9rem; opacity: 0.9;">
+                <span style="color: #ffc107;">⚠️ Yellow rows</span> = Undefined items (fixable) | 
+                <span style="color: #28a745;">✅ Green rows</span> = Matched items (view only)
+            </div>
+        </div>
+
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-card total">
+                <span class="stat-number" id="totalItems">-</span>
+                <div class="stat-label">Total Items</div>
+            </div>
+            <div class="stat-card matched">
+                <span class="stat-number" id="matchedItems">-</span>
+                <div class="stat-label">Matched</div>
+            </div>
+            <div class="stat-card undefined">
+                <span class="stat-number" id="undefinedItems">-</span>
+                <div class="stat-label">Undefined</div>
+            </div>
+            <div class="stat-card no-match">
+                <span class="stat-number" id="noMatchItems">-</span>
+                <div class="stat-label">No Match</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="filter-group">
+                <label for="filterSelect">Filter:</label>
+                <select id="filterSelect">
+                    <option value="">All Items</option>
+                    <option value="undefined">Undefined Only</option>
+                    <option value="issues">Issues Only</option>
+                    <option value="matched">Matched Only</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="searchInput">Search SKU:</label>
+                <input type="text" id="searchInput" placeholder="Enter SKU name...">
+            </div>
+
+            <button onclick="loadInventoryData()">🔄 Refresh</button>
+            <button onclick="selectAllVisible()">☑️ Select All</button>
+            <button onclick="clearSelection()">☐ Clear Selection</button>
+        </div>
+
+        <div class="bulk-actions" id="bulkActions">
+            <div class="selected-count" id="selectedCount">0 items selected</div>
+            <div style="margin-top: 10px;">
+                <button class="btn-success" onclick="bulkApprove()">✅ Approve Selected</button>
+                <button class="btn-warning" onclick="bulkMarkNoMatch()">❌ Mark as No Match</button>
+                <button class="btn-danger" onclick="clearSelection()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Smart Selection Panel -->
+        <div class="smart-selection">
+            <h4>🎯 Smart Selection Tools</h4>
+            <div class="selection-buttons">
+                <button class="selection-btn" onclick="selectAllUndefined()">Select All Undefined</button>
+                <button class="selection-btn" onclick="selectByPattern()">Select by Pattern</button>
+                <button class="selection-btn" onclick="selectHighScore()">Select High Score (>80)</button>
+                <button class="selection-btn" onclick="selectRecent()">Select Recent (24h)</button>
+                <button class="selection-btn" onclick="selectRecentlyApproved()">Select Recently Approved</button>
+                <button class="selection-btn" onclick="selectAllVisible()">Select All Visible</button>
+                <button class="selection-btn" onclick="clearAllSelection()">Clear Selection</button>
+                <button class="selection-btn" onclick="toggleShortcutsHelp()">⌨️ Shortcuts</button>
+            </div>
+        </div>
+
+        <!-- Recent Actions Panel -->
+        <div class="smart-selection" id="recentActionsPanel" style="display: none;">
+            <h4>🕒 Recent Actions & Undo</h4>
+            <div class="selection-buttons">
+                <button class="selection-btn" onclick="undoLastAction()">↶ Undo Last Action</button>
+                <button class="selection-btn" onclick="showActionHistory()">📋 Action History</button>
+                <button class="selection-btn" onclick="revertToUndefined()">🔄 Revert to Undefined</button>
+                <button class="selection-btn" onclick="markForReview()">🚨 Mark for Review</button>
+            </div>
+            <div id="lastActionInfo" class="action-info" style="display: none;">
+                <small>Last action: <span id="lastActionText"></span></small>
+            </div>
+        </div>
+
+
+        <!-- Bulk Action Toolbar -->
+        <div class="bulk-toolbar" id="bulkToolbar">
+            <div class="selection-count" id="selectionCount">0 items selected</div>
+            <div class="bulk-actions">
+                <button class="bulk-btn bulk-btn-success" onclick="bulkApprove()">✅ Approve All</button>
+                <button class="bulk-btn bulk-btn-warning" onclick="bulkMarkNoMatch()">❌ Mark No Match</button>
+                <button class="bulk-btn bulk-btn-danger" onclick="bulkDelete()">🗑️ Delete</button>
+                <button class="bulk-btn bulk-btn-warning" onclick="bulkRevertToUndefined()">🔄 Revert to Undefined</button>
+                <button class="bulk-btn bulk-btn-danger" onclick="bulkMarkForReview()">🚨 Mark for Review</button>
+                <button class="bulk-btn clear-selection" onclick="clearAllSelection()">Clear Selection</button>
+            </div>
+            <div class="bulk-progress" id="bulkProgress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">Processing...</div>
+            </div>
+        </div>
+
+        <!-- Keyboard Shortcuts Help -->
+        <div class="shortcuts-help" id="shortcutsHelp">
+            <h4>⌨️ Keyboard Shortcuts</h4>
+            <div class="shortcut">
+                <span>Select All</span>
+                <span class="key">Ctrl+A</span>
+            </div>
+            <div class="shortcut">
+                <span>Select Undefined</span>
+                <span class="key">Ctrl+U</span>
+            </div>
+            <div class="shortcut">
+                <span>Clear Selection</span>
+                <span class="key">Ctrl+D</span>
+            </div>
+            <div class="shortcut">
+                <span>Range Select</span>
+                <span class="key">Shift+Click</span>
+            </div>
+            <div class="shortcut">
+                <span>Toggle Item</span>
+                <span class="key">Ctrl+Click</span>
+            </div>
+            <div class="shortcut">
+                <span>Bulk Approve</span>
+                <span class="key">Ctrl+Enter</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="loadingIndicator" class="loading">
+                <div>🔄 Loading SKU data...</div>
+            </div>
+
+            <div id="errorMessage" class="error" style="display: none;"></div>
+            <div id="successMessage" class="success" style="display: none;"></div>
+
+            <div class="table-container">
+                <table class="sku-table" id="skuTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell">☑️</th>
+                            <th>IMEI</th>
+                            <th>SKU</th>
+                            <th>Brand - Model - Capacity</th>
+                            <th>Carrier & Notes</th>
+                            <th>Working</th>
+                            <th>Status</th>
+                            <th>Score</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="skuTableBody">
+                        <!-- Data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="pagination" style="display: none;">
+                <button id="prevBtn" onclick="changePage(-1)">← Previous</button>
+                <span class="pagination-info" id="pageInfo">Page 1 of 1</span>
+                <button id="nextBtn" onclick="changePage(1)">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Details Modal -->
+    <div id="skuModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">SKU Details</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modalContent">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = [];
+        let currentPage = 0;
+        let currentFilter = '';
+        let selectedItems = new Set();
+        const itemsPerPage = 20;
+        
+        // Enhanced selection variables
+        let lastSelectedIndex = -1;
+        let isRangeSelecting = false;
+        let isCtrlPressed = false;
+        let isShiftPressed = false;
+        
+        // Action tracking variables
+        let actionHistory = [];
+        let lastAction = null;
+        const maxHistorySize = 10;
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadInventoryData();
+            
+            // Add keyboard event listeners
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+            
+            // Add event listeners
+            document.getElementById('filterSelect').addEventListener('change', function() {
+                currentFilter = this.value;
+                currentPage = 0;
+                loadInventoryData();
+            });
+
+            document.getElementById('searchInput').addEventListener('input', function() {
+                filterBySearch(this.value);
+            });
+        });
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/inventory-management/stats');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const stats = result.stats;
+                    document.getElementById('totalItems').textContent = stats.total_items || 0;
+                    document.getElementById('matchedItems').textContent = stats.matched_count || 0;
+                    document.getElementById('undefinedItems').textContent = stats.undefined_count || 0;
+                    document.getElementById('noMatchItems').textContent = stats.no_match_count || 0;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadInventoryData() {
+            try {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('errorMessage').style.display = 'none';
+
+                const offset = currentPage * itemsPerPage;
+                const params = new URLSearchParams({
+                    limit: itemsPerPage,
+                    offset: offset
+                });
+
+                if (currentFilter) {
+                    params.append('filter', currentFilter);
+                }
+
+                const response = await fetch(`/api/inventory-management/inventory-data?${params}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    currentData = result.data;
+                    displayInventoryData();
+                    updatePagination(result.pagination);
+                } else {
+                    showError('Failed to load inventory data: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error loading inventory data:', error);
+                showError('Error loading inventory data: ' + error.message);
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        }
+
+        function displayInventoryData() {
+            const table = document.getElementById('skuTable');
+            const tbody = document.getElementById('skuTableBody');
+            
+            tbody.innerHTML = '';
+
+            if (currentData.length === 0) {
+                table.style.display = 'none';
+                document.getElementById('loadingIndicator').innerHTML = '<div>No items found matching your criteria.</div>';
+                document.getElementById('loadingIndicator').style.display = 'block';
+                return;
+            }
+
+            table.style.display = 'table';
+            document.getElementById('loadingIndicator').style.display = 'none';
+
+            // Data is now individual devices, no need to flatten
+            currentData.forEach(device => {
+                const row = createTableRow(device);
+                tbody.appendChild(row);
+            });
+        }
+
+        function createTableRow(device) {
+            const row = document.createElement('tr');
+            const isUndefined = device.match_status === 'undefined';
+            const status = device.match_status || 'unknown';
+            const score = device.match_score || 'N/A';
+            const notes = device.match_notes || '';
+            
+            // Enhanced selection classes
+            let rowClasses = isUndefined ? 'undefined-row selectable' : 'matched-row';
+            if (selectedItems.has(device.imei)) {
+                rowClasses += ' selected';
+            }
+            row.className = rowClasses;
+            
+            // Add data attributes for selection
+            row.dataset.imei = device.imei;
+            row.dataset.status = status;
+            row.dataset.score = score;
+            row.dataset.sku = device.matched_sku;
+            row.dataset.selectable = isUndefined ? 'true' : 'false';
+            
+            // Add click handler for enhanced selection
+            if (isUndefined) {
+                row.addEventListener('click', (event) => handleRowClick(event, device.imei));
+            }
+            
+            row.innerHTML = `
+                <td class="checkbox-cell">
+                    ${isUndefined ? 
+                        `<input type="checkbox" onchange="toggleSelection('${device.imei}')" ${selectedItems.has(device.imei) ? 'checked' : ''}>` :
+                        `<input type="checkbox" disabled style="opacity: 0.3;">`
+                    }
+                </td>
+                <td class="imei-cell" title="${device.imei}">${device.imei}</td>
+                <td><strong>${device.matched_sku}</strong></td>
+                <td class="device-info" title="${device.device_characteristics}">${device.device_characteristics}</td>
+                <td>${device.carrier_with_notes}</td>
+                <td>${device.working_status}</td>
+                <td><span class="status-badge status-${status}">${status}</span></td>
+                <td>${score}</td>
+                <td class="device-info" title="${notes}">${notes}</td>
+                <td>
+                    ${isUndefined ? `
+                        <button class="action-btn btn-success" onclick="fixDevice('${device.imei}', 'approve_match')" title="Approve Match">✅</button>
+                        <button class="action-btn btn-warning" onclick="fixDevice('${device.imei}', 'mark_no_match')" title="Mark No Match">❌</button>
+                    ` : `
+                        <button class="action-btn btn-warning" onclick="revertSingleToUndefined('${device.imei}')" title="Revert to Undefined">🔄</button>
+                    `}
+                    <button class="action-btn" onclick="viewDeviceDetails('${device.imei}')" title="View Details">👁️</button>
+                </td>
+            `;
+
+            return row;
+        }
+
+        function toggleSelection(imei) {
+            if (selectedItems.has(imei)) {
+                selectedItems.delete(imei);
+            } else {
+                selectedItems.add(imei);
+            }
+            updateBulkActions();
+            updateRowSelection(imei);
+        }
+
+        // Enhanced selection functions
+        function handleRowClick(event, imei) {
+            const row = event.currentTarget;
+            const isSelectable = row.dataset.selectable === 'true';
+            
+            if (!isSelectable) return;
+            
+            event.preventDefault();
+            
+            if (isShiftPressed && lastSelectedIndex !== -1) {
+                // Range selection
+                handleRangeSelection(imei);
+            } else if (isCtrlPressed) {
+                // Toggle individual selection
+                toggleSelection(imei);
+            } else {
+                // Single selection
+                if (!selectedItems.has(imei)) {
+                    clearAllSelection();
+                    selectedItems.add(imei);
+                    updateBulkActions();
+                    updateRowSelection(imei);
+                }
+            }
+            
+            lastSelectedIndex = getRowIndex(imei);
+        }
+
+        function handleRangeSelection(targetImei) {
+            const rows = Array.from(document.querySelectorAll('#skuTableBody tr[data-selectable="true"]'));
+            const startIndex = Math.min(lastSelectedIndex, getRowIndex(targetImei));
+            const endIndex = Math.max(lastSelectedIndex, getRowIndex(targetImei));
+            
+            // Clear range selection visual
+            document.querySelectorAll('.range-selection').forEach(row => {
+                row.classList.remove('range-selection');
+            });
+            
+            // Select range
+            for (let i = startIndex; i <= endIndex; i++) {
+                if (rows[i]) {
+                    const imei = rows[i].dataset.imei;
+                    selectedItems.add(imei);
+                    rows[i].classList.add('range-selection');
+                }
+            }
+            
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        function getRowIndex(imei) {
+            const rows = Array.from(document.querySelectorAll('#skuTableBody tr[data-selectable="true"]'));
+            return rows.findIndex(row => row.dataset.imei === imei);
+        }
+
+        function updateRowSelection(imei) {
+            const row = document.querySelector(`tr[data-imei="${imei}"]`);
+            if (row) {
+                if (selectedItems.has(imei)) {
+                    row.classList.add('selected');
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = true;
+                } else {
+                    row.classList.remove('selected');
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = false;
+                }
+            }
+        }
+
+        function updateAllRowSelections() {
+            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                const imei = row.dataset.imei;
+                if (selectedItems.has(imei)) {
+                    row.classList.add('selected');
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = true;
+                } else {
+                    row.classList.remove('selected');
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = false;
+                }
+            });
+        }
+
+        // Smart selection functions
+        function selectAllUndefined() {
+            clearAllSelection();
+            document.querySelectorAll('#skuTableBody tr[data-status="undefined"]').forEach(row => {
+                const imei = row.dataset.imei;
+                selectedItems.add(imei);
+            });
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        function selectByPattern() {
+            const pattern = prompt('Enter SKU pattern (e.g., S22-*, IPHONE*, *UNLOCKED):');
+            if (!pattern) return;
+            
+            clearAllSelection();
+            const regex = new RegExp(pattern.replace(/\*/g, '.*'), 'i');
+            
+            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                const sku = row.dataset.sku;
+                if (regex.test(sku)) {
+                    const imei = row.dataset.imei;
+                    selectedItems.add(imei);
+                }
+            });
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        function selectHighScore() {
+            clearAllSelection();
+            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                const score = parseInt(row.dataset.score);
+                if (score > 80) {
+                    const imei = row.dataset.imei;
+                    selectedItems.add(imei);
+                }
+            });
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        function selectRecent() {
+            clearAllSelection();
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            
+            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                // This would need to be implemented based on your data structure
+                // For now, we'll select items with high scores as a proxy for recent
+                const score = parseInt(row.dataset.score);
+                if (score > 70) {
+                    const imei = row.dataset.imei;
+                    selectedItems.add(imei);
+                }
+            });
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        function clearAllSelection() {
+            selectedItems.clear();
+            updateBulkActions();
+            updateAllRowSelections();
+            
+            // Clear range selection visual
+            document.querySelectorAll('.range-selection').forEach(row => {
+                row.classList.remove('range-selection');
+            });
+        }
+
+        function toggleShortcutsHelp() {
+            const help = document.getElementById('shortcutsHelp');
+            help.classList.toggle('show');
+        }
+
+        // Action tracking functions
+        function recordAction(actionType, items, details = {}) {
+            const action = {
+                id: Date.now(),
+                type: actionType,
+                timestamp: new Date(),
+                items: [...items], // Copy the array
+                details: details,
+                undoable: true
+            };
+            
+            actionHistory.unshift(action);
+            lastAction = action;
+            
+            // Keep only last 10 actions
+            if (actionHistory.length > maxHistorySize) {
+                actionHistory = actionHistory.slice(0, maxHistorySize);
+            }
+            
+            updateActionInfo();
+            showRecentActionsPanel();
+        }
+
+        function updateActionInfo() {
+            const actionInfo = document.getElementById('lastActionInfo');
+            const actionText = document.getElementById('lastActionText');
+            
+            if (lastAction) {
+                const timeAgo = getTimeAgo(lastAction.timestamp);
+                actionText.textContent = `${lastAction.type} (${lastAction.items.length} items) - ${timeAgo}`;
+                actionInfo.style.display = 'block';
+            } else {
+                actionInfo.style.display = 'none';
+            }
+        }
+
+        function getTimeAgo(timestamp) {
+            const now = new Date();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            
+            if (minutes < 1) return 'just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
+        }
+
+        function showRecentActionsPanel() {
+            const panel = document.getElementById('recentActionsPanel');
+            panel.style.display = 'block';
+        }
+
+        function hideRecentActionsPanel() {
+            const panel = document.getElementById('recentActionsPanel');
+            panel.style.display = 'none';
+        }
+
+        // Undo and correction functions
+        async function undoLastAction() {
+            if (!lastAction || !lastAction.undoable) {
+                showError('No undoable action available');
+                return;
+            }
+            
+            if (!confirm(`Undo last action: ${lastAction.type} (${lastAction.items.length} items)?`)) {
+                return;
+            }
+            
+            try {
+                showBulkProgress(true);
+                updateBulkProgress(0, `Undoing ${lastAction.type}...`);
+                
+                // Determine reverse action
+                let reverseAction = 'approve_match';
+                if (lastAction.type === 'approve_match') {
+                    reverseAction = 'revert_to_undefined';
+                } else if (lastAction.type === 'mark_no_match') {
+                    reverseAction = 'revert_to_undefined';
+                }
+                
+                const items = lastAction.items.map(imei => ({ imei: imei }));
+                
+                const response = await fetch('/api/inventory-management/bulk-fix', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: items,
+                        action: reverseAction,
+                        notes: `Undo: ${lastAction.type} - ${new Date().toISOString()}`
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showBulkProgress(false);
+                    showSuccess(`Successfully undone ${lastAction.type} for ${result.processed} items`);
+                    
+                    // Mark action as undone
+                    lastAction.undoable = false;
+                    updateActionInfo();
+                    
+                    clearAllSelection();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showBulkProgress(false);
+                    showError('Failed to undo action: ' + result.error);
+                }
+            } catch (error) {
+                showBulkProgress(false);
+                console.error('Error undoing action:', error);
+                showError('Error undoing action: ' + error.message);
+            }
+        }
+
+        function showActionHistory() {
+            if (actionHistory.length === 0) {
+                showError('No action history available');
+                return;
+            }
+            
+            let historyHtml = `
+                <div style="max-width: 600px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <h3>📋 Action History</h3>
+                    <div style="max-height: 400px; overflow-y: auto;">
+            `;
+            
+            actionHistory.forEach((action, index) => {
+                const timeAgo = getTimeAgo(action.timestamp);
+                const undoButton = action.undoable ? 
+                    `<button class="btn btn-warning" onclick="undoAction(${action.id})" style="padding: 4px 8px; font-size: 0.8rem;">Undo</button>` :
+                    '<span style="color: #999; font-size: 0.8rem;">Undone</span>';
+                
+                historyHtml += `
+                    <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${action.type}</strong> - ${action.items.length} items<br>
+                            <small style="color: #666;">${timeAgo}</small>
+                        </div>
+                        <div>${undoButton}</div>
+                    </div>
+                `;
+            });
+            
+            historyHtml += `
+                    </div>
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
+                    </div>
+                </div>
+            `;
+            
+            // Create modal overlay
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.5); z-index: 1000; display: flex; 
+                align-items: center; justify-content: center;
+            `;
+            overlay.innerHTML = historyHtml;
+            overlay.onclick = (e) => {
+                if (e.target === overlay) overlay.remove();
+            };
+            
+            document.body.appendChild(overlay);
+        }
+
+        async function undoAction(actionId) {
+            const action = actionHistory.find(a => a.id === actionId);
+            if (!action || !action.undoable) {
+                showError('Action cannot be undone');
+                return;
+            }
+            
+            // Temporarily set as last action and undo
+            const originalLastAction = lastAction;
+            lastAction = action;
+            await undoLastAction();
+            lastAction = originalLastAction;
+        }
+
+        // Enhanced selection functions for corrections
+        function selectRecentlyApproved() {
+            clearAllSelection();
+            
+            // Select items that were recently approved (last 24 hours)
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            
+            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                // This would need to be enhanced based on your data structure
+                // For now, we'll select items with high scores as a proxy
+                const score = parseInt(row.dataset.score);
+                const status = row.dataset.status;
+                
+                if (status === 'matched' && score > 70) {
+                    const imei = row.dataset.imei;
+                    selectedItems.add(imei);
+                }
+            });
+            
+            updateBulkActions();
+            updateAllRowSelections();
+        }
+
+        // Simple function to revert a single item to undefined
+        async function revertSingleToUndefined(imei) {
+            if (!confirm(`Revert ${imei} to undefined status?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/inventory-management/fix-undefined', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei: imei,
+                        action: 'revert_to_undefined',
+                        notes: 'Reverted to undefined via row action'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(`Successfully reverted ${imei} to undefined status`);
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to revert: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error reverting item:', error);
+                showError('Error reverting item: ' + error.message);
+            }
+        }
+
+        async function revertToUndefined() {
+            if (selectedItems.size === 0) {
+                showError('Please select items to revert');
+                return;
+            }
+            
+            if (!confirm(`Revert ${selectedItems.size} items to undefined status?`)) {
+                return;
+            }
+            
+            await performBulkAction('revert_to_undefined', 'Reverting to undefined...');
+        }
+
+        async function markForReview() {
+            if (selectedItems.size === 0) {
+                showError('Please select items to mark for review');
+                return;
+            }
+            
+            await performBulkAction('mark_for_review', 'Marking for review...');
+        }
+
+        async function bulkRevertToUndefined() {
+            if (selectedItems.size === 0) return;
+            await performBulkAction('revert_to_undefined', 'Reverting to undefined...');
+        }
+
+        async function bulkMarkForReview() {
+            if (selectedItems.size === 0) return;
+            await performBulkAction('mark_for_review', 'Marking for review...');
+        }
+
+        async function performBulkAction(action, progressText) {
+            const items = Array.from(selectedItems);
+            const totalItems = items.length;
+            
+            showBulkProgress(true);
+            updateBulkProgress(0, `${progressText} ${totalItems} items...`);
+            
+            try {
+                let processed = 0;
+                const batchSize = 10;
+                
+                for (let i = 0; i < items.length; i += batchSize) {
+                    const batch = items.slice(i, i + batchSize);
+                    const batchItems = batch.map(imei => ({ imei: imei }));
+                    
+                    const response = await fetch('/api/inventory-management/bulk-fix', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            items: batchItems,
+                            action: action,
+                            notes: `Bulk ${action} via inventory management`
+                        })
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        processed += result.processed || batch.length;
+                    }
+                    
+                    const progress = Math.round(((i + batch.length) / totalItems) * 100);
+                    updateBulkProgress(progress, `${progressText} ${Math.min(i + batch.length, totalItems)} of ${totalItems} items...`);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                showBulkProgress(false);
+                showSuccess(`Successfully ${action.replace('_', ' ')} ${processed} items`);
+                
+                // Record the action
+                recordAction(action, items, { processed: processed });
+                
+                clearAllSelection();
+                loadInventoryData();
+                loadStats();
+                
+            } catch (error) {
+                showBulkProgress(false);
+                console.error(`Error in ${action}:`, error);
+                showError(`Error in ${action}: ` + error.message);
+            }
+        }
+
+        // Keyboard event handlers
+        function handleKeyDown(event) {
+            isCtrlPressed = event.ctrlKey;
+            isShiftPressed = event.shiftKey;
+            
+            if (event.ctrlKey) {
+                switch (event.key) {
+                    case 'a':
+                        event.preventDefault();
+                        selectAllVisible();
+                        break;
+                    case 'u':
+                        event.preventDefault();
+                        selectAllUndefined();
+                        break;
+                    case 'd':
+                        event.preventDefault();
+                        clearAllSelection();
+                        break;
+                    case 'Enter':
+                        event.preventDefault();
+                        if (selectedItems.size > 0) {
+                            bulkApprove();
+                        }
+                        break;
+                }
+            }
+        }
+
+        function handleKeyUp(event) {
+            isCtrlPressed = event.ctrlKey;
+            isShiftPressed = event.shiftKey;
+        }
+
+        // Bulk progress functions
+        function showBulkProgress(show) {
+            const progress = document.getElementById('bulkProgress');
+            if (show) {
+                progress.classList.add('show');
+            } else {
+                progress.classList.remove('show');
+            }
+        }
+
+        function updateBulkProgress(percentage, text) {
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            
+            progressFill.style.width = `${percentage}%`;
+            progressText.textContent = text;
+        }
+
+        // Enhanced bulk action functions
+        async function bulkDelete() {
+            if (selectedItems.size === 0) return;
+            
+            if (!confirm(`Are you sure you want to delete ${selectedItems.size} items? This action cannot be undone.`)) {
+                return;
+            }
+            
+            const items = Array.from(selectedItems);
+            const totalItems = items.length;
+            
+            showBulkProgress(true);
+            updateBulkProgress(0, `Starting deletion of ${totalItems} items...`);
+            
+            try {
+                let processed = 0;
+                const batchSize = 5; // Smaller batches for deletion
+                
+                for (let i = 0; i < items.length; i += batchSize) {
+                    const batch = items.slice(i, i + batchSize);
+                    const batchItems = batch.map(imei => ({ imei: imei }));
+                    
+                    const response = await fetch('/api/inventory-management/bulk-fix', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            items: batchItems,
+                            action: 'delete',
+                            notes: 'Bulk deleted via inventory management'
+                        })
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        processed += result.processed || batch.length;
+                    }
+                    
+                    const progress = Math.round(((i + batch.length) / totalItems) * 100);
+                    updateBulkProgress(progress, `Deleted ${Math.min(i + batch.length, totalItems)} of ${totalItems} items...`);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                
+                showBulkProgress(false);
+                showSuccess(`Successfully deleted ${processed} items`);
+                clearAllSelection();
+                loadInventoryData();
+                loadStats();
+                
+            } catch (error) {
+                showBulkProgress(false);
+                console.error('Error in bulk delete:', error);
+                showError('Error in bulk delete: ' + error.message);
+            }
+        }
+
+        function selectAllVisible() {
+            const checkboxes = document.querySelectorAll('#skuTableBody input[type="checkbox"]:not([disabled])');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                const onchangeAttr = checkbox.getAttribute('onchange');
+                if (onchangeAttr) {
+                    const imei = onchangeAttr.match(/'([^']+)'/)[1];
+                    selectedItems.add(imei);
+                }
+            });
+            updateBulkActions();
+        }
+
+        function clearSelection() {
+            selectedItems.clear();
+            displayInventoryData(); // Refresh to hide checkboxes
+            updateBulkActions();
+        }
+
+        function updateBulkActions() {
+            const bulkToolbar = document.getElementById('bulkToolbar');
+            const selectionCount = document.getElementById('selectionCount');
+            
+            if (selectedItems.size > 0) {
+                bulkToolbar.classList.add('show');
+                selectionCount.textContent = `${selectedItems.size} items selected`;
+            } else {
+                bulkToolbar.classList.remove('show');
+            }
+        }
+
+        async function viewDeviceDetails(imei) {
+            try {
+                // Find the device data from current data
+                const deviceData = currentData.find(device => device.imei === imei);
+
+                if (!deviceData) {
+                    showError('Device data not found');
+                    return;
+                }
+
+                showDeviceModal(deviceData);
+            } catch (error) {
+                console.error('Error loading device details:', error);
+                showError('Error loading device details: ' + error.message);
+            }
+        }
+
+        function showDeviceModal(deviceData) {
+            const modal = document.getElementById('skuModal');
+            const title = document.getElementById('modalTitle');
+            const content = document.getElementById('modalContent');
+
+            const isUndefined = deviceData.match_status === 'undefined';
+            const status = deviceData.match_status || 'unknown';
+            const score = deviceData.match_score || 'N/A';
+            const notes = deviceData.match_notes || '';
+
+            // Parse device characteristics
+            const parts = deviceData.device_characteristics.split(' - ');
+            const brand = parts[0] || 'Unknown';
+            const model = parts[1] || 'Unknown';
+            const capacity = parts[2] || 'Unknown';
+
+            title.textContent = `Device Details: ${deviceData.imei}`;
+            
+            content.innerHTML = `
+                <div class="device-item ${isUndefined ? 'undefined' : 'matched'}">
+                    <div class="device-header">
+                        <div class="device-imei">${deviceData.imei}</div>
+                        <div class="device-actions">
+                            ${isUndefined ? `
+                                <button class="action-btn btn-success" onclick="fixDevice('${deviceData.imei}', 'approve_match')">✅ Approve Match</button>
+                                <button class="action-btn btn-warning" onclick="fixDevice('${deviceData.imei}', 'mark_no_match')">❌ Mark No Match</button>
+                                <button class="action-btn" onclick="toggleEditMode('${deviceData.imei}')">✏️ Edit SKU</button>
+                            ` : `
+                                <span style="color: #6c757d; font-size: 0.9rem;">✅ Matched - View Only</span>
+                            `}
+                        </div>
+                    </div>
+                    
+                    <div class="device-details">
+                        <div class="device-detail">
+                            <div class="device-detail-label">Current SKU</div>
+                            <div class="device-detail-value" id="current-sku-${deviceData.imei}">${deviceData.matched_sku}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Brand</div>
+                            <div class="device-detail-value">${brand}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Model</div>
+                            <div class="device-detail-value">${model}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Capacity</div>
+                            <div class="device-detail-value">${capacity}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Carrier & Notes</div>
+                            <div class="device-detail-value">${deviceData.carrier_with_notes}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Working Status</div>
+                            <div class="device-detail-value">${deviceData.working_status}</div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Match Status</div>
+                            <div class="device-detail-value">
+                                <span class="status-badge status-${status}">${status}</span>
+                            </div>
+                        </div>
+                        <div class="device-detail">
+                            <div class="device-detail-label">Match Score</div>
+                            <div class="device-detail-value">${score}</div>
+                        </div>
+                    </div>
+
+                    ${isUndefined ? `
+                        <div class="edit-form" id="edit-form-${deviceData.imei}" style="display: none;">
+                            <h4>Update SKU Assignment</h4>
+                            <div class="device-detail">
+                                <div class="device-detail-label">New SKU Code</div>
+                                <div class="sku-autocomplete">
+                                    <input type="text" id="new-sku-${deviceData.imei}" placeholder="Type to search SKU codes..." value="${deviceData.sku}" oninput="searchSkus('${deviceData.imei}', this.value)" onfocus="showSkuSuggestions('${deviceData.imei}')" onblur="hideSkuSuggestions('${deviceData.imei}')">
+                                    <div class="sku-suggestions" id="sku-suggestions-${deviceData.imei}" style="display: none;"></div>
+                                </div>
+                            </div>
+                            <div class="device-detail">
+                                <div class="device-detail-label">Reason for Change</div>
+                                <input type="text" id="change-reason-${deviceData.imei}" placeholder="Reason for SKU change">
+                            </div>
+                            <div class="form-actions">
+                                <button class="action-btn btn-success" onclick="updateSku('${deviceData.imei}')">💾 Save Changes</button>
+                                <button class="action-btn" onclick="toggleEditMode('${deviceData.imei}')">❌ Cancel</button>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${notes ? `
+                        <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 6px; font-size: 0.9rem; border-left: 4px solid #ffc107;">
+                            <strong>⚠️ Issue Details:</strong><br>
+                            ${notes}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('skuModal').style.display = 'none';
+        }
+
+        function toggleEditMode(imei) {
+            const editForm = document.getElementById(`edit-form-${imei}`);
+            if (editForm.style.display === 'none') {
+                editForm.style.display = 'block';
+            } else {
+                editForm.style.display = 'none';
+            }
+        }
+
+        // SKU autocomplete functionality
+        let searchTimeout = null;
+
+        async function searchSkus(imei, query) {
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+
+            if (query.length < 2) {
+                hideSkuSuggestions(imei);
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/inventory-management/search-skus?q=${encodeURIComponent(query)}&limit=10`);
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showSkuSuggestions(imei, result.skus);
+                    } else {
+                        console.error('Error searching SKUs:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Error searching SKUs:', error);
+                }
+            }, 300); // Debounce for 300ms
+        }
+
+        function showSkuSuggestions(imei, skus = null) {
+            const suggestionsDiv = document.getElementById(`sku-suggestions-${imei}`);
+            
+            if (skus === null) {
+                // Show loading state
+                suggestionsDiv.innerHTML = '<div class="loading-suggestions">Loading...</div>';
+                suggestionsDiv.style.display = 'block';
+                return;
+            }
+
+            if (skus.length === 0) {
+                suggestionsDiv.innerHTML = '<div class="loading-suggestions">No SKUs found</div>';
+                suggestionsDiv.style.display = 'block';
+                return;
+            }
+
+            suggestionsDiv.innerHTML = skus.map(sku => `
+                <div class="sku-suggestion" onclick="selectSku('${imei}', '${sku.sku_code}')">
+                    <div class="sku-code">${sku.sku_code}</div>
+                    <div class="sku-details">${sku.details.brand} ${sku.details.model} ${sku.details.capacity} ${sku.details.color} ${sku.details.carrier || 'No Carrier'}${sku.details.post_fix ? ' ' + sku.details.post_fix : ''}</div>
+                </div>
+            `).join('');
+
+            suggestionsDiv.style.display = 'block';
+        }
+
+        function hideSkuSuggestions(imei) {
+            // Delay hiding to allow clicking on suggestions
+            setTimeout(() => {
+                const suggestionsDiv = document.getElementById(`sku-suggestions-${imei}`);
+                if (suggestionsDiv) {
+                    suggestionsDiv.style.display = 'none';
+                }
+            }, 200);
+        }
+
+        function selectSku(imei, skuCode) {
+            const input = document.getElementById(`new-sku-${imei}`);
+            input.value = skuCode;
+            hideSkuSuggestions(imei);
+        }
+
+        async function updateSku(imei) {
+            const newSku = document.getElementById(`new-sku-${imei}`).value.trim();
+            const reason = document.getElementById(`change-reason-${imei}`).value.trim();
+
+            if (!newSku) {
+                showError('Please enter a new SKU code');
+                return;
+            }
+
+            if (!reason) {
+                showError('Please provide a reason for the change');
+                return;
+            }
+
+            // Validate that the SKU exists in the database
+            try {
+                const validateResponse = await fetch(`/api/inventory-management/sku-info/${encodeURIComponent(newSku)}`);
+                const validateResult = await validateResponse.json();
+
+                if (!validateResult.success) {
+                    showError(`SKU "${newSku}" not found in database. Please select a valid SKU from the suggestions.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error validating SKU:', error);
+                showError('Error validating SKU. Please try again.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/inventory-management/fix-undefined', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei: imei,
+                        action: 'change_sku',
+                        newSku: newSku,
+                        notes: `SKU changed to ${newSku}. Reason: ${reason}`
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(`Successfully updated SKU for ${imei} to ${newSku}`);
+                    closeModal();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to update SKU: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error updating SKU:', error);
+                showError('Error updating SKU: ' + error.message);
+            }
+        }
+
+        async function fixDevice(imei, action) {
+            try {
+                const response = await fetch('/api/inventory-management/fix-undefined', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei: imei,
+                        action: action,
+                        notes: `Fixed via inventory management interface`
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(result.message);
+                    closeModal();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to fix device: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error fixing device:', error);
+                showError('Error fixing device: ' + error.message);
+            }
+        }
+
+        async function bulkApprove() {
+            if (selectedItems.size === 0) return;
+
+            const items = Array.from(selectedItems).map(imei => ({ imei: imei }));
+            
+            try {
+                const response = await fetch('/api/inventory-management/bulk-fix', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: items,
+                        action: 'approve_all',
+                        notes: 'Bulk approved via inventory management'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(result.message);
+                    
+                    // Record the action
+                    recordAction('approve_match', Array.from(selectedItems), { processed: result.processed });
+                    
+                    clearSelection();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to bulk approve: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error in bulk approve:', error);
+                showError('Error in bulk approve: ' + error.message);
+            }
+        }
+
+        async function bulkMarkNoMatch() {
+            if (selectedItems.size === 0) return;
+
+            const items = Array.from(selectedItems).map(imei => ({ imei: imei }));
+            
+            try {
+                const response = await fetch('/api/inventory-management/bulk-fix', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: items,
+                        action: 'mark_no_match',
+                        notes: 'Bulk marked as no match via inventory management'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(result.message);
+                    
+                    // Record the action
+                    recordAction('mark_no_match', Array.from(selectedItems), { processed: result.processed });
+                    
+                    clearSelection();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to bulk mark no match: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error in bulk mark no match:', error);
+                showError('Error in bulk mark no match: ' + error.message);
+            }
+        }
+
+
+        function updatePagination(pagination) {
+            const paginationDiv = document.getElementById('pagination');
+            const pageInfo = document.getElementById('pageInfo');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+
+            if (pagination.total <= itemsPerPage) {
+                paginationDiv.style.display = 'none';
+                return;
+            }
+
+            paginationDiv.style.display = 'flex';
+            pageInfo.textContent = `Page ${currentPage + 1} of ${Math.ceil(pagination.total / itemsPerPage)}`;
+            
+            prevBtn.disabled = currentPage === 0;
+            nextBtn.disabled = !pagination.hasMore;
+        }
+
+        function changePage(direction) {
+            currentPage += direction;
+            if (currentPage < 0) currentPage = 0;
+            loadInventoryData();
+        }
+
+        function filterBySearch(searchTerm) {
+            const cards = document.querySelectorAll('.sku-card');
+            cards.forEach(card => {
+                const skuName = card.querySelector('.sku-name').textContent.toLowerCase();
+                if (skuName.includes(searchTerm.toLowerCase())) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('skuModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>

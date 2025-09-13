@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKU Master Management - WMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 15px 20px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #6c757d;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tab.active {
+            background: white;
+            color: #2c3e50;
+            border-bottom: 3px solid #007bff;
+        }
+
+        .nav-tab:hover {
+            background: #e9ecef;
+        }
+
+        .tab-content {
+            padding: 30px;
+        }
+
+        .tab-pane {
+            display: none;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        .form-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+        }
+
+        .form-section h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220,53,69,0.3);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .sku-code {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .pagination button:hover {
+            background: #f8f9fa;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination .active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .required {
+            color: #dc3545;
+        }
+
+        .help-text {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏷️ SKU Master Management</h1>
+            <p>Create and manage SKU codes for your inventory system</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('add-sku')">➕ Add New SKU</button>
+            <button class="nav-tab" onclick="switchTab('view-skus')">📋 View SKUs</button>
+            <button class="nav-tab" onclick="switchTab('history')">📜 History</button>
+        </div>
+
+        <div class="tab-content">
+            <!-- Add New SKU Tab -->
+            <div id="add-sku" class="tab-pane active">
+                <div class="form-section">
+                    <h3>Create New SKU</h3>
+                    <form id="skuForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="skuCode">SKU Code <span class="required">*</span></label>
+                                <input type="text" id="skuCode" name="skuCode" required 
+                                       placeholder="e.g., IPHONE15-128-BLUE-ATT" 
+                                       pattern="[A-Z0-9-]+" 
+                                       title="Use uppercase letters, numbers, and hyphens only">
+                                <div class="help-text">Use uppercase letters, numbers, and hyphens only</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="brand">Brand <span class="required">*</span></label>
+                                <input type="text" id="brand" name="brand" required 
+                                       placeholder="e.g., Apple, Samsung, Google">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="model">Model <span class="required">*</span></label>
+                                <input type="text" id="model" name="model" required 
+                                       placeholder="e.g., iPhone 15, Galaxy S24">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="capacity">Capacity</label>
+                                <input type="text" id="capacity" name="capacity" 
+                                       placeholder="e.g., 128GB, 256GB, 512GB">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="color">Color</label>
+                                <input type="text" id="color" name="color" 
+                                       placeholder="e.g., Black, Blue, White">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="carrier">Carrier</label>
+                                <select id="carrier" name="carrier">
+                                    <option value="">Select Carrier</option>
+                                    <option value="UNLOCKED">Unlocked</option>
+                                    <option value="ATT">AT&T</option>
+                                    <option value="VERIZON">Verizon</option>
+                                    <option value="TMOBILE">T-Mobile</option>
+                                    <option value="SPRINT">Sprint</option>
+                                    <option value="WIFI">WiFi Only</option>
+                                    <option value="N/A">N/A</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="postFix">Post Fix</label>
+                                <input type="text" id="postFix" name="postFix" 
+                                       placeholder="e.g., VG, ACCEPTABLE, REFURB">
+                                <div class="help-text">Condition or special identifier</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="modelTag">Model Tag</label>
+                                <input type="text" id="modelTag" name="modelTag" 
+                                       placeholder="e.g., IPHONE15, S24">
+                                <div class="help-text">Short model identifier for matching</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="capacityTag">Capacity Tag</label>
+                                <input type="text" id="capacityTag" name="capacityTag" 
+                                       placeholder="e.g., 128, 256, 512">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="colorTag">Color Tag</label>
+                                <input type="text" id="colorTag" name="colorTag" 
+                                       placeholder="e.g., BLK, BLUE, WHITE">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="carrierTag">Carrier Tag</label>
+                                <input type="text" id="carrierTag" name="carrierTag" 
+                                       placeholder="e.g., UNLOCKED, ATT, VZW">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="skuTags">SKU Tags (comma-separated)</label>
+                            <textarea id="skuTags" name="skuTags" 
+                                      placeholder="e.g., APPLE, IPHONE15, 128, BLUE, ATT, PHONE"></textarea>
+                            <div class="help-text">Tags used for matching algorithms</div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="clearForm()">Clear Form</button>
+                            <button type="submit" class="btn btn-primary">Create SKU</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history" class="tab-pane">
+                <div class="form-section">
+                    <h3>SKU History & Audit Trail</h3>
+                    
+                    <div class="search-container">
+                        <input type="text" id="historySearchInput" class="search-input" 
+                               placeholder="Search by SKU code..." 
+                               onkeyup="searchHistory()">
+                        <select id="actionFilter" onchange="filterHistory()">
+                            <option value="">All Actions</option>
+                            <option value="created">Created</option>
+                            <option value="updated">Updated</option>
+                            <option value="deleted">Deleted</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="loadHistory()">Refresh</button>
+                    </div>
+
+                    <div id="historyTableContainer" class="table-container">
+                        <div id="historyLoadingIndicator" class="loading hidden">Loading history...</div>
+                        <table id="historyTable" class="table hidden">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Action</th>
+                                    <th>SKU Code</th>
+                                    <th>Changed By</th>
+                                    <th>Reason</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="historyPagination" class="pagination hidden">
+                        <button id="historyPrevBtn" onclick="changeHistoryPage(-1)">Previous</button>
+                        <span id="historyPageInfo">Page 1 of 1</span>
+                        <button id="historyNextBtn" onclick="changeHistoryPage(1)">Next</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View SKUs Tab -->
+            <div id="view-skus" class="tab-pane">
+                <div class="form-section">
+                    <h3>SKU Master List</h3>
+                    
+                    <div class="search-container">
+                        <input type="text" id="searchInput" class="search-input" 
+                               placeholder="Search SKUs by code, brand, model..." 
+                               onkeyup="searchSkus()">
+                        <button class="btn btn-primary" onclick="loadSkus()">Refresh</button>
+                    </div>
+
+                    <div id="skuTableContainer" class="table-container">
+                        <div id="loadingIndicator" class="loading hidden">Loading SKUs...</div>
+                        <table id="skuTable" class="table hidden">
+                            <thead>
+                                <tr>
+                                    <th>SKU Code</th>
+                                    <th>Brand</th>
+                                    <th>Model</th>
+                                    <th>Capacity</th>
+                                    <th>Color</th>
+                                    <th>Carrier</th>
+                                    <th>Post Fix</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="skuTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="pagination" class="pagination hidden">
+                        <button id="prevBtn" onclick="changePage(-1)">Previous</button>
+                        <span id="pageInfo">Page 1 of 1</span>
+                        <button id="nextBtn" onclick="changePage(1)">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentSearchTerm = '';
+        let allSkus = [];
+        
+        // History variables
+        let currentHistoryPage = 1;
+        let totalHistoryPages = 1;
+        let currentHistorySearchTerm = '';
+        let currentActionFilter = '';
+        let allHistory = [];
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tab panes
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab pane
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+
+            // Load data when switching to view tab
+            if (tabName === 'view-skus') {
+                loadSkus();
+            } else if (tabName === 'history') {
+                loadHistory();
+            }
+        }
+
+        // Form handling
+        document.getElementById('skuForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const skuData = Object.fromEntries(formData.entries());
+            
+            // Convert SKU tags to array
+            if (skuData.skuTags) {
+                skuData.skuTags = skuData.skuTags.split(',').map(tag => tag.trim()).filter(tag => tag);
+            }
+            
+            try {
+                const response = await fetch('/api/sku-master/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(skuData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('SKU created successfully!', 'success');
+                    clearForm();
+                } else {
+                    showAlert('Error creating SKU: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                console.error('Error creating SKU:', error);
+                showAlert('Error creating SKU: ' + error.message, 'danger');
+            }
+        });
+
+        // Clear form
+        function clearForm() {
+            document.getElementById('skuForm').reset();
+        }
+
+        // Load SKUs
+        async function loadSkus() {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const table = document.getElementById('skuTable');
+            const tableBody = document.getElementById('skuTableBody');
+            const pagination = document.getElementById('pagination');
+            
+            loadingIndicator.classList.remove('hidden');
+            table.classList.add('hidden');
+            pagination.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/sku-master/list');
+                const result = await response.json();
+                
+                if (result.success) {
+                    allSkus = result.data;
+                    displaySkus();
+                } else {
+                    showAlert('Error loading SKUs: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                console.error('Error loading SKUs:', error);
+                showAlert('Error loading SKUs: ' + error.message, 'danger');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        // Display SKUs
+        function displaySkus() {
+            const table = document.getElementById('skuTable');
+            const tableBody = document.getElementById('skuTableBody');
+            const pagination = document.getElementById('pagination');
+            
+            let filteredSkus = allSkus;
+            
+            // Apply search filter
+            if (currentSearchTerm) {
+                const searchLower = currentSearchTerm.toLowerCase();
+                filteredSkus = allSkus.filter(sku => 
+                    sku.sku_code.toLowerCase().includes(searchLower) ||
+                    sku.brand.toLowerCase().includes(searchLower) ||
+                    sku.model.toLowerCase().includes(searchLower) ||
+                    (sku.capacity && sku.capacity.toLowerCase().includes(searchLower)) ||
+                    (sku.color && sku.color.toLowerCase().includes(searchLower)) ||
+                    (sku.carrier && sku.carrier.toLowerCase().includes(searchLower))
+                );
+            }
+            
+            // Calculate pagination
+            const itemsPerPage = 20;
+            totalPages = Math.ceil(filteredSkus.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageSkus = filteredSkus.slice(startIndex, endIndex);
+            
+            // Clear table body
+            tableBody.innerHTML = '';
+            
+            if (pageSkus.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="empty-state">
+                            <h3>No SKUs found</h3>
+                            <p>Try adjusting your search criteria or create a new SKU.</p>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                pageSkus.forEach(sku => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><span class="sku-code">${sku.sku_code}</span></td>
+                        <td>${sku.brand || 'N/A'}</td>
+                        <td>${sku.model || 'N/A'}</td>
+                        <td>${sku.capacity || 'N/A'}</td>
+                        <td>${sku.color || 'N/A'}</td>
+                        <td>${sku.carrier || 'N/A'}</td>
+                        <td>${sku.post_fix || 'N/A'}</td>
+                        <td>
+                            <button class="btn btn-danger" onclick="deleteSku('${sku.sku_code}')" 
+                                    style="padding: 5px 10px; font-size: 0.8rem;">Delete</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            // Show table and pagination
+            table.classList.remove('hidden');
+            if (totalPages > 1) {
+                pagination.classList.remove('hidden');
+                updatePagination();
+            }
+        }
+
+        // Search SKUs
+        function searchSkus() {
+            currentSearchTerm = document.getElementById('searchInput').value;
+            currentPage = 1;
+            displaySkus();
+        }
+
+        // Pagination
+        function changePage(direction) {
+            const newPage = currentPage + direction;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                displaySkus();
+            }
+        }
+
+        function updatePagination() {
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        }
+
+        // Delete SKU
+        async function deleteSku(skuCode) {
+            if (!confirm(`Are you sure you want to delete SKU "${skuCode}"? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/sku-master/delete/${encodeURIComponent(skuCode)}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('SKU deleted successfully!', 'success');
+                    loadSkus();
+                } else {
+                    showAlert('Error deleting SKU: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                console.error('Error deleting SKU:', error);
+                showAlert('Error deleting SKU: ' + error.message, 'danger');
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            
+            const tabContent = document.querySelector('.tab-content');
+            tabContent.insertBefore(alertDiv, tabContent.firstChild);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // Auto-generate tags when form fields change
+        document.getElementById('brand').addEventListener('input', generateTags);
+        document.getElementById('model').addEventListener('input', generateTags);
+        document.getElementById('capacity').addEventListener('input', generateTags);
+        document.getElementById('color').addEventListener('input', generateTags);
+        document.getElementById('carrier').addEventListener('change', generateTags);
+
+        function generateTags() {
+            const brand = document.getElementById('brand').value.toUpperCase();
+            const model = document.getElementById('model').value.toUpperCase();
+            const capacity = document.getElementById('capacity').value.toUpperCase();
+            const color = document.getElementById('color').value.toUpperCase();
+            const carrier = document.getElementById('carrier').value.toUpperCase();
+            
+            const tags = [];
+            if (brand) tags.push(brand);
+            if (model) tags.push(model);
+            if (capacity) tags.push(capacity);
+            if (color) tags.push(color);
+            if (carrier) tags.push(carrier);
+            
+            document.getElementById('skuTags').value = tags.join(', ');
+        }
+
+        // History functions
+        async function loadHistory() {
+            const loadingIndicator = document.getElementById('historyLoadingIndicator');
+            const table = document.getElementById('historyTable');
+            const tableBody = document.getElementById('historyTableBody');
+            const pagination = document.getElementById('historyPagination');
+            
+            loadingIndicator.classList.remove('hidden');
+            table.classList.add('hidden');
+            pagination.classList.add('hidden');
+            
+            try {
+                let url = '/api/sku-master/history?limit=20';
+                if (currentHistoryPage > 1) {
+                    url += `&page=${currentHistoryPage}`;
+                }
+                if (currentActionFilter) {
+                    url += `&action=${currentActionFilter}`;
+                }
+                if (currentHistorySearchTerm) {
+                    url += `&sku_code=${encodeURIComponent(currentHistorySearchTerm)}`;
+                }
+                
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                if (result.success) {
+                    allHistory = result.data;
+                    displayHistory();
+                } else {
+                    showAlert('Error loading history: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                showAlert('Error loading history: ' + error.message, 'danger');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        function displayHistory() {
+            const table = document.getElementById('historyTable');
+            const tableBody = document.getElementById('historyTableBody');
+            const pagination = document.getElementById('historyPagination');
+            
+            // Clear table body
+            tableBody.innerHTML = '';
+            
+            if (allHistory.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <h3>No history found</h3>
+                            <p>No SKU changes have been recorded yet.</p>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                allHistory.forEach(historyItem => {
+                    const row = document.createElement('tr');
+                    const timestamp = new Date(historyItem.created_at).toLocaleString();
+                    const actionClass = historyItem.action === 'created' ? 'status-active' : 
+                                      historyItem.action === 'updated' ? 'status-badge' : 'status-inactive';
+                    
+                    row.innerHTML = `
+                        <td>${timestamp}</td>
+                        <td><span class="status-badge ${actionClass}">${historyItem.action.toUpperCase()}</span></td>
+                        <td><span class="sku-code">${historyItem.sku_code}</span></td>
+                        <td>${historyItem.changed_by || 'system'}</td>
+                        <td>${historyItem.change_reason || 'N/A'}</td>
+                        <td>
+                            <button class="btn btn-secondary" onclick="showHistoryDetails('${historyItem.id}')" 
+                                    style="padding: 5px 10px; font-size: 0.8rem;">View</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            // Show table and pagination
+            table.classList.remove('hidden');
+            if (totalHistoryPages > 1) {
+                pagination.classList.remove('hidden');
+                updateHistoryPagination();
+            }
+        }
+
+        function searchHistory() {
+            currentHistorySearchTerm = document.getElementById('historySearchInput').value;
+            currentHistoryPage = 1;
+            loadHistory();
+        }
+
+        function filterHistory() {
+            currentActionFilter = document.getElementById('actionFilter').value;
+            currentHistoryPage = 1;
+            loadHistory();
+        }
+
+        function changeHistoryPage(direction) {
+            const newPage = currentHistoryPage + direction;
+            if (newPage >= 1 && newPage <= totalHistoryPages) {
+                currentHistoryPage = newPage;
+                loadHistory();
+            }
+        }
+
+        function updateHistoryPagination() {
+            document.getElementById('historyPageInfo').textContent = `Page ${currentHistoryPage} of ${totalHistoryPages}`;
+            document.getElementById('historyPrevBtn').disabled = currentHistoryPage === 1;
+            document.getElementById('historyNextBtn').disabled = currentHistoryPage === totalHistoryPages;
+        }
+
+        function showHistoryDetails(historyId) {
+            const historyItem = allHistory.find(h => h.id == historyId);
+            if (!historyItem) return;
+            
+            let detailsHtml = `
+                <div style="max-width: 600px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <h3>History Details - ${historyItem.sku_code}</h3>
+                    <p><strong>Action:</strong> ${historyItem.action.toUpperCase()}</p>
+                    <p><strong>Timestamp:</strong> ${new Date(historyItem.created_at).toLocaleString()}</p>
+                    <p><strong>Changed By:</strong> ${historyItem.changed_by || 'system'}</p>
+                    <p><strong>Reason:</strong> ${historyItem.change_reason || 'N/A'}</p>
+            `;
+            
+            if (historyItem.new_data) {
+                detailsHtml += `
+                    <h4>New Data:</h4>
+                    <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 0.9rem;">${JSON.stringify(historyItem.new_data, null, 2)}</pre>
+                `;
+            }
+            
+            if (historyItem.old_data) {
+                detailsHtml += `
+                    <h4>Previous Data:</h4>
+                    <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 0.9rem;">${JSON.stringify(historyItem.old_data, null, 2)}</pre>
+                `;
+            }
+            
+            detailsHtml += `
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
+                    </div>
+                </div>
+            `;
+            
+            // Create modal overlay
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.5); z-index: 1000; display: flex; 
+                align-items: center; justify-content: center;
+            `;
+            overlay.innerHTML = detailsHtml;
+            overlay.onclick = (e) => {
+                if (e.target === overlay) overlay.remove();
+            };
+            
+            document.body.appendChild(overlay);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load SKUs on page load
+            loadSkus();
+        });
+    </script>
+</body>
+</html>
