@@ -60,6 +60,7 @@
         .stat-card.undefined { background: #fff3cd; color: #856404; }
         .stat-card.no-match { background: #f8d7da; color: #721c24; }
         .stat-card.total { background: #d1ecf1; color: #0c5460; }
+        .stat-card.connection-status { background: #e2e3e5; color: #383d41; }
 
         .stat-number {
             font-size: 1.5rem;
@@ -99,6 +100,70 @@
             border: 1px solid #ced4da;
             border-radius: 4px;
             font-size: 13px;
+        }
+
+        .filter-group button {
+            padding: 6px 8px;
+            min-width: 30px;
+            background: #6c757d;
+            color: white;
+            border: 1px solid #6c757d;
+        }
+
+        .filter-group button:hover {
+            background: #5a6268;
+            border-color: #5a6268;
+        }
+
+        /* Reason History Dropdown */
+        .reason-dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .reason-dropdown select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+        }
+
+        .reason-dropdown select:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .reason-history {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .reason-history .history-item {
+            cursor: pointer;
+            padding: 2px 5px;
+            margin: 1px 0;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+
+        .reason-history .history-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Paste indicator */
+        .paste-indicator {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            font-size: 12px;
+            pointer-events: none;
         }
 
         button {
@@ -166,23 +231,30 @@
             border-left: 4px solid #ffc107;
         }
 
+        .sku-table tr.no-match-row {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .sku-table tr.no-match-row:hover {
+            background: #f5c6cb;
+        }
+
+        .sku-table tr.no-match-row td {
+            color: #721c24;
+        }
+
         .sku-table tr.matched-row {
-            background: #f8fff8;
-            opacity: 0.7;
+            background: #d4edda;
+            border-left: 4px solid #28a745;
         }
 
         .sku-table tr.matched-row:hover {
-            opacity: 0.9;
+            background: #c3e6cb;
         }
 
         .sku-table tr.matched-row td {
-            color: #6c757d;
-        }
-
-        .sku-table tr.matched-row .action-btn {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
+            color: #155724;
         }
 
         /* Enhanced Selection Styles */
@@ -265,6 +337,16 @@
             transform: translateY(-1px);
         }
 
+        .bulk-toolbar .bulk-btn-info {
+            background: #2196f3;
+            color: white;
+        }
+
+        .bulk-toolbar .bulk-btn-info:hover {
+            background: #1976d2;
+            transform: translateY(-1px);
+        }
+
         .bulk-toolbar .bulk-btn-danger {
             background: #f44336;
             color: white;
@@ -283,6 +365,63 @@
 
         .bulk-toolbar .clear-selection:hover {
             background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* SKU Update Modal Styles */
+        .sku-update-modal {
+            max-width: 500px;
+        }
+
+        .sku-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .suggestion-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s ease;
+        }
+
+        .suggestion-item:hover {
+            background: #f8f9fa;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item strong {
+            display: block;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .suggestion-item small {
+            color: #6c757d;
+            font-size: 12px;
+        }
+
+        .no-suggestions {
+            padding: 10px 15px;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .form-group {
+            position: relative;
+            margin-bottom: 20px;
         }
 
         /* Smart Selection Panel */
@@ -414,7 +553,7 @@
         }
 
         .sku-table tr.matched-row input[type="checkbox"] {
-            opacity: 0.3;
+            opacity: 0.5;
             cursor: not-allowed;
             pointer-events: none;
         }
@@ -430,7 +569,7 @@
 
         .status-matched { background: #d4edda; color: #155724; }
         .status-undefined { background: #fff3cd; color: #856404; }
-        .status-no-match { background: #f8d7da; color: #721c24; }
+        .status-no_match { background: #f8d7da; color: #721c24; }
 
         .imei-cell {
             max-width: 200px;
@@ -462,6 +601,11 @@
             background: #f8f9fa;
             position: relative;
             z-index: 10;
+        }
+
+        .device-color {
+            text-align: center;
+            min-width: 80px;
         }
 
         .action-btn {
@@ -540,6 +684,143 @@
             max-width: 1200px;
             max-height: 90vh;
             overflow-y: auto;
+        }
+
+        .edit-sku-modal {
+            max-width: 800px;
+            width: 95vw;
+        }
+
+        .edit-sku-modal .modal-body {
+            padding: 20px;
+        }
+
+        .edit-sku-modal .device-info-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .edit-sku-modal .device-info-section h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+
+        .edit-sku-modal .device-details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .edit-sku-modal .device-detail {
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+        }
+
+        .edit-sku-modal .device-detail-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .edit-sku-modal .device-detail-value {
+            font-size: 14px;
+            color: #495057;
+            word-break: break-word;
+        }
+
+        .edit-sku-modal .device-detail-value strong {
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        .edit-sku-modal .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .edit-sku-modal .status-badge.status-matched {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .edit-sku-modal .status-badge.status-undefined {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .edit-sku-modal .status-badge.status-no_match {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .edit-sku-modal .edit-form {
+            border-top: 1px solid #dee2e6;
+            padding-top: 20px;
+        }
+
+        .edit-sku-modal .edit-form h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+
+        .edit-sku-modal .change-reason-section {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+
+        .edit-sku-modal .change-instruction {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            color: #1565c0;
+        }
+
+        .edit-sku-modal .change-instruction strong {
+            color: #0d47a1;
+        }
+
+        .edit-sku-modal .form-group {
+            margin-bottom: 15px;
+        }
+
+        .edit-sku-modal .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .edit-sku-modal .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .edit-sku-modal .form-group textarea:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
         }
 
         .modal-header {
@@ -644,6 +925,22 @@
 
         .device-detail-value.editable:hover {
             background: #f8f9fa;
+        }
+
+        /* Status Badge Colors */
+        .status-badge.status-matched {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.status-undefined {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-badge.status-no_match {
+            background-color: #f8d7da;
+            color: #721c24;
         }
 
         .edit-form {
@@ -792,6 +1089,10 @@
                 <span class="stat-number" id="noMatchItems">-</span>
                 <div class="stat-label">No Match</div>
             </div>
+            <div class="stat-card connection-status">
+                <span class="stat-number" id="connectionStatus">🟢</span>
+                <div class="stat-label">Database</div>
+            </div>
         </div>
 
         <div class="controls">
@@ -808,10 +1109,11 @@
             <div class="filter-group">
                 <label for="searchInput">Search SKU:</label>
                 <input type="text" id="searchInput" placeholder="Enter SKU name...">
+                <button onclick="clearSearch()" title="Clear Search">✕</button>
             </div>
 
             <button onclick="loadInventoryData()">🔄 Refresh</button>
-            <button onclick="selectAllVisible()">☑️ Select All</button>
+            <button onclick="selectAllVisible()" id="selectAllBtn">☑️ Select All</button>
             <button onclick="clearSelection()">☐ Clear Selection</button>
         </div>
 
@@ -860,6 +1162,7 @@
             <div class="bulk-actions">
                 <button class="bulk-btn bulk-btn-success" onclick="bulkApprove()">✅ Approve All</button>
                 <button class="bulk-btn bulk-btn-warning" onclick="bulkMarkNoMatch()">❌ Mark No Match</button>
+                <button class="bulk-btn bulk-btn-info" onclick="bulkUpdateSku()">✏️ Update SKU</button>
                 <button class="bulk-btn bulk-btn-danger" onclick="bulkDelete()">🗑️ Delete</button>
                 <button class="bulk-btn bulk-btn-warning" onclick="bulkRevertToUndefined()">🔄 Revert to Undefined</button>
                 <button class="bulk-btn bulk-btn-danger" onclick="bulkMarkForReview()">🚨 Mark for Review</button>
@@ -918,6 +1221,7 @@
                             <th>IMEI</th>
                             <th>SKU</th>
                             <th>Brand - Model - Capacity</th>
+                            <th>Color</th>
                             <th>Carrier & Notes</th>
                             <th>Working</th>
                             <th>Status</th>
@@ -960,6 +1264,27 @@
         let selectedItems = new Set();
         const itemsPerPage = 20;
         
+        // Reason history and pre-defined reasons
+        let reasonHistory = JSON.parse(localStorage.getItem('skuReasonHistory') || '[]');
+        const predefinedReasons = [
+            'Corrected SKU assignment',
+            'Manual override - better match found',
+            'Carrier mismatch resolved',
+            'Color specification updated',
+            'Capacity correction',
+            'Model variant clarification',
+            'Brand standardization',
+            'Grade adjustment',
+            'Condition update',
+            'Testing results correction'
+        ];
+        
+        // Request batching to reduce database load
+        let requestQueue = [];
+        let isProcessingQueue = false;
+        const REQUEST_BATCH_SIZE = 3;
+        const REQUEST_DELAY = 500; // 500ms between batches
+        
         // Enhanced selection variables
         let lastSelectedIndex = -1;
         let isRangeSelecting = false;
@@ -979,6 +1304,14 @@
             // Add keyboard event listeners
             document.addEventListener('keydown', handleKeyDown);
             document.addEventListener('keyup', handleKeyUp);
+            
+            // Add checkbox event delegation
+            document.addEventListener('change', function(event) {
+                if (event.target.type === 'checkbox' && event.target.dataset.imei) {
+                    const imei = event.target.dataset.imei;
+                    toggleSelection(imei);
+                }
+            });
             
             // Add event listeners
             document.getElementById('filterSelect').addEventListener('change', function() {
@@ -1011,6 +1344,7 @@
 
         async function loadInventoryData() {
             try {
+                updateConnectionStatus('connecting');
                 document.getElementById('loadingIndicator').style.display = 'block';
                 document.getElementById('errorMessage').style.display = 'none';
 
@@ -1031,12 +1365,12 @@
                     currentData = result.data;
                     displayInventoryData();
                     updatePagination(result.pagination);
+                    updateConnectionStatus('connected');
                 } else {
-                    showError('Failed to load inventory data: ' + result.error);
+                    handleApiError(new Error(result.error), 'loading inventory data');
                 }
             } catch (error) {
-                console.error('Error loading inventory data:', error);
-                showError('Error loading inventory data: ' + error.message);
+                handleApiError(error, 'loading inventory data');
             } finally {
                 document.getElementById('loadingIndicator').style.display = 'none';
             }
@@ -1072,8 +1406,16 @@
             const score = device.match_score || 'N/A';
             const notes = device.match_notes || '';
             
-            // Enhanced selection classes
-            let rowClasses = isUndefined ? 'undefined-row selectable' : 'matched-row';
+            // Enhanced selection classes based on status
+            let rowClasses = '';
+            if (status === 'undefined') {
+                rowClasses = 'undefined-row selectable';
+            } else if (status === 'no_match') {
+                rowClasses = 'no-match-row selectable';
+            } else {
+                rowClasses = 'matched-row';
+            }
+            
             if (selectedItems.has(device.imei)) {
                 rowClasses += ' selected';
             }
@@ -1084,34 +1426,39 @@
             row.dataset.status = status;
             row.dataset.score = score;
             row.dataset.sku = device.matched_sku;
-            row.dataset.selectable = isUndefined ? 'true' : 'false';
+            row.dataset.selectable = (status === 'undefined' || status === 'no_match') ? 'true' : 'false';
             
             // Add click handler for enhanced selection
-            if (isUndefined) {
+            if (status === 'undefined' || status === 'no_match') {
                 row.addEventListener('click', (event) => handleRowClick(event, device.imei));
             }
             
             row.innerHTML = `
                 <td class="checkbox-cell">
-                    ${isUndefined ? 
-                        `<input type="checkbox" onchange="toggleSelection('${device.imei}')" ${selectedItems.has(device.imei) ? 'checked' : ''}>` :
+                    ${(status === 'undefined' || status === 'no_match') ? 
+                        `<input type="checkbox" data-imei="${device.imei}" ${selectedItems.has(device.imei) ? 'checked' : ''}>` :
                         `<input type="checkbox" disabled style="opacity: 0.3;">`
                     }
                 </td>
                 <td class="imei-cell" title="${device.imei}">${device.imei}</td>
                 <td><strong>${device.matched_sku}</strong></td>
                 <td class="device-info" title="${device.device_characteristics}">${device.device_characteristics}</td>
+                <td class="device-color">${device.device_color || 'N/A'}</td>
                 <td>${device.carrier_with_notes}</td>
                 <td>${device.working_status}</td>
                 <td><span class="status-badge status-${status}">${status}</span></td>
                 <td>${score}</td>
                 <td class="device-info" title="${notes}">${notes}</td>
                 <td>
-                    ${isUndefined ? `
+                    ${status === 'undefined' ? `
                         <button class="action-btn btn-success" onclick="fixDevice('${device.imei}', 'approve_match')" title="Approve Match">✅</button>
                         <button class="action-btn btn-warning" onclick="fixDevice('${device.imei}', 'mark_no_match')" title="Mark No Match">❌</button>
+                    ` : status === 'no_match' ? `
+                        <button class="action-btn btn-success" onclick="fixDevice('${device.imei}', 'approve_match')" title="Approve Match">✅</button>
+                        <button class="action-btn btn-info" onclick="revertSingleToUndefined('${device.imei}')" title="Revert to Undefined">🔄</button>
                     ` : `
                         <button class="action-btn btn-warning" onclick="revertSingleToUndefined('${device.imei}')" title="Revert to Undefined">🔄</button>
+                        <button class="action-btn btn-info" onclick="editMatchedSku('${device.imei}')" title="Edit SKU">✏️</button>
                     `}
                     <button class="action-btn" onclick="viewDeviceDetails('${device.imei}')" title="View Details">👁️</button>
                 </td>
@@ -1123,8 +1470,10 @@
         function toggleSelection(imei) {
             if (selectedItems.has(imei)) {
                 selectedItems.delete(imei);
+                console.log(`Removed ${imei} from selection. Total: ${selectedItems.size}`);
             } else {
                 selectedItems.add(imei);
+                console.log(`Added ${imei} to selection. Total: ${selectedItems.size}`);
             }
             updateBulkActions();
             updateRowSelection(imei);
@@ -1202,29 +1551,91 @@
         }
 
         function updateAllRowSelections() {
-            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
-                const imei = row.dataset.imei;
-                if (selectedItems.has(imei)) {
-                    row.classList.add('selected');
-                    const checkbox = row.querySelector('input[type="checkbox"]');
-                    if (checkbox) checkbox.checked = true;
-                } else {
-                    row.classList.remove('selected');
-                    const checkbox = row.querySelector('input[type="checkbox"]');
-                    if (checkbox) checkbox.checked = false;
-                }
-            });
+            try {
+                const selectableRows = document.querySelectorAll('#skuTableBody tr[data-selectable="true"]');
+                console.log(`Updating ${selectableRows.length} selectable rows`);
+                
+                selectableRows.forEach((row, index) => {
+                    const imei = row.dataset.imei;
+                    if (selectedItems.has(imei)) {
+                        row.classList.add('selected');
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        if (checkbox) checkbox.checked = true;
+                    } else {
+                        row.classList.remove('selected');
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        if (checkbox) checkbox.checked = false;
+                    }
+                });
+            } catch (error) {
+                console.error('Error in updateAllRowSelections:', error);
+            }
         }
 
         // Smart selection functions
         function selectAllUndefined() {
-            clearAllSelection();
-            document.querySelectorAll('#skuTableBody tr[data-status="undefined"]').forEach(row => {
-                const imei = row.dataset.imei;
-                selectedItems.add(imei);
-            });
-            updateBulkActions();
-            updateAllRowSelections();
+            try {
+                console.log('Select All Undefined clicked');
+                
+                // Clear existing selections first
+                clearAllSelection();
+                
+                // Wait a moment for DOM to update
+                setTimeout(() => {
+                    try {
+                        let selectedCount = 0;
+                        
+                        // Find all undefined rows
+                        const undefinedRows = document.querySelectorAll('#skuTableBody tr[data-status="undefined"]');
+                        console.log(`Found ${undefinedRows.length} undefined rows`);
+                        
+                        if (undefinedRows.length === 0) {
+                            // Fallback: try to find rows with undefined class
+                            const fallbackRows = document.querySelectorAll('#skuTableBody tr.undefined-row');
+                            console.log(`Fallback: Found ${fallbackRows.length} undefined-row class elements`);
+                            
+                            fallbackRows.forEach((row, index) => {
+                                const imei = row.dataset.imei;
+                                console.log(`Fallback Row ${index}: IMEI = ${imei}`);
+                                if (imei) {
+                                    selectedItems.add(imei);
+                                    selectedCount++;
+                                }
+                            });
+                        } else {
+                            undefinedRows.forEach((row, index) => {
+                                const imei = row.dataset.imei;
+                                console.log(`Row ${index}: IMEI = ${imei}`);
+                                if (imei) {
+                                    selectedItems.add(imei);
+                                    selectedCount++;
+                                }
+                            });
+                        }
+                        
+                        console.log(`Selected ${selectedCount} items`);
+                        
+                        // Update UI
+                        updateBulkActions();
+                        updateAllRowSelections();
+                        
+                        // Show feedback
+                        if (selectedCount > 0) {
+                            showSuccess(`Selected ${selectedCount} undefined items`);
+                        } else {
+                            showError('No undefined items found');
+                        }
+                        
+                    } catch (innerError) {
+                        console.error('Error in selectAllUndefined inner logic:', innerError);
+                        showError('Error selecting undefined items: ' + innerError.message);
+                    }
+                }, 100); // Small delay to ensure DOM is ready
+                
+            } catch (error) {
+                console.error('Error in selectAllUndefined:', error);
+                showError('Error selecting undefined items: ' + error.message);
+            }
         }
 
         function selectByPattern() {
@@ -1232,30 +1643,59 @@
             if (!pattern) return;
             
             clearAllSelection();
-            const regex = new RegExp(pattern.replace(/\*/g, '.*'), 'i');
+            let selectedCount = 0;
             
-            document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
-                const sku = row.dataset.sku;
-                if (regex.test(sku)) {
-                    const imei = row.dataset.imei;
-                    selectedItems.add(imei);
+            try {
+                const regex = new RegExp(pattern.replace(/\*/g, '.*'), 'i');
+                
+                document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
+                    const sku = row.dataset.sku;
+                    if (sku && regex.test(sku)) {
+                        const imei = row.dataset.imei;
+                        if (imei) {
+                            selectedItems.add(imei);
+                            selectedCount++;
+                        }
+                    }
+                });
+                
+                updateBulkActions();
+                updateAllRowSelections();
+                
+                // Show feedback
+                if (selectedCount > 0) {
+                    showSuccess(`Selected ${selectedCount} items matching pattern "${pattern}"`);
+                } else {
+                    showError(`No items found matching pattern "${pattern}"`);
                 }
-            });
-            updateBulkActions();
-            updateAllRowSelections();
+            } catch (error) {
+                showError('Invalid pattern format. Use * for wildcards (e.g., S22-*, *UNLOCKED)');
+            }
         }
 
         function selectHighScore() {
             clearAllSelection();
+            let selectedCount = 0;
+            
             document.querySelectorAll('#skuTableBody tr[data-selectable="true"]').forEach(row => {
                 const score = parseInt(row.dataset.score);
                 if (score > 80) {
                     const imei = row.dataset.imei;
-                    selectedItems.add(imei);
+                    if (imei) {
+                        selectedItems.add(imei);
+                        selectedCount++;
+                    }
                 }
             });
+            
             updateBulkActions();
             updateAllRowSelections();
+            
+            if (selectedCount > 0) {
+                showSuccess(`Selected ${selectedCount} items with high scores (>80)`);
+            } else {
+                showError('No items found with scores > 80');
+            }
         }
 
         function selectRecent() {
@@ -1268,7 +1708,9 @@
                 const score = parseInt(row.dataset.score);
                 if (score > 70) {
                     const imei = row.dataset.imei;
-                    selectedItems.add(imei);
+                    if (imei) {
+                        selectedItems.add(imei);
+                    }
                 }
             });
             updateBulkActions();
@@ -1276,14 +1718,23 @@
         }
 
         function clearAllSelection() {
-            selectedItems.clear();
-            updateBulkActions();
-            updateAllRowSelections();
-            
-            // Clear range selection visual
-            document.querySelectorAll('.range-selection').forEach(row => {
-                row.classList.remove('range-selection');
-            });
+            try {
+                console.log('Clearing all selections');
+                selectedItems.clear();
+                const selectAllBtn = document.getElementById('selectAllBtn');
+                if (selectAllBtn) {
+                    selectAllBtn.textContent = '☑️ Select All';
+                }
+                updateBulkActions();
+                updateAllRowSelections();
+                
+                // Clear range selection visual
+                document.querySelectorAll('.range-selection').forEach(row => {
+                    row.classList.remove('range-selection');
+                });
+            } catch (error) {
+                console.error('Error in clearAllSelection:', error);
+            }
         }
 
         function toggleShortcutsHelp() {
@@ -1492,7 +1943,9 @@
                 
                 if (status === 'matched' && score > 70) {
                     const imei = row.dataset.imei;
-                    selectedItems.add(imei);
+                    if (imei) {
+                        selectedItems.add(imei);
+                    }
                 }
             });
             
@@ -1531,6 +1984,187 @@
             } catch (error) {
                 console.error('Error reverting item:', error);
                 showError('Error reverting item: ' + error.message);
+            }
+        }
+
+        // Function to edit SKU for matched items
+        async function editMatchedSku(imei) {
+            // Find the device data
+            const deviceData = currentData.find(device => device.imei === imei);
+            if (!deviceData) {
+                showError('Device data not found');
+                return;
+            }
+
+            // Create edit SKU modal
+            const modalHtml = `
+                <div class="modal-overlay" onclick="closeEditSkuModal()">
+                    <div class="modal-content edit-sku-modal" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <h3>Edit SKU for ${imei}</h3>
+                            <button class="close-btn" onclick="closeEditSkuModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="device-info-section">
+                                <h4>📱 Complete Device Information</h4>
+                                <div class="device-details-grid">
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">IMEI</div>
+                                        <div class="device-detail-value">${deviceData.imei}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Current SKU</div>
+                                        <div class="device-detail-value"><strong>${deviceData.matched_sku}</strong></div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Device</div>
+                                        <div class="device-detail-value">${deviceData.device_characteristics}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Color</div>
+                                        <div class="device-detail-value">${deviceData.device_color || 'N/A'}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Carrier & Notes</div>
+                                        <div class="device-detail-value">${deviceData.carrier_with_notes}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Working Status</div>
+                                        <div class="device-detail-value">${deviceData.working_status}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Match Status</div>
+                                        <div class="device-detail-value">
+                                            <span class="status-badge status-${deviceData.match_status}">${deviceData.match_status.toUpperCase()}</span>
+                                        </div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Match Score</div>
+                                        <div class="device-detail-value">${deviceData.match_score || 'N/A'}</div>
+                                    </div>
+                                    <div class="device-detail">
+                                        <div class="device-detail-label">Match Notes</div>
+                                        <div class="device-detail-value">${deviceData.match_notes || 'No notes available'}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                                <div class="edit-form">
+                                    <h4>✏️ New SKU Information</h4>
+                                    <div class="change-reason-section">
+                                        <p class="change-instruction">
+                                            <strong>💡 Why change the SKU?</strong><br>
+                                            Review the device details above. If the current SKU doesn't match the actual device specifications, 
+                                            or if you need to correct a previous manual assignment, enter a new SKU below.
+                                        </p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="new-sku-edit-${imei}">New SKU Code:</label>
+                                        <div class="sku-autocomplete">
+                                            <input type="text" id="new-sku-edit-${imei}" 
+                                                   placeholder="Type to search SKU codes or paste..." 
+                                                   oninput="searchSkus('edit-${imei}', this.value)" 
+                                                   onfocus="showSkuSuggestions('edit-${imei}')" 
+                                                   onblur="hideSkuSuggestions('edit-${imei}')">
+                                            <div class="sku-suggestions" id="sku-suggestions-edit-${imei}" style="display: none;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="change-reason-${imei}">Reason for Change:</label>
+                                        ${createReasonDropdown(imei)}
+                                        <textarea id="change-reason-${imei}" placeholder="Or type custom reason..." rows="2" style="margin-top: 5px;"></textarea>
+                                    </div>
+                                </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="closeEditSkuModal()">Cancel</button>
+                            <button class="btn btn-primary" onclick="saveSkuChange('${imei}')">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+                // Add modal to page
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                
+                // Enable paste support and focus on the input field
+                setTimeout(() => {
+                    const skuInput = document.getElementById(`new-sku-edit-${imei}`);
+                    if (skuInput) {
+                        enablePasteSupport(`new-sku-edit-${imei}`);
+                        skuInput.focus();
+                    }
+                }, 100);
+        }
+
+        // Function to close edit SKU modal
+        function closeEditSkuModal() {
+            const modal = document.querySelector('.edit-sku-modal');
+            if (modal) {
+                modal.closest('.modal-overlay').remove();
+            }
+        }
+
+        // Function to save SKU changes
+        async function saveSkuChange(imei) {
+            const newSkuInput = document.getElementById(`new-sku-edit-${imei}`);
+            const reasonInput = document.getElementById(`change-reason-${imei}`);
+            
+            const newSku = newSkuInput.value.trim();
+            const reason = reasonInput.value.trim();
+            
+            if (!newSku) {
+                showError('Please enter a new SKU code');
+                newSkuInput.focus();
+                return;
+            }
+            
+            if (!reason) {
+                showError('Please enter a reason for the change');
+                reasonInput.focus();
+                return;
+            }
+            
+            // Add reason to history
+            addToReasonHistory(reason);
+            
+            try {
+                // First validate the SKU exists
+                const skuResponse = await fetch(`/api/inventory-management/sku-info/${encodeURIComponent(newSku)}`);
+                const skuResult = await skuResponse.json();
+                
+                if (!skuResult.success) {
+                    showError(`SKU "${newSku}" not found in master database`);
+                    return;
+                }
+                
+                // Proceed with the change
+                const response = await fetch('/api/inventory-management/fix-undefined', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei: imei,
+                        action: 'change_sku',
+                        newSku: newSku,
+                        notes: reason
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(`Successfully changed SKU to "${newSku}" for ${imei}`);
+                    closeEditSkuModal();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to change SKU: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error changing SKU:', error);
+                showError('Error changing SKU: ' + error.message);
             }
         }
 
@@ -1622,12 +2256,21 @@
             }
         }
 
-        // Keyboard event handlers
+        // Keyboard event handlers (less aggressive - only when not in input fields)
         function handleKeyDown(event) {
             isCtrlPressed = event.ctrlKey;
             isShiftPressed = event.shiftKey;
             
-            if (event.ctrlKey) {
+            // Only trigger shortcuts if not typing in input fields
+            const activeElement = document.activeElement;
+            const isInputField = activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' || 
+                activeElement.contentEditable === 'true' ||
+                activeElement.closest('.modal-content') // Don't trigger in modals
+            );
+            
+            if (event.ctrlKey && !isInputField) {
                 switch (event.key) {
                     case 'a':
                         event.preventDefault();
@@ -1672,6 +2315,16 @@
             
             progressFill.style.width = `${percentage}%`;
             progressText.textContent = text;
+        }
+
+        // Simple progress functions for SKU update
+        function showProgress(message, percentage) {
+            showBulkProgress(true);
+            updateBulkProgress(percentage, message);
+        }
+
+        function hideProgress() {
+            showBulkProgress(false);
         }
 
         // Enhanced bulk action functions
@@ -1735,32 +2388,65 @@
 
         function selectAllVisible() {
             const checkboxes = document.querySelectorAll('#skuTableBody input[type="checkbox"]:not([disabled])');
+            const allSelected = Array.from(checkboxes).every(checkbox => checkbox.checked);
+            const selectAllBtn = document.getElementById('selectAllBtn');
+            
             checkboxes.forEach(checkbox => {
-                checkbox.checked = true;
-                const onchangeAttr = checkbox.getAttribute('onchange');
-                if (onchangeAttr) {
-                    const imei = onchangeAttr.match(/'([^']+)'/)[1];
-                    selectedItems.add(imei);
+                checkbox.checked = !allSelected; // Toggle: if all selected, deselect all; if not all selected, select all
+                const imei = checkbox.dataset.imei;
+                if (imei) {
+                    if (!allSelected) {
+                        selectedItems.add(imei);
+                    } else {
+                        selectedItems.delete(imei);
+                    }
                 }
             });
+            
+            // Update button text
+            if (selectAllBtn) {
+                selectAllBtn.textContent = allSelected ? '☑️ Select All' : '☐ Deselect All';
+            }
+            
             updateBulkActions();
+            updateAllRowSelections();
+            
+            // Show feedback
+            if (!allSelected) {
+                showSuccess(`Selected ${checkboxes.length} visible items`);
+            } else {
+                showSuccess(`Deselected all visible items`);
+            }
         }
 
         function clearSelection() {
             selectedItems.clear();
+            const selectAllBtn = document.getElementById('selectAllBtn');
+            if (selectAllBtn) {
+                selectAllBtn.textContent = '☑️ Select All';
+            }
             displayInventoryData(); // Refresh to hide checkboxes
             updateBulkActions();
         }
 
         function updateBulkActions() {
-            const bulkToolbar = document.getElementById('bulkToolbar');
-            const selectionCount = document.getElementById('selectionCount');
-            
-            if (selectedItems.size > 0) {
-                bulkToolbar.classList.add('show');
-                selectionCount.textContent = `${selectedItems.size} items selected`;
-            } else {
-                bulkToolbar.classList.remove('show');
+            try {
+                const bulkToolbar = document.getElementById('bulkToolbar');
+                const selectionCount = document.getElementById('selectionCount');
+                
+                if (!bulkToolbar || !selectionCount) {
+                    console.error('Bulk toolbar elements not found');
+                    return;
+                }
+                
+                if (selectedItems.size > 0) {
+                    bulkToolbar.classList.add('show');
+                    selectionCount.textContent = `${selectedItems.size} items selected`;
+                } else {
+                    bulkToolbar.classList.remove('show');
+                }
+            } catch (error) {
+                console.error('Error in updateBulkActions:', error);
             }
         }
 
@@ -1832,6 +2518,10 @@
                             <div class="device-detail-value">${capacity}</div>
                         </div>
                         <div class="device-detail">
+                            <div class="device-detail-label">Color</div>
+                            <div class="device-detail-value">${deviceData.device_color || 'N/A'}</div>
+                        </div>
+                        <div class="device-detail">
                             <div class="device-detail-label">Carrier & Notes</div>
                             <div class="device-detail-value">${deviceData.carrier_with_notes}</div>
                         </div>
@@ -1857,13 +2547,14 @@
                             <div class="device-detail">
                                 <div class="device-detail-label">New SKU Code</div>
                                 <div class="sku-autocomplete">
-                                    <input type="text" id="new-sku-${deviceData.imei}" placeholder="Type to search SKU codes..." value="${deviceData.sku}" oninput="searchSkus('${deviceData.imei}', this.value)" onfocus="showSkuSuggestions('${deviceData.imei}')" onblur="hideSkuSuggestions('${deviceData.imei}')">
+                                    <input type="text" id="new-sku-${deviceData.imei}" placeholder="Type to search SKU codes or paste..." value="${deviceData.sku}" oninput="searchSkus('${deviceData.imei}', this.value)" onfocus="showSkuSuggestions('${deviceData.imei}')" onblur="hideSkuSuggestions('${deviceData.imei}')">
                                     <div class="sku-suggestions" id="sku-suggestions-${deviceData.imei}" style="display: none;"></div>
                                 </div>
                             </div>
                             <div class="device-detail">
                                 <div class="device-detail-label">Reason for Change</div>
-                                <input type="text" id="change-reason-${deviceData.imei}" placeholder="Reason for SKU change">
+                                ${createReasonDropdown(deviceData.imei)}
+                                <textarea id="change-reason-${deviceData.imei}" placeholder="Or type custom reason..." rows="2" style="margin-top: 5px;"></textarea>
                             </div>
                             <div class="form-actions">
                                 <button class="action-btn btn-success" onclick="updateSku('${deviceData.imei}')">💾 Save Changes</button>
@@ -1892,6 +2583,10 @@
             const editForm = document.getElementById(`edit-form-${imei}`);
             if (editForm.style.display === 'none') {
                 editForm.style.display = 'block';
+                // Enable paste support when edit form is shown
+                setTimeout(() => {
+                    enablePasteSupport(`new-sku-${imei}`);
+                }, 100);
             } else {
                 editForm.style.display = 'none';
             }
@@ -1981,6 +2676,9 @@
                 showError('Please provide a reason for the change');
                 return;
             }
+            
+            // Add reason to history
+            addToReasonHistory(reason);
 
             // Validate that the SKU exists in the database
             try {
@@ -2133,6 +2831,188 @@
             }
         }
 
+        async function bulkUpdateSku() {
+            if (selectedItems.size === 0) return;
+
+            // Show SKU update modal
+            showSkuUpdateModal();
+        }
+
+        function showSkuUpdateModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content sku-update-modal">
+                    <div class="modal-header">
+                        <h3>Bulk Update SKU</h3>
+                        <button class="close-modal" onclick="closeSkuUpdateModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>You are updating <strong>${selectedItems.size}</strong> selected devices.</p>
+                        
+                        <div class="form-group">
+                            <label for="newSkuCode">New SKU Code:</label>
+                            <input type="text" id="newSkuCode" class="form-control" placeholder="Enter new SKU code">
+                            <div class="sku-suggestions" id="skuSuggestions"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="updateReason">Reason for Update:</label>
+                            <select id="updateReason" class="form-control">
+                                <option value="">Select a reason...</option>
+                                <option value="Color correction">Color correction</option>
+                                <option value="Model correction">Model correction</option>
+                                <option value="Capacity correction">Capacity correction</option>
+                                <option value="Carrier correction">Carrier correction</option>
+                                <option value="Data entry error">Data entry error</option>
+                                <option value="Manual correction">Manual correction</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" id="customReasonGroup" style="display: none;">
+                            <label for="customReason">Custom Reason:</label>
+                            <input type="text" id="customReason" class="form-control" placeholder="Enter custom reason">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeSkuUpdateModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="executeBulkSkuUpdate()">Update SKU</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Handle reason selection
+            document.getElementById('updateReason').addEventListener('change', function() {
+                const customGroup = document.getElementById('customReasonGroup');
+                if (this.value === 'Other') {
+                    customGroup.style.display = 'block';
+                } else {
+                    customGroup.style.display = 'none';
+                }
+            });
+            
+            // Handle SKU autocomplete
+            setupSkuAutocomplete();
+        }
+
+        function closeSkuUpdateModal() {
+            const modal = document.querySelector('.sku-update-modal').parentElement;
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        function setupSkuAutocomplete() {
+            const skuInput = document.getElementById('newSkuCode');
+            const suggestionsDiv = document.getElementById('skuSuggestions');
+            let debounceTimer;
+
+            skuInput.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                const query = this.value.trim();
+                
+                if (query.length < 2) {
+                    suggestionsDiv.innerHTML = '';
+                    return;
+                }
+
+                debounceTimer = setTimeout(async () => {
+                    try {
+                        const response = await fetch(`/api/inventory-management/search-skus?q=${encodeURIComponent(query)}`);
+                        const result = await response.json();
+                        
+                        if (result.success && result.skus.length > 0) {
+                            suggestionsDiv.innerHTML = result.skus.map(sku => `
+                                <div class="suggestion-item" onclick="selectSkuSuggestion('${sku.sku_code}')">
+                                    <strong>${sku.sku_code}</strong>
+                                    <small>${sku.display}</small>
+                                </div>
+                            `).join('');
+                        } else {
+                            suggestionsDiv.innerHTML = '<div class="no-suggestions">No matching SKUs found</div>';
+                        }
+                    } catch (error) {
+                        console.error('Error fetching SKU suggestions:', error);
+                    }
+                }, 300);
+            });
+        }
+
+        function selectSkuSuggestion(skuCode) {
+            document.getElementById('newSkuCode').value = skuCode;
+            document.getElementById('skuSuggestions').innerHTML = '';
+        }
+
+        async function executeBulkSkuUpdate() {
+            const newSkuCode = document.getElementById('newSkuCode').value.trim();
+            const reason = document.getElementById('updateReason').value;
+            const customReason = document.getElementById('customReason').value.trim();
+            
+            if (!newSkuCode) {
+                showError('Please enter a SKU code');
+                return;
+            }
+            
+            if (!reason) {
+                showError('Please select a reason for the update');
+                return;
+            }
+            
+            const finalReason = reason === 'Other' ? customReason : reason;
+            if (!finalReason) {
+                showError('Please provide a reason for the update');
+                return;
+            }
+
+            const items = Array.from(selectedItems).map(imei => ({ imei: imei }));
+            
+            try {
+                showProgress('Updating SKUs...', 0);
+                
+                const response = await fetch('/api/inventory-management/bulk-fix', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: items,
+                        action: 'update_sku',
+                        new_sku: newSkuCode,
+                        reason: finalReason,
+                        notes: `Bulk SKU update: ${finalReason}`
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(`Successfully updated ${result.processed} devices to SKU: ${newSkuCode}`);
+                    
+                    // Record the action
+                    recordAction('update_sku', Array.from(selectedItems), { 
+                        processed: result.processed,
+                        new_sku: newSkuCode,
+                        reason: finalReason
+                    });
+                    
+                    closeSkuUpdateModal();
+                    clearSelection();
+                    loadInventoryData();
+                    loadStats();
+                } else {
+                    showError('Failed to update SKUs: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error in bulk SKU update:', error);
+                showError('Error in bulk SKU update: ' + error.message);
+            } finally {
+                hideProgress();
+            }
+        }
+
 
         function updatePagination(pagination) {
             const paginationDiv = document.getElementById('pagination');
@@ -2159,33 +3039,195 @@
         }
 
         function filterBySearch(searchTerm) {
-            const cards = document.querySelectorAll('.sku-card');
-            cards.forEach(card => {
-                const skuName = card.querySelector('.sku-name').textContent.toLowerCase();
-                if (skuName.includes(searchTerm.toLowerCase())) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
+            const rows = document.querySelectorAll('#skuTableBody tr');
+            let visibleCount = 0;
+            
+            rows.forEach(row => {
+                const skuCell = row.querySelector('td:nth-child(2)'); // SKU is in 2nd column
+                if (skuCell) {
+                    const skuName = skuCell.textContent.toLowerCase();
+                    if (searchTerm === '' || skuName.includes(searchTerm.toLowerCase())) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
                 }
             });
+            
+            // Update selection count after filtering
+            updateBulkActions();
+            
+            // Show search results count
+            const searchInput = document.getElementById('searchInput');
+            if (searchTerm && searchTerm.length > 0) {
+                searchInput.title = `Showing ${visibleCount} results for "${searchTerm}"`;
+            } else {
+                searchInput.title = '';
+            }
+        }
+
+        function clearSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.value = '';
+            filterBySearch('');
+            searchInput.focus();
+        }
+
+        // Database health monitoring
+        function updateConnectionStatus(status) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (statusElement) {
+                switch(status) {
+                    case 'connected':
+                        statusElement.textContent = '🟢';
+                        statusElement.title = 'Database connected';
+                        break;
+                    case 'connecting':
+                        statusElement.textContent = '🟡';
+                        statusElement.title = 'Connecting to database...';
+                        break;
+                    case 'error':
+                        statusElement.textContent = '🔴';
+                        statusElement.title = 'Database connection error';
+                        break;
+                    case 'timeout':
+                        statusElement.textContent = '⏱️';
+                        statusElement.title = 'Database timeout - free tier limitations';
+                        break;
+                    default:
+                        statusElement.textContent = '❓';
+                        statusElement.title = 'Unknown database status';
+                }
+            }
+        }
+
+        // Enhanced error handling with connection status
+        function handleApiError(error, context = '') {
+            console.error(`API Error ${context}:`, error);
+            
+            if (error.message && error.message.includes('db_termination')) {
+                updateConnectionStatus('timeout');
+                showError('Database connection terminated (free tier limit). Please wait a moment and try again.');
+            } else if (error.message && error.message.includes('timeout')) {
+                updateConnectionStatus('timeout');
+                showError('Request timeout. Database may be overloaded. Please try again.');
+            } else {
+                updateConnectionStatus('error');
+                showError(`Error ${context}: ${error.message || 'Unknown error'}`);
+            }
+        }
+
+        // Reason history management
+        function addToReasonHistory(reason) {
+            if (reason && reason.trim() && !reasonHistory.includes(reason.trim())) {
+                reasonHistory.unshift(reason.trim());
+                // Keep only last 10 reasons
+                reasonHistory = reasonHistory.slice(0, 10);
+                localStorage.setItem('skuReasonHistory', JSON.stringify(reasonHistory));
+            }
+        }
+
+        function createReasonDropdown(imei, currentReason = '') {
+            const allReasons = [...predefinedReasons, ...reasonHistory];
+            const uniqueReasons = [...new Set(allReasons)];
+            
+            return `
+                <div class="reason-dropdown">
+                    <select id="reason-select-${imei}" onchange="selectReason('${imei}', this.value)">
+                        <option value="">Select or type custom reason...</option>
+                        ${uniqueReasons.map(reason => 
+                            `<option value="${reason}" ${reason === currentReason ? 'selected' : ''}>${reason}</option>`
+                        ).join('')}
+                    </select>
+                    <div class="reason-history">
+                        <small>Recent: ${reasonHistory.slice(0, 3).map(reason => 
+                            `<span class="history-item" onclick="selectReason('${imei}', '${reason}')">${reason}</span>`
+                        ).join(' • ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+
+        function selectReason(imei, reason) {
+            const textarea = document.getElementById(`change-reason-${imei}`);
+            if (textarea && reason) {
+                textarea.value = reason;
+            }
+        }
+
+        // Enhanced paste functionality for SKU fields
+        function enablePasteSupport(inputId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.addEventListener('paste', function(event) {
+                    event.preventDefault();
+                    const pastedText = (event.clipboardData || window.clipboardData).getData('text');
+                    
+                    // Clean and format the pasted text
+                    const cleanedText = pastedText.trim().toUpperCase();
+                    
+                    // If it looks like a SKU, use it directly
+                    if (cleanedText.match(/^[A-Z0-9-]+$/)) {
+                        input.value = cleanedText;
+                        // Trigger search if it's a SKU input
+                        if (input.oninput) {
+                            input.oninput();
+                        }
+                    } else {
+                        // Otherwise, just paste as-is
+                        input.value = pastedText;
+                    }
+                });
+                
+                // Add paste indicator
+                input.style.position = 'relative';
+                if (!input.parentNode.querySelector('.paste-indicator')) {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'paste-indicator';
+                    indicator.textContent = '📋';
+                    indicator.title = 'Paste supported';
+                    input.parentNode.appendChild(indicator);
+                }
+            }
         }
 
         function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 5000);
+            try {
+                const errorDiv = document.getElementById('errorMessage');
+                if (errorDiv) {
+                    errorDiv.textContent = message;
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => {
+                        errorDiv.style.display = 'none';
+                    }, 5000);
+                } else {
+                    console.error('Error message div not found');
+                    alert('Error: ' + message);
+                }
+            } catch (error) {
+                console.error('Error in showError:', error);
+                alert('Error: ' + message);
+            }
         }
 
         function showSuccess(message) {
-            const successDiv = document.getElementById('successMessage');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            setTimeout(() => {
-                successDiv.style.display = 'none';
-            }, 5000);
+            try {
+                const successDiv = document.getElementById('successMessage');
+                if (successDiv) {
+                    successDiv.textContent = message;
+                    successDiv.style.display = 'block';
+                    setTimeout(() => {
+                        successDiv.style.display = 'none';
+                    }, 5000);
+                } else {
+                    console.error('Success message div not found');
+                    alert('Success: ' + message);
+                }
+            } catch (error) {
+                console.error('Error in showSuccess:', error);
+                alert('Success: ' + message);
+            }
         }
 
         // Close modal when clicking outside

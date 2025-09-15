@@ -1,12 +1,8 @@
 import { Router } from 'express';
-import { Pool } from 'pg';
 import { logger } from '../utils/logger';
+import { dbService } from '../services/DatabaseConnectionService';
 
 const router = Router();
-const pool = new Pool({
-  connectionString: process.env['DIRECT_URL'],
-  ssl: { rejectUnauthorized: false }
-});
 
 // Get enhanced inventory data with undefined items
 router.get('/inventory-data', async (req, res): Promise<void> => {
@@ -40,6 +36,7 @@ router.get('/inventory-data', async (req, res): Promise<void> => {
         matched_sku,
         imei,
         brand || ' - ' || model || ' - ' || capacity as device_characteristics,
+        color as device_color,
         
         -- Enhanced carrier info with device notes
         CASE 
@@ -69,7 +66,7 @@ router.get('/inventory-data', async (req, res): Promise<void> => {
 
     params.push(parseInt(limit as string), parseInt(offset as string));
 
-    const result = await pool.query(query, params);
+    const result = await dbService.query(query, params);
 
     // Get total count for pagination
     const countQuery = `
@@ -77,7 +74,7 @@ router.get('/inventory-data', async (req, res): Promise<void> => {
       FROM sku_matching_view 
       ${whereClause}
     `;
-    const countResult = await pool.query(countQuery, params.slice(0, -2));
+    const countResult = await dbService.query(countQuery, params.slice(0, -2));
     const total = parseInt(countResult.rows[0].total);
 
     res.json({
@@ -145,7 +142,7 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
         imei
     `;
 
-    const result = await pool.query(query, [sku]);
+    const result = await dbService.query(query, [sku]);
 
     res.json({
       success: true,
@@ -169,6 +166,9 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
       return;
     }
 
+    // Extract newSku from request body for actions that need it
+    const requestNewSku = req.body.new_sku;
+
     let updateQuery = '';
     let params: any[] = [imei];
 
@@ -187,7 +187,7 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
         break;
 
       case 'change_sku':
-        if (!newSku) {
+        if (!requestNewSku) {
           res.status(400).json({ success: false, error: 'New SKU is required for change_sku action' });
           return;
         }
@@ -200,7 +200,7 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
             updated_at = NOW()
           WHERE imei = $1
         `;
-        params.push(newSku, notes || 'SKU manually changed');
+        params.push(requestNewSku, notes || 'SKU manually changed');
         break;
 
       case 'mark_no_match':
@@ -215,12 +215,41 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
         params.push(notes || 'Marked as no match');
         break;
 
+      case 'revert_to_undefined':
+        updateQuery = `
+          UPDATE item 
+          SET 
+            sku_match_status = 'undefined',
+            sku_match_notes = COALESCE($2, 'Reverted to undefined'),
+            updated_at = NOW()
+          WHERE imei = $1
+        `;
+        params.push(notes || 'Reverted to undefined');
+        break;
+
+      case 'update_sku':
+        if (!requestNewSku) {
+          res.status(400).json({ success: false, error: 'New SKU is required for update_sku action' });
+          return;
+        }
+        updateQuery = `
+          UPDATE item 
+          SET 
+            matched_sku = $2,
+            sku_match_status = 'matched',
+            sku_match_notes = COALESCE($3, 'SKU updated via bulk action'),
+            updated_at = NOW()
+          WHERE imei = $1
+        `;
+        params.push(requestNewSku, notes || 'SKU updated via bulk action');
+        break;
+
       default:
         res.status(400).json({ success: false, error: 'Invalid action' });
         return;
     }
 
-    await pool.query(updateQuery, params);
+    await dbService.query(updateQuery, params);
 
     // Also update sku_matching_results table
     const updateResultsQuery = `
@@ -228,12 +257,14 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
       SET 
         match_status = CASE 
           WHEN $2 = 'change_sku' THEN 'matched'
+          WHEN $2 = 'update_sku' THEN 'matched'
           WHEN $2 = 'approve_match' THEN 'matched'
           WHEN $2 = 'mark_no_match' THEN 'no_match'
           ELSE match_status
         END,
         matched_sku = CASE 
           WHEN $2 = 'change_sku' THEN $3
+          WHEN $2 = 'update_sku' THEN $3
           ELSE matched_sku
         END,
         match_notes = COALESCE($4, match_notes),
@@ -241,7 +272,7 @@ router.post('/fix-undefined', async (req, res): Promise<void> => {
       WHERE imei = $1
     `;
 
-    await pool.query(updateResultsQuery, [imei, action, newSku, notes]);
+    await dbService.query(updateResultsQuery, [imei, action, requestNewSku || null, notes]);
 
     logger.info(`Fixed undefined item: ${imei} with action: ${action}`);
 
@@ -271,11 +302,12 @@ router.post('/bulk-fix', async (req, res): Promise<void> => {
       return;
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    // Extract newSku from request body for actions that need it
+    const requestNewSku = req.body.new_sku;
 
-      const results = [];
+    const results = await dbService.withTransaction(async (client) => {
+      const transactionResults = [];
+      
       for (const item of items) {
         const { imei, newSku } = item;
         
@@ -307,31 +339,84 @@ router.post('/bulk-fix', async (req, res): Promise<void> => {
             params.push(notes || 'Bulk marked as no match');
             break;
 
+          case 'revert_to_undefined':
+            updateQuery = `
+              UPDATE item 
+              SET 
+                sku_match_status = 'undefined',
+                sku_match_notes = COALESCE($2, 'Bulk reverted to undefined'),
+                updated_at = NOW()
+              WHERE imei = $1
+            `;
+            params.push(notes || 'Bulk reverted to undefined');
+            break;
+
+          case 'update_sku':
+            if (!requestNewSku) {
+              throw new Error('New SKU is required for update_sku action');
+            }
+            updateQuery = `
+              UPDATE item 
+              SET 
+                matched_sku = $2,
+                sku_match_status = 'matched',
+                sku_match_notes = COALESCE($3, 'Bulk SKU update'),
+                updated_at = NOW()
+              WHERE imei = $1
+            `;
+            params.push(requestNewSku, notes || 'Bulk SKU update');
+            break;
+
           default:
             throw new Error(`Invalid bulk action: ${action}`);
         }
 
         const result = await client.query(updateQuery, params);
-        results.push({ imei, success: (result.rowCount || 0) > 0 });
+        
+        // Also update sku_matching_results table
+        const updateResultsQuery = `
+          UPDATE sku_matching_results 
+          SET 
+            match_status = CASE 
+              WHEN $2 = 'approve_all' THEN 'matched'
+              WHEN $2 = 'update_sku' THEN 'matched'
+              WHEN $2 = 'mark_no_match' THEN 'no_match'
+              WHEN $2 = 'revert_to_undefined' THEN 'undefined'
+              ELSE match_status
+            END,
+            matched_sku = CASE 
+              WHEN $2 = 'update_sku' THEN $3
+              ELSE matched_sku
+            END,
+            match_notes = COALESCE($4, match_notes),
+            updated_at = NOW()
+          WHERE imei = $1
+        `;
+        
+        const resultsParams = [imei, action];
+        if (action === 'update_sku') {
+          resultsParams.push(requestNewSku);
+        } else {
+          resultsParams.push(null);
+        }
+        resultsParams.push(notes);
+        
+        await client.query(updateResultsQuery, resultsParams);
+        
+        transactionResults.push({ imei, success: (result.rowCount || 0) > 0 });
       }
 
-      await client.query('COMMIT');
+      return transactionResults;
+    });
 
-      const successCount = results.filter(r => r.success).length;
-      logger.info(`Bulk fix completed: ${successCount}/${items.length} items processed`);
+    const successCount = results.filter(r => r.success).length;
+    logger.info(`Bulk fix completed: ${successCount}/${items.length} items processed`);
 
-      res.json({
-        success: true,
-        message: `Successfully processed ${successCount} out of ${items.length} items`,
-        results
-      });
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    res.json({
+      success: true,
+      message: `Successfully processed ${successCount} out of ${items.length} items`,
+      results
+    });
 
   } catch (error) {
     logger.error('Error in bulk fix:', error);
@@ -356,7 +441,7 @@ router.get('/stats', async (req, res): Promise<void> => {
       FROM sku_matching_view
     `;
 
-    const result = await pool.query(query);
+    const result = await dbService.query(query);
 
     res.json({
       success: true,
@@ -405,9 +490,9 @@ router.get('/search-skus', async (req, res): Promise<void> => {
     const exactMatch = `${q}%`;
     const startsWith = `${q}%`;
     
-    const result = await pool.query(query, [searchTerm, exactMatch, startsWith, parseInt(limit as string)]);
+    const result = await dbService.query(query, [searchTerm, exactMatch, startsWith, parseInt(limit as string)]);
 
-    const skus = result.rows.map(row => ({
+    const skus = result.rows.map((row: any) => ({
       sku_code: row.sku_code,
       display: `${row.sku_code} (${row.brand} ${row.model} ${row.capacity} ${row.color} ${row.carrier || 'No Carrier'}${row.post_fix ? ' ' + row.post_fix : ''})`,
       details: {
@@ -454,7 +539,7 @@ router.get('/sku-info/:skuCode', async (req, res): Promise<void> => {
       WHERE sku_code = $1
     `;
 
-    const result = await pool.query(query, [skuCode]);
+    const result = await dbService.query(query, [skuCode]);
 
     if (result.rows.length === 0) {
       res.status(404).json({ success: false, error: 'SKU not found' });
