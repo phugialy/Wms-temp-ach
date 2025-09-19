@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { dbService } from '../services/DatabaseConnectionService';
+import { inventoryProcessor } from '../services/InventoryProcessorService';
 
 const router = Router();
 
@@ -66,8 +67,8 @@ router.get('/summary', async (req, res): Promise<void> => {
         COUNT(CASE WHEN sku_match_status = 'matched' THEN 1 END) as matched_count,
         COUNT(CASE WHEN sku_match_status = 'undefined' THEN 1 END) as undefined_count,
         COUNT(CASE WHEN sku_match_status = 'no_match' THEN 1 END) as no_match_count,
-        COUNT(CASE WHEN working = 'YES' THEN 1 END) as working_count,
-        COUNT(CASE WHEN working = 'NO' THEN 1 END) as not_working_count,
+        COUNT(CASE WHEN device_notes IS NULL OR device_notes NOT ILIKE '%FAIL%' THEN 1 END) as working_count,
+        COUNT(CASE WHEN device_notes ILIKE '%FAIL%' THEN 1 END) as not_working_count,
         AVG(sku_match_score) as avg_match_score,
         MIN(match_processed_at) as first_seen,
         MAX(match_processed_at) as last_seen
@@ -87,8 +88,8 @@ router.get('/summary', async (req, res): Promise<void> => {
         COUNT(CASE WHEN sku_match_status = 'matched' THEN 1 END) as total_matched,
         COUNT(CASE WHEN sku_match_status = 'undefined' THEN 1 END) as total_undefined,
         COUNT(CASE WHEN sku_match_status = 'no_match' THEN 1 END) as total_no_match,
-        COUNT(CASE WHEN working = 'YES' THEN 1 END) as total_working,
-        COUNT(CASE WHEN working = 'NO' THEN 1 END) as total_not_working
+        COUNT(CASE WHEN device_notes IS NULL OR device_notes NOT ILIKE '%FAIL%' THEN 1 END) as total_working,
+        COUNT(CASE WHEN device_notes ILIKE '%FAIL%' THEN 1 END) as total_not_working
       FROM sku_matching_view
       ${whereClause}
     `;
@@ -255,11 +256,10 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
         capacity,
         color,
         carrier,
-        working,
         location,
-        sku_match_status,
-        sku_match_score,
-        sku_match_notes,
+        sku_match_status as match_status,
+        sku_match_score as match_score,
+        sku_match_notes as match_notes,
         requires_attention,
         device_notes,
         match_processed_at,
@@ -269,12 +269,9 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
           ELSE carrier
         END as carrier_with_notes,
         CASE
-          WHEN working = 'YES' THEN 'Working'
-          WHEN working = 'NO' THEN 'Not Working'
-          WHEN working = 'PASS' THEN 'Passed'
-          WHEN working = 'FAILED' THEN 'Failed'
-          WHEN working = 'PENDING' THEN 'Pending'
-          ELSE COALESCE(working, 'Unknown')
+          WHEN device_notes IS NULL OR device_notes NOT ILIKE '%FAIL%' THEN 'Working'
+          WHEN device_notes ILIKE '%FAIL%' THEN 'Failed'
+          ELSE 'Unknown'
         END as working_status_display
       FROM sku_matching_view
       WHERE matched_sku = $1
@@ -304,8 +301,8 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
         COUNT(CASE WHEN sku_match_status = 'matched' THEN 1 END) as matched_count,
         COUNT(CASE WHEN sku_match_status = 'undefined' THEN 1 END) as undefined_count,
         COUNT(CASE WHEN sku_match_status = 'no_match' THEN 1 END) as no_match_count,
-        COUNT(CASE WHEN working = 'YES' THEN 1 END) as working_count,
-        COUNT(CASE WHEN working = 'NO' THEN 1 END) as not_working_count,
+        COUNT(CASE WHEN device_notes IS NULL OR device_notes NOT ILIKE '%FAIL%' THEN 1 END) as working_count,
+        COUNT(CASE WHEN device_notes ILIKE '%FAIL%' THEN 1 END) as not_working_count,
         AVG(sku_match_score) as avg_match_score
       FROM sku_matching_view
       WHERE matched_sku = $1
@@ -363,33 +360,34 @@ router.get('/hierarchical-data', async (req, res): Promise<void> => {
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-    // Simple query that works - get basic counts first
+    // Use sku_matching_view to get clean SKU data with proper matching
     const query = `
       SELECT 
-        p.brand,
-        i.model,
+        brand,
+        model,
         COUNT(*) as total_devices
-      FROM product p
-      INNER JOIN item i ON p.imei = i.imei
-      GROUP BY p.brand, i.model
-      ORDER BY p.brand, i.model
+      FROM sku_matching_view
+      WHERE brand IS NOT NULL AND model IS NOT NULL
+      ${whereClause ? 'AND ' + whereConditions.join(' AND ') : ''}
+      GROUP BY brand, model
+      ORDER BY brand, model
     `;
 
-    const result = await dbService.query(query, []);
+    const result = await dbService.query(query, params);
 
-    // Get defective counts separately to avoid complex query issues
+    // Get defective counts using the same view - exclude devices with FAILED notes
     const defectiveQuery = `
       SELECT 
-        p.brand,
-        i.model,
+        brand,
+        model,
         COUNT(*) as defective_count
-      FROM product p
-      INNER JOIN item i ON p.imei = i.imei
-      WHERE i.working = 'NO' OR i.working = 'FAILED'
-      GROUP BY p.brand, i.model
+      FROM sku_matching_view
+      WHERE (device_notes ILIKE '%FAIL%' OR device_notes ILIKE '%FAILED%')
+      ${whereClause ? 'AND ' + whereConditions.join(' AND ').replace(/brand ILIKE/g, 'brand ILIKE').replace(/model ILIKE/g, 'model ILIKE').replace(/capacity ILIKE/g, 'capacity ILIKE').replace(/carrier ILIKE/g, 'carrier ILIKE') : ''}
+      GROUP BY brand, model
     `;
 
-    const defectiveResult = await dbService.query(defectiveQuery, []);
+    const defectiveResult = await dbService.query(defectiveQuery, params);
     
     // Create a map of defective counts
     const defectiveMap: any = {};
@@ -398,22 +396,52 @@ router.get('/hierarchical-data', async (req, res): Promise<void> => {
       defectiveMap[key] = parseInt(row.defective_count);
     });
 
-    // Combine the data
-    const modelData = result.rows.map((row: any) => {
-      const key = `${row.brand}-${row.model}`;
+    // Normalize model names to treat variations as the same (e.g., "PIXEL 7 DUAL" = "PIXEL 7")
+    const normalizeModelName = (modelName: string): string => {
+      if (!modelName) return modelName;
+      let normalized = modelName.toUpperCase().trim();
+      
+      // Remove common variations that should be treated as the same model
+      normalized = normalized.replace(/\s+DUAL\s*$/i, '');
+      normalized = normalized.replace(/\s+/g, ' ');
+      normalized = normalized.replace(/\s+$/, '').replace(/^\s+/, '');
+      
+      return normalized;
+    };
+
+    // Combine the data with model normalization
+    const modelMap = new Map<string, any>();
+    
+    result.rows.forEach((row: any) => {
+      const normalizedModel = normalizeModelName(row.model);
+      const key = `${row.brand}-${normalizedModel}`;
+      const originalKey = `${row.brand}-${row.model}`;
+      
       const totalDevices = parseInt(row.total_devices);
-      const defectiveCount = defectiveMap[key] || 0;
+      const defectiveCount = defectiveMap[originalKey] || 0;
       const defectiveRate = totalDevices > 0 ? Math.round((defectiveCount / totalDevices) * 100 * 10) / 10 : 0;
       
-      return {
-        brand: row.brand,
-        model: row.model,
-        total_devices: totalDevices,
-        defective_count: defectiveCount,
-        defective_rate: defectiveRate,
-        capacities: [] // Will be populated by separate API calls
-      };
+      if (modelMap.has(key)) {
+        // Merge with existing normalized model
+        const existing = modelMap.get(key);
+        existing.total_devices += totalDevices;
+        existing.defective_count += defectiveCount;
+        existing.defective_rate = existing.total_devices > 0 ? 
+          Math.round((existing.defective_count / existing.total_devices) * 100 * 10) / 10 : 0;
+      } else {
+        // Create new normalized model entry
+        modelMap.set(key, {
+          brand: row.brand,
+          model: normalizedModel, // Use normalized model name
+          total_devices: totalDevices,
+          defective_count: defectiveCount,
+          defective_rate: defectiveRate,
+          capacities: [] // Will be populated by separate API calls
+        });
+      }
     });
+
+    const modelData = Array.from(modelMap.values());
 
     // Calculate summary with real data
     const totalModels = modelData.length;
@@ -438,10 +466,10 @@ router.get('/hierarchical-data', async (req, res): Promise<void> => {
   }
 });
 
-// Get all capacity breakdown data upfront
+// Get all capacity breakdown data - using working approach with matched_sku
 router.get('/all-capacity-breakdown', async (req, res): Promise<void> => {
   try {
-    // Get all capacity breakdown data (simplified)
+    // Use the working query that was successful before, but try to get matched_sku
     const query = `
       SELECT 
         p.brand,
@@ -449,65 +477,105 @@ router.get('/all-capacity-breakdown', async (req, res): Promise<void> => {
         i.capacity,
         i.color,
         i.carrier,
-        i.matched_sku,
-        COUNT(*) as device_count
+        COALESCE(smr.matched_sku, CONCAT(UPPER(p.brand), '-', UPPER(i.model), '-', COALESCE(i.capacity, ''), '-', COALESCE(i.color, ''))) as matched_sku,
+        p.imei,
+        i.working,
+        CASE 
+          WHEN LOWER(i.model) LIKE '%pixel 7%' AND LOWER(i.model) LIKE '%dual%' 
+          THEN REPLACE(LOWER(i.model), ' dual', '')
+          ELSE LOWER(i.model)
+        END as normalized_model
       FROM product p
       INNER JOIN item i ON p.imei = i.imei
-      GROUP BY p.brand, i.model, i.capacity, i.color, i.carrier, i.matched_sku
+      LEFT JOIN sku_matching_results smr ON p.imei = smr.imei
+      WHERE p.brand IS NOT NULL
+        AND i.model IS NOT NULL
       ORDER BY p.brand, i.model, i.capacity, i.color, i.carrier
     `;
+    
     const result = await dbService.query(query, []);
     
-    // Group by brand-model-capacity-color (SKU without carrier)
-    const breakdownData: any = {};
+    // Process and group data with normalization
+    const processedData: any = {};
+    const deviceDetails: any = {}; // Store individual device details for differences
     
     result.rows.forEach((row: any) => {
-      const modelKey = `${row.brand}-${row.model}`;
+      // Use normalized model for grouping (Pixel 7 Dual becomes Pixel 7)
+      const normalizedModel = row.normalized_model || row.model.toLowerCase();
+      const modelKey = `${row.brand.toLowerCase()}-${normalizedModel}`;
       const capacity = row.capacity || 'Unknown';
       const color = row.color || 'Unknown';
+      const carrier = row.carrier || 'Unlocked';
       
-      // Create SKU key (without carrier)
-      const skuKey = `${row.brand}-${row.model}-${capacity}-${color}`;
+      // Create SKU key using matched_sku
+      const skuKey = row.matched_sku || `${row.brand.toUpperCase()}-${normalizedModel.toUpperCase()}-${capacity}-${color}`;
       
-      if (!breakdownData[modelKey]) {
-        breakdownData[modelKey] = {
+      // Initialize structure
+      if (!processedData[modelKey]) {
+        processedData[modelKey] = {
           brand: row.brand,
-          model: row.model,
+          model: normalizedModel,
+          original_models: new Set(), // Track original model variations
           capacities: {}
         };
       }
       
-      if (!breakdownData[modelKey].capacities[capacity]) {
-        breakdownData[modelKey].capacities[capacity] = {
+      // Track original model variations
+      processedData[modelKey].original_models.add(row.model);
+      
+      if (!processedData[modelKey].capacities[capacity]) {
+        processedData[modelKey].capacities[capacity] = {
           capacity: capacity,
           skus: {}
         };
       }
-
-      if (!breakdownData[modelKey].capacities[capacity].skus[skuKey]) {
-        breakdownData[modelKey].capacities[capacity].skus[skuKey] = {
-          sku: row.matched_sku || skuKey, // Use matched_sku if available, fallback to constructed key
+      
+      if (!processedData[modelKey].capacities[capacity].skus[skuKey]) {
+        processedData[modelKey].capacities[capacity].skus[skuKey] = {
+          sku: skuKey,
           brand: row.brand,
-          model: row.model,
-          capacity: row.capacity,
-          color: row.color,
+          model: normalizedModel,
+          capacity: capacity,
+          color: color,
           total_devices: 0,
-          carriers: []
+          working_devices: 0,
+          failed_devices: 0,
+          carriers: [],
+          device_details: [] // Store individual device info
         };
       }
-
-      // Add carrier details
-      breakdownData[modelKey].capacities[capacity].skus[skuKey].carriers.push({
-        carrier: row.carrier,
-        device_count: parseInt(row.device_count),
-        device_notes: 'Carrier UNLOCKED', // Simplified for now
-        defective_count: 0, // Simplified for now
-        defective_rate: 0 // Simplified for now
-      });
-
-      // Update SKU totals
-      breakdownData[modelKey].capacities[capacity].skus[skuKey].total_devices += parseInt(row.device_count);
+      
+      // Determine device status
+      const isWorking = row.working === 'YES' || row.working === 'PASS' || 
+        (!row.working || row.working.toLowerCase() !== 'no');
+      
+      // Store device details for differences view
+      const deviceInfo = {
+        imei: row.imei,
+        original_model: row.model,
+        carrier: carrier,
+        device_notes: row.working || '',
+        status: isWorking ? 'Working' : 'Failed',
+        differences: [] // Will be populated when comparing
+      };
+      
+      processedData[modelKey].capacities[capacity].skus[skuKey].device_details.push(deviceInfo);
+      
+      // Update counts
+      processedData[modelKey].capacities[capacity].skus[skuKey].total_devices++;
+      if (isWorking) {
+        processedData[modelKey].capacities[capacity].skus[skuKey].working_devices++;
+      } else {
+        processedData[modelKey].capacities[capacity].skus[skuKey].failed_devices++;
+      }
     });
+    
+    // Convert Sets to Arrays for JSON serialization
+    Object.keys(processedData).forEach(modelKey => {
+      processedData[modelKey].original_models = Array.from(processedData[modelKey].original_models);
+    });
+    
+    const breakdownData = processedData;
 
     // Calculate rates for each capacity
     Object.values(breakdownData).forEach((model: any) => {
@@ -526,6 +594,171 @@ router.get('/all-capacity-breakdown', async (req, res): Promise<void> => {
   } catch (error) {
     logger.error('Error fetching all capacity breakdown:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch capacity breakdown data' });
+  }
+});
+
+// Manual refresh endpoint for inventory data
+router.post('/refresh-inventory', async (req, res): Promise<void> => {
+  try {
+    logger.info('Manual inventory refresh requested');
+    
+    const refreshResult = await inventoryProcessor.refreshInventoryData();
+    
+    if (refreshResult.success) {
+      res.json({
+        success: true,
+        message: refreshResult.message,
+        processedCount: refreshResult.processedCount,
+        lastRefreshTime: inventoryProcessor.getLastRefreshTime()
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: refreshResult.message
+      });
+    }
+
+  } catch (error) {
+    logger.error('Error refreshing inventory:', error);
+    res.status(500).json({ success: false, error: 'Failed to refresh inventory data' });
+  }
+});
+
+// Get inventory refresh status
+router.get('/inventory-status', async (req, res): Promise<void> => {
+  try {
+    const lastRefreshTime = inventoryProcessor.getLastRefreshTime();
+    const isProcessing = inventoryProcessor.isCurrentlyProcessing();
+    const needsRefresh = await inventoryProcessor.needsRefresh(30);
+
+    res.json({
+      success: true,
+      data: {
+        lastRefreshTime,
+        isProcessing,
+        needsRefresh,
+        status: isProcessing ? 'processing' : needsRefresh ? 'stale' : 'fresh'
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error getting inventory status:', error);
+    res.status(500).json({ success: false, error: 'Failed to get inventory status' });
+  }
+});
+
+// Get device differences for a specific SKU
+router.get('/sku-differences/:sku', async (req, res): Promise<void> => {
+  try {
+    const { sku } = req.params;
+    
+    const query = `
+      SELECT 
+        p.imei,
+        i.model as original_model,
+        i.capacity,
+        i.color,
+        i.carrier,
+        i.working as device_notes,
+        COALESCE(smr.matched_sku, CONCAT(UPPER(p.brand), '-', UPPER(i.model), '-', COALESCE(i.capacity, ''), '-', COALESCE(i.color, ''))) as sku_matched,
+        CASE 
+          WHEN i.working = 'YES' OR i.working = 'PASS'
+          THEN 'Working'
+          ELSE 'Failed'
+        END as status
+      FROM product p
+      INNER JOIN item i ON p.imei = i.imei
+      LEFT JOIN sku_matching_results smr ON p.imei = smr.imei
+      WHERE COALESCE(smr.matched_sku, CONCAT(UPPER(p.brand), '-', UPPER(i.model), '-', COALESCE(i.capacity, ''), '-', COALESCE(i.color, ''))) = $1
+      ORDER BY p.imei
+    `;
+    
+    const result = await dbService.query(query, [sku]);
+    
+    // Analyze differences between devices
+    const devices = result.rows;
+    const differences = [];
+    
+    if (devices.length > 1) {
+      // Compare each device with others to find differences
+      for (let i = 0; i < devices.length; i++) {
+        for (let j = i + 1; j < devices.length; j++) {
+          const device1 = devices[i];
+          const device2 = devices[j];
+          const deviceDifferences = [];
+          
+          // Compare each field
+          if (device1.original_model !== device2.original_model) {
+            deviceDifferences.push({
+              field: 'Model',
+              device1: device1.original_model,
+              device2: device2.original_model
+            });
+          }
+          
+          if (device1.capacity !== device2.capacity) {
+            deviceDifferences.push({
+              field: 'Capacity',
+              device1: device1.capacity,
+              device2: device2.capacity
+            });
+          }
+          
+          if (device1.color !== device2.color) {
+            deviceDifferences.push({
+              field: 'Color',
+              device1: device1.color,
+              device2: device2.color
+            });
+          }
+          
+          if (device1.carrier !== device2.carrier) {
+            deviceDifferences.push({
+              field: 'Carrier',
+              device1: device1.carrier,
+              device2: device2.carrier
+            });
+          }
+          
+          if (device1.status !== device2.status) {
+            deviceDifferences.push({
+              field: 'Status',
+              device1: device1.status,
+              device2: device2.status
+            });
+          }
+          
+          if (deviceDifferences.length > 0) {
+            differences.push({
+              device1_imei: device1.imei,
+              device2_imei: device2.imei,
+              differences: deviceDifferences
+            });
+          }
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        sku: sku,
+        device_count: devices.length,
+        devices: devices,
+        differences: differences,
+        summary: {
+          working_count: devices.filter((d: any) => d.status === 'Working').length,
+          failed_count: devices.filter((d: any) => d.status === 'Failed').length,
+          unique_models: [...new Set(devices.map((d: any) => d.original_model))],
+          unique_carriers: [...new Set(devices.map((d: any) => d.carrier))],
+          unique_colors: [...new Set(devices.map((d: any) => d.color))]
+        }
+      }
+    });
+    
+  } catch (error) {
+    logger.error('Error fetching SKU differences:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch SKU differences' });
   }
 });
 

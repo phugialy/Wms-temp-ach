@@ -27,3 +27,5 @@ UPDATE sku_device_type_reference
 SET sku_patterns = ARRAY['IP-', 'S25', 'S24', 'S23', 'S22', 'S21', 'S20', 'S10', 'NOTE', 'PIXEL', 'ZFLIP', 'FOLD']
 WHERE device_type = 'PHONE';
 
+
+

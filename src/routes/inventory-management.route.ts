@@ -18,7 +18,7 @@ router.get('/inventory-data', async (req, res): Promise<void> => {
       params.push('undefined');
       paramIndex++;
     } else if (filter === 'issues') {
-      whereClause += ' AND requires_attention = true';
+      whereClause += ' AND (sku_match_status = \'undefined\' OR sku_match_score < 70)';
     } else if (filter === 'matched') {
       whereClause += ' AND sku_match_status = $' + paramIndex;
       params.push('matched');
@@ -26,7 +26,7 @@ router.get('/inventory-data', async (req, res): Promise<void> => {
     }
 
     if (status) {
-      whereClause += ' AND sku_match_status = $' + paramIndex;
+      whereClause += ' AND match_status = $' + paramIndex;
       params.push(status);
       paramIndex++;
     }
@@ -107,13 +107,19 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
         capacity, 
         color, 
         carrier,
-        working, 
+        working as working_status,
         location,
-        sku_match_status, 
-        sku_match_score, 
-        sku_match_notes, 
+        sku_match_status as match_status, 
+        sku_match_score as match_score, 
+        sku_match_notes as match_notes, 
         requires_attention,
-        data_completeness, 
+        CASE 
+          WHEN model IS NOT NULL AND capacity IS NOT NULL AND color IS NOT NULL 
+          THEN 'complete'
+          WHEN model IS NOT NULL AND capacity IS NOT NULL 
+          THEN 'partial'
+          ELSE 'incomplete'
+        END as data_completeness, 
         device_notes, 
         match_processed_at,
         
@@ -125,18 +131,15 @@ router.get('/sku-details/:sku', async (req, res): Promise<void> => {
         END as carrier_with_notes,
         
         -- Working status with more detail
-        CASE 
-          WHEN working = 'YES' THEN 'Working'
-          WHEN working = 'NO' THEN 'Not Working'
-          WHEN working = 'PASS' THEN 'Passed'
-          WHEN working = 'FAILED' THEN 'Failed'
-          WHEN working = 'PENDING' THEN 'Pending'
-          ELSE COALESCE(working, 'Unknown')
+        CASE
+          WHEN device_notes IS NULL OR device_notes NOT ILIKE '%FAIL%' THEN 'Working'
+          WHEN device_notes ILIKE '%FAIL%' THEN 'Failed'
+          ELSE 'Unknown'
         END as working_status_display
         
       FROM sku_matching_view 
       WHERE matched_sku = $1
-      ORDER BY 
+      ORDER BY
         sku_match_status DESC,
         sku_match_score DESC,
         imei

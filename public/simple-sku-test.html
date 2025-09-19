@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple SKU Matching Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .test-form {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .result {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .result.success {
+            background: #d5f4e6;
+            border: 2px solid #27ae60;
+            color: #155724;
+        }
+        
+        .result.error {
+            background: #fadbd8;
+            border: 2px solid #e74c3c;
+            color: #721c24;
+        }
+        
+        .result.warning {
+            background: #fef9e7;
+            border: 2px solid #f39c12;
+            color: #856404;
+        }
+        
+        .result h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .result-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .result-item.match {
+            border-left-color: #27ae60;
+        }
+        
+        .result-item.no-match {
+            border-left-color: #e74c3c;
+        }
+        
+        .result-item h4 {
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+        
+        .result-item .status {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+        
+        .result-item .status.match {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .result-item .status.no-match {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .result-item .details {
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .quick-tests {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .quick-tests h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        
+        .quick-test-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .quick-btn {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s ease;
+        }
+        
+        .quick-btn:hover {
+            background: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 Simple SKU Matching Test</h1>
+            <p>Test device characteristics against expected SKU</p>
+        </div>
+        
+        <div class="content">
+            <!-- Test Form -->
+            <div class="test-form">
+                <h3>📝 Device Input</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="brand">Brand:</label>
+                        <select id="brand">
+                            <option value="Google">Google</option>
+                            <option value="Samsung">Samsung</option>
+                            <option value="Apple">Apple</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="model">Model:</label>
+                        <input type="text" id="model" placeholder="e.g., Pixel 4, Galaxy S23, iPhone 14">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="capacity">Capacity:</label>
+                        <input type="text" id="capacity" placeholder="e.g., 128GB, 256GB">
+                    </div>
+                    <div class="form-group">
+                        <label for="color">Color:</label>
+                        <input type="text" id="color" placeholder="e.g., Black, White, Blue">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="carrier">Carrier:</label>
+                    <select id="carrier">
+                        <option value="Unlocked">Unlocked</option>
+                        <option value="Verizon">Verizon</option>
+                        <option value="T-Mobile">T-Mobile</option>
+                        <option value="AT&T">AT&T</option>
+                        <option value="Sprint">Sprint</option>
+                    </select>
+                </div>
+                
+                <h3>🎯 Expected SKU</h3>
+                <div class="form-group">
+                    <label for="expectedSku">Expected SKU Code:</label>
+                    <input type="text" id="expectedSku" placeholder="e.g., PIXEL-4-128-BLK-UNLOCKED">
+                </div>
+                
+                <button class="btn" onclick="runTest()">🚀 Test SKU Matching</button>
+            </div>
+            
+            <!-- Quick Tests -->
+            <div class="quick-tests">
+                <h3>⚡ Quick Tests</h3>
+                <div class="quick-test-buttons">
+                    <button class="quick-btn" onclick="loadQuickTest('pixel8')">Pixel 8 Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel9')">Pixel 9 Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel8Pro')">Pixel 8 Pro Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel9Pro')">Pixel 9 Pro Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel8a')">Pixel 8a Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel9a')">Pixel 9a Test</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel8Vs9')">❌ Pixel 8 vs 9 (Should Fail)</button>
+                    <button class="quick-btn" onclick="loadQuickTest('pixel9Vs8')">❌ Pixel 9 vs 8 (Should Fail)</button>
+                </div>
+            </div>
+            
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Testing SKU matching...</p>
+            </div>
+            
+            <!-- Results -->
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        // Quick test data - Using ACTUAL SKUs from your database
+        const quickTests = {
+            pixel8: {
+                brand: "Google",
+                model: "Pixel 8",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-8-128-BLK"
+            },
+            pixel9: {
+                brand: "Google",
+                model: "Pixel 9",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-9-128-BLK"
+            },
+            pixel8Pro: {
+                brand: "Google",
+                model: "Pixel 8 Pro",
+                capacity: "256GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-8-PRO-256-BLK"
+            },
+            pixel9Pro: {
+                brand: "Google",
+                model: "Pixel 9 Pro",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-9-PRO-128-BLK-NEW"
+            },
+            pixel8a: {
+                brand: "Google",
+                model: "Pixel 8 a",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-8A-128-BLK"
+            },
+            pixel9a: {
+                brand: "Google",
+                model: "Pixel 9 a",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-9A-128-OBSIDIAN/BLACK"
+            },
+            // Cross-model contamination tests
+            pixel8Vs9: {
+                brand: "Google",
+                model: "Pixel 8",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-9-128-BLK",
+                shouldFail: true
+            },
+            pixel9Vs8: {
+                brand: "Google",
+                model: "Pixel 9",
+                capacity: "128GB",
+                color: "Black",
+                carrier: "Unlocked",
+                expectedSku: "PIXEL-8-128-BLK",
+                shouldFail: true
+            }
+        };
+
+        function loadQuickTest(testName) {
+            const test = quickTests[testName];
+            if (test) {
+                document.getElementById('brand').value = test.brand;
+                document.getElementById('model').value = test.model;
+                document.getElementById('capacity').value = test.capacity;
+                document.getElementById('color').value = test.color;
+                document.getElementById('carrier').value = test.carrier;
+                document.getElementById('expectedSku').value = test.expectedSku;
+            }
+        }
+
+        async function runTest() {
+            const brand = document.getElementById('brand').value;
+            const model = document.getElementById('model').value;
+            const capacity = document.getElementById('capacity').value;
+            const color = document.getElementById('color').value;
+            const carrier = document.getElementById('carrier').value;
+            const expectedSku = document.getElementById('expectedSku').value;
+            
+            if (!brand || !model || !capacity || !color || !carrier || !expectedSku) {
+                showResult('error', 'Please fill in all fields');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                const response = await fetch('/api/generic-model-test/test-device', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei: 'TEST_' + Date.now(),
+                        brand: brand,
+                        model: model,
+                        capacity: capacity,
+                        color: color,
+                        carrier: carrier,
+                        device_notes: 'Simple SKU test'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'API request failed');
+                }
+                
+                const matches = data.matches || [];
+                const hasExpectedSku = matches.some(match => 
+                    match.sku_code === expectedSku
+                );
+                
+                displayTestResult({
+                    input: { brand, model, capacity, color, carrier },
+                    expectedSku,
+                    actualMatches: matches,
+                    hasExpectedSku,
+                    totalMatches: matches.length,
+                    highestScore: matches.length > 0 ? matches[0].match_score : 0
+                });
+                
+            } catch (error) {
+                showResult('error', 'Test failed: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayTestResult(result) {
+            const resultDiv = document.getElementById('result');
+            
+            let resultClass = 'warning';
+            let statusText = 'PARTIAL MATCH';
+            let statusClass = 'no-match';
+            
+            if (result.hasExpectedSku) {
+                resultClass = 'success';
+                statusText = 'EXACT MATCH';
+                statusClass = 'match';
+            } else if (result.totalMatches === 0) {
+                resultClass = 'error';
+                statusText = 'NO MATCH';
+                statusClass = 'no-match';
+            }
+            
+            resultDiv.innerHTML = `
+                <h3>🧪 Test Result: ${statusText}</h3>
+                
+                <div class="result-item ${result.hasExpectedSku ? 'match' : 'no-match'}">
+                    <h4>Expected vs Actual</h4>
+                    <span class="status ${statusClass}">${statusText}</span>
+                    <div class="details">
+                        <strong>Expected SKU:</strong> ${result.expectedSku}<br>
+                        <strong>Found Matches:</strong> ${result.totalMatches}<br>
+                        <strong>Highest Score:</strong> ${result.highestScore}%<br>
+                        ${result.hasExpectedSku ? '<strong>✅ Expected SKU Found!</strong>' : '<strong>❌ Expected SKU Not Found</strong>'}
+                    </div>
+                </div>
+                
+                <div class="result-item">
+                    <h4>Input Device</h4>
+                    <div class="details">
+                        <strong>Brand:</strong> ${result.input.brand}<br>
+                        <strong>Model:</strong> ${result.input.model}<br>
+                        <strong>Capacity:</strong> ${result.input.capacity}<br>
+                        <strong>Color:</strong> ${result.input.color}<br>
+                        <strong>Carrier:</strong> ${result.input.carrier}
+                    </div>
+                </div>
+                
+                ${result.totalMatches > 0 ? `
+                <div class="result-item">
+                    <h4>All Matches Found</h4>
+                    <div class="details">
+                        ${result.actualMatches.map((match, index) => `
+                            ${index + 1}. <strong>${match.sku_code}</strong> (${match.match_score}%)<br>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+            `;
+            
+            resultDiv.className = `result ${resultClass}`;
+            resultDiv.style.display = 'block';
+        }
+
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<h3>❌ Error</h3><p>${message}</p>`;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

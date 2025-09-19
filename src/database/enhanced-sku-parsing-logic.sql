@@ -316,3 +316,5 @@ WHERE carrier_code = 'VERIZON';
 -- SELECT * FROM parse_sku_complete('S23-ULTRA-256-BLK-TMO');    -- Should return: SAMSUNG, Galaxy S23 Ultra, 256GB, BLACK, T-MOBILE, '', PHONE
 -- SELECT * FROM parse_sku_complete('S23-ULTRA-256-BLK-VG');     -- Should return: SAMSUNG, Galaxy S23 Ultra, 256GB, BLACK, '', Very Good, PHONE
 -- SELECT * FROM parse_sku_complete('S23-ULTRA-256-BLK-TMO-VG'); -- Should return: SAMSUNG, Galaxy S23 Ultra, 256GB, BLACK, T-MOBILE, Very Good, PHONE
+
+

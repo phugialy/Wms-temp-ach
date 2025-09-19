@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager Workflow - Bulk Operations</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .workflow-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group input:disabled {
+            background-color: #f5f5f5;
+            color: #999;
+            cursor: not-allowed;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .execution-history {
+            grid-column: 1 / -1;
+        }
+
+        .execution-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .execution-table th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .execution-table td {
+            padding: 15px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: middle;
+        }
+
+        .execution-table tr:hover {
+            background: #f8f9ff;
+        }
+
+        .execution-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-running {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-cancelled {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .metric {
+            display: inline-block;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-right: 8px;
+            margin-bottom: 4px;
+        }
+
+        .metric-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .metric-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .metric-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .sku-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .sku-group-header {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .sku-group-metrics {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sku-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .sku-item {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 0.9rem;
+        }
+
+        .sku-code {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 4px;
+        }
+
+        .sku-details {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .error {
+            background: #dc3545;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .workflow-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .modal-content {
+                margin: 2% auto;
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Manager Workflow</h1>
+            <p>Automated Bulk Operations Scheduling & Monitoring</p>
+        </div>
+
+        <div class="workflow-grid">
+            <!-- Schedule New Operation -->
+            <div class="card">
+                <h2>Schedule New Operation</h2>
+                <form id="scheduleForm">
+                    <div class="form-group">
+                        <label for="stationId">Station ID</label>
+                        <select id="stationId" required>
+                            <option value="">Select Station</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="locationInspection">Location/Inspection</label>
+                        <select id="locationInspection" required>
+                            <option value="">Select Location</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="scheduleType">Schedule Type</label>
+                        <select id="scheduleType" required onchange="toggleScheduleOptions()">
+                            <option value="once">One Time</option>
+                            <option value="daily">Daily</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row" id="dateRow">
+                        <div class="form-group">
+                            <label for="scheduleDate">Date</label>
+                            <input type="date" id="scheduleDate" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="scheduleTime">Time</label>
+                            <select id="scheduleTime" required>
+                                <option value="09:00">9:00 AM</option>
+                                <option value="10:00">10:00 AM</option>
+                                <option value="11:00">11:00 AM</option>
+                                <option value="12:00">12:00 PM</option>
+                                <option value="13:00">1:00 PM</option>
+                                <option value="14:00">2:00 PM</option>
+                                <option value="15:00">3:00 PM</option>
+                                <option value="16:00">4:00 PM</option>
+                                <option value="17:00">5:00 PM</option>
+                                <option value="18:00">6:00 PM</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" id="dailyRow" style="display: none;">
+                        <div class="form-group">
+                            <label for="startDate">Start Date</label>
+                            <input type="date" id="startDate">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="endDate">End Date (Optional)</label>
+                            <input type="date" id="endDate">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" id="notes" placeholder="Optional notes about this operation">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Schedule Operation</button>
+                </form>
+            </div>
+
+            <!-- Active Schedules -->
+            <div class="card">
+                <h2>Active Schedules</h2>
+                <div id="activeSchedules">
+                    <div class="loading">Loading schedules...</div>
+                </div>
+            </div>
+
+            <!-- Execution History -->
+            <div class="card execution-history">
+                <h2>Execution History</h2>
+                <div id="executionHistory">
+                    <div class="loading">Loading execution history...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Results Modal -->
+    <div id="skuResultsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">SKU Results</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div id="modalBody">
+                <!-- Modal content will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ManagerWorkflow {
+            constructor() {
+                this.initializeEventListeners();
+                this.loadInitialData();
+                this.setDefaultDate();
+            }
+
+            initializeEventListeners() {
+                // Form submission
+                document.getElementById('scheduleForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.scheduleOperation();
+                });
+
+                // Modal event listeners
+                const modal = document.getElementById('skuResultsModal');
+                const closeBtn = document.querySelector('.close');
+                
+                closeBtn.onclick = () => modal.style.display = 'none';
+                window.onclick = (event) => {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                };
+            }
+
+            setDefaultDate() {
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('scheduleDate').value = today;
+                document.getElementById('startDate').value = today;
+            }
+
+            toggleScheduleOptions() {
+                const scheduleType = document.getElementById('scheduleType').value;
+                const dateRow = document.getElementById('dateRow');
+                const dailyRow = document.getElementById('dailyRow');
+                
+                if (scheduleType === 'daily') {
+                    dateRow.style.display = 'none';
+                    dailyRow.style.display = 'grid';
+                } else {
+                    dateRow.style.display = 'grid';
+                    dailyRow.style.display = 'none';
+                }
+            }
+
+            async loadInitialData() {
+                await Promise.all([
+                    this.loadStations(),
+                    this.loadLocations(),
+                    this.loadActiveSchedules(),
+                    this.loadExecutionHistory()
+                ]);
+            }
+
+            async loadStations() {
+                try {
+                    const response = await fetch('/api/bulk-operations/stations');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        const select = document.getElementById('stationId');
+                        select.innerHTML = '<option value="">Select Station</option>';
+                        
+                        result.data.forEach(station => {
+                            const option = document.createElement('option');
+                            option.value = station.id;
+                            option.textContent = station.name;
+                            select.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading stations:', error);
+                }
+            }
+
+            async loadLocations() {
+                try {
+                    const response = await fetch('/api/bulk-operations/locations');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        const select = document.getElementById('locationInspection');
+                        select.innerHTML = '<option value="">Select Location</option>';
+                        
+                        result.data.forEach(location => {
+                            const option = document.createElement('option');
+                            option.value = location.id;
+                            option.textContent = location.name;
+                            select.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading locations:', error);
+                }
+            }
+
+            async scheduleOperation() {
+                const scheduleType = document.getElementById('scheduleType').value;
+                let operations = [];
+
+                if (scheduleType === 'once') {
+                    // One-time scheduling
+                    operations.push({
+                        station_id: document.getElementById('stationId').value,
+                        location_inspection: document.getElementById('locationInspection').value,
+                        schedule_date: document.getElementById('scheduleDate').value,
+                        schedule_time: document.getElementById('scheduleTime').value,
+                        schedule_type: 'once',
+                        notes: document.getElementById('notes').value,
+                        created_by: 'Manager'
+                    });
+                } else {
+                    // Daily scheduling
+                    const startDate = new Date(document.getElementById('startDate').value);
+                    const endDate = document.getElementById('endDate').value ? 
+                        new Date(document.getElementById('endDate').value) : 
+                        new Date(startDate.getTime() + (30 * 24 * 60 * 60 * 1000)); // Default 30 days
+                    const scheduleTime = document.getElementById('scheduleTime').value;
+
+                    // Generate daily operations
+                    const currentDate = new Date(startDate);
+                    while (currentDate <= endDate) {
+                        // Skip weekends if needed (optional)
+                        if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
+                            operations.push({
+                                station_id: document.getElementById('stationId').value,
+                                location_inspection: document.getElementById('locationInspection').value,
+                                schedule_date: currentDate.toISOString().split('T')[0],
+                                schedule_time: scheduleTime,
+                                schedule_type: 'daily',
+                                notes: document.getElementById('notes').value + ' (Daily)',
+                                created_by: 'Manager'
+                            });
+                        }
+                        currentDate.setDate(currentDate.getDate() + 1);
+                    }
+                }
+
+                if (operations.length === 0) {
+                    alert('Please select valid dates for scheduling');
+                    return;
+                }
+
+                try {
+                    // Schedule all operations
+                    const promises = operations.map(op => 
+                        fetch('/api/bulk-operations/scheduled', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(op)
+                        })
+                    );
+
+                    const results = await Promise.all(promises);
+                    const successCount = results.filter(r => r.ok).length;
+
+                    if (successCount === operations.length) {
+                        alert(`Successfully scheduled ${successCount} operation(s)!`);
+                        document.getElementById('scheduleForm').reset();
+                        this.setDefaultDate();
+                        this.loadActiveSchedules();
+                    } else {
+                        alert(`Scheduled ${successCount} out of ${operations.length} operations. Some may have failed.`);
+                        this.loadActiveSchedules();
+                    }
+                } catch (error) {
+                    console.error('Error scheduling operations:', error);
+                    alert('Failed to schedule operations: ' + error.message);
+                }
+            }
+
+            async loadActiveSchedules() {
+                try {
+                    const response = await fetch('/api/bulk-operations/scheduled');
+                    const result = await response.json();
+                    
+                    const container = document.getElementById('activeSchedules');
+                    
+                    if (result.success && result.data.length > 0) {
+                        const schedulesHtml = result.data.map(schedule => `
+                            <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong>${schedule.station_id}</strong>
+                                    <span class="status-badge ${schedule.is_active ? 'status-completed' : 'status-cancelled'}">
+                                        ${schedule.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </div>
+                                <div style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
+                                    ${schedule.location_inspection} • ${schedule.schedule_date} at ${schedule.schedule_time}
+                                    ${schedule.schedule_type ? ` • <span style="color: #007bff; font-weight: 600;">${schedule.schedule_type.toUpperCase()}</span>` : ''}
+                                    ${schedule.is_modified ? ' • <span style="color: #ffc107; font-weight: 600;">(Modified)</span>' : ''}
+                                </div>
+                                ${schedule.notes ? `<div style="color: #6c757d; font-size: 0.8rem; margin-bottom: 10px;">${schedule.notes}</div>` : ''}
+                                <div style="display: flex; gap: 10px;">
+                                    <button class="btn btn-success" onclick="workflow.executeOperation(${schedule.id})" style="padding: 6px 12px; font-size: 0.8rem;">
+                                        Execute Now
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="workflow.editSchedule(${schedule.id})" style="padding: 6px 12px; font-size: 0.8rem;">
+                                        Edit
+                                    </button>
+                                    <button class="btn btn-danger" onclick="workflow.deleteSchedule(${schedule.id})" style="padding: 6px 12px; font-size: 0.8rem;">
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        container.innerHTML = schedulesHtml;
+                    } else {
+                        container.innerHTML = '<div class="empty-state">No active schedules found.</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading active schedules:', error);
+                    document.getElementById('activeSchedules').innerHTML = '<div class="error">Failed to load schedules</div>';
+                }
+            }
+
+            async loadExecutionHistory() {
+                try {
+                    const response = await fetch('/api/bulk-operations/executions');
+                    const result = await response.json();
+                    
+                    const container = document.getElementById('executionHistory');
+                    
+                    if (result.success && result.data.length > 0) {
+                        const tableHtml = `
+                            <table class="execution-table">
+                                <thead>
+                                    <tr>
+                                        <th>Station</th>
+                                        <th>Location</th>
+                                        <th>Started</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                        <th>Results</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${result.data.map(execution => `
+                                        <tr>
+                                            <td><strong>${execution.station_id || 'N/A'}</strong></td>
+                                            <td>${execution.location_inspection || 'N/A'}</td>
+                                            <td>${new Date(execution.execution_started_at).toLocaleString()}</td>
+                                            <td>${execution.execution_duration_seconds ? `${execution.execution_duration_seconds}s` : 'Running...'}</td>
+                                            <td>
+                                                <span class="status-badge status-${execution.execution_status.toLowerCase()}">
+                                                    ${execution.execution_status}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                ${execution.total_devices_processed ? `
+                                                    <div>
+                                                        <span class="metric metric-info">${execution.total_devices_processed} Total</span>
+                                                        <span class="metric metric-success">${execution.devices_passed || 0} Pass</span>
+                                                        <span class="metric metric-danger">${execution.devices_failed || 0} Fail</span>
+                                                        <span class="metric metric-info">${execution.skus_added || 0} SKUs</span>
+                                                    </div>
+                                                ` : 'No data'}
+                                            </td>
+                                            <td>
+                                                ${execution.execution_status === 'COMPLETED' && execution.skus_added > 0 ? `
+                                                    <button class="btn btn-primary" onclick="workflow.viewSkuResults(${execution.id})" style="padding: 6px 12px; font-size: 0.8rem;">
+                                                        View SKUs
+                                                    </button>
+                                                ` : ''}
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                        
+                        container.innerHTML = tableHtml;
+                    } else {
+                        container.innerHTML = '<div class="empty-state">No execution history found.</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading execution history:', error);
+                    document.getElementById('executionHistory').innerHTML = '<div class="error">Failed to load execution history</div>';
+                }
+            }
+
+            async executeOperation(scheduleId) {
+                if (!confirm('Are you sure you want to execute this operation now?')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/bulk-operations/execute/${scheduleId}`, {
+                        method: 'POST'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert('Operation started successfully! Check execution history for progress.');
+                        this.loadExecutionHistory();
+                    } else {
+                        alert('Failed to start operation: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error executing operation:', error);
+                    alert('Failed to execute operation: ' + error.message);
+                }
+            }
+
+            async viewSkuResults(executionId) {
+                try {
+                    const response = await fetch(`/api/bulk-operations/executions/${executionId}/results`);
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        const modal = document.getElementById('skuResultsModal');
+                        const modalTitle = document.getElementById('modalTitle');
+                        const modalBody = document.getElementById('modalBody');
+                        
+                        modalTitle.textContent = `SKU Results - Execution ${executionId}`;
+                        
+                        const resultsHtml = result.data.results.map(group => `
+                            <div class="sku-group">
+                                <div class="sku-group-header">
+                                    ${group.brand} ${group.model}
+                                </div>
+                                <div class="sku-group-metrics">
+                                    <span class="metric metric-info">${group.total_devices} Total</span>
+                                    <span class="metric metric-success">${group.total_working} Working</span>
+                                    <span class="metric metric-danger">${group.total_failed} Failed</span>
+                                    <span class="metric metric-info">${group.skus.length} SKUs</span>
+                                </div>
+                                <div class="sku-list">
+                                    ${group.skus.map(sku => `
+                                        <div class="sku-item">
+                                            <div class="sku-code">${sku.sku}</div>
+                                            <div class="sku-details">
+                                                ${sku.capacity} • ${sku.color} • ${sku.carrier}<br>
+                                                ${sku.device_count} devices (${sku.working_count} working, ${sku.failed_count} failed)
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        modalBody.innerHTML = resultsHtml || '<div class="empty-state">No SKU results found.</div>';
+                        modal.style.display = 'block';
+                    } else {
+                        alert('Failed to load SKU results: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error loading SKU results:', error);
+                    alert('Failed to load SKU results: ' + error.message);
+                }
+            }
+
+            editSchedule(scheduleId) {
+                // TODO: Implement edit functionality
+                alert('Edit functionality coming soon!');
+            }
+
+            async deleteSchedule(scheduleId) {
+                if (!confirm('Are you sure you want to delete this schedule?')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/bulk-operations/scheduled/${scheduleId}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert('Schedule deleted successfully!');
+                        this.loadActiveSchedules();
+                    } else {
+                        alert('Failed to delete schedule: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error deleting schedule:', error);
+                    alert('Failed to delete schedule: ' + error.message);
+                }
+            }
+        }
+
+        // Global function for schedule type toggle
+        function toggleScheduleOptions() {
+            const scheduleType = document.getElementById('scheduleType').value;
+            const dateRow = document.getElementById('dateRow');
+            const dailyRow = document.getElementById('dailyRow');
+            
+            if (scheduleType === 'daily') {
+                dateRow.style.display = 'none';
+                dailyRow.style.display = 'grid';
+            } else {
+                dateRow.style.display = 'grid';
+                dailyRow.style.display = 'none';
+            }
+        }
+
+        // Initialize the workflow when the page loads
+        let workflow;
+        document.addEventListener('DOMContentLoaded', () => {
+            workflow = new ManagerWorkflow();
+        });
+    </script>
+</body>
+</html>

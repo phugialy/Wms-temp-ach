@@ -1,4 +1,4 @@
-import { Client } from 'pg';
+import { Pool, PoolClient } from 'pg';
 const { CompleteSkuMatchingService } = require('./CompleteSkuMatchingService');
 
 /**
@@ -11,13 +11,20 @@ const { CompleteSkuMatchingService } = require('./CompleteSkuMatchingService');
  * - INSPECTOR: Update device characteristics and notes
  */
 export class OperatorService {
-    private client: Client;
+    private pool: Pool;
+    private client: PoolClient | null = null;
     private availableLocations: string[];
     private postfixOptions: Record<string, { grade: string; condition: string; postfix: string }>;
 
     constructor() {
-        this.client = new Client({
-            connectionString: process.env['DIRECT_URL']
+        this.pool = new Pool({
+            connectionString: process.env['DIRECT_URL'],
+            ssl: { rejectUnauthorized: false },
+            max: 5,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000,
         });
         
         // Available locations from your system
@@ -49,7 +56,7 @@ export class OperatorService {
      */
     async initialize(): Promise<boolean> {
         try {
-            await this.client.connect();
+            this.client = await this.pool.connect();
             console.log('✅ OperatorService connected to database');
             return true;
         } catch (error) {
@@ -59,9 +66,19 @@ export class OperatorService {
     }
 
     /**
+     * Ensure database connection
+     */
+    private async ensureConnection(): Promise<void> {
+        if (!this.client) {
+            this.client = await this.pool.connect();
+        }
+    }
+
+    /**
      * Get device information by IMEI
      */
     async getDeviceInfo(imei: string): Promise<any> {
+        await this.ensureConnection();
         const query = `
             SELECT 
                 p.imei,
@@ -84,7 +101,7 @@ export class OperatorService {
             WHERE p.imei = $1
         `;
         
-        const result = await this.client.query(query, [imei]);
+        const result = await this.client!.query(query, [imei]);
         return result.rows[0] || null;
     }
 
@@ -152,13 +169,13 @@ export class OperatorService {
             const newSku = oldSku + postfixConfig.postfix;
             
             // Update SKU in product table
-            await this.client.query(
+            await this.client!.query(
                 'UPDATE product SET sku = $1, updated_at = NOW() WHERE imei = $2',
                 [newSku, imei]
             );
             
             // Update SKU matching results
-            await this.client.query(`
+            await this.client!.query(`
                 UPDATE sku_matching_results 
                 SET matched_sku = $1, match_notes = $2, updated_at = NOW()
                 WHERE imei = $3
@@ -214,7 +231,7 @@ export class OperatorService {
                 const currentNotes = device.device_notes || '';
                 const updatedNotes = currentNotes ? `${currentNotes}; REPAIR: ${repairNotes}` : `REPAIR: ${repairNotes}`;
                 
-                await this.client.query(`
+                await this.client!.query(`
                     UPDATE device_test 
                     SET notes = $1
                     WHERE imei = $2
@@ -265,7 +282,7 @@ export class OperatorService {
                 const currentNotes = device.device_notes || '';
                 const updatedNotes = currentNotes ? `${currentNotes}; INSPECTION: ${updates.deviceNotes}` : `INSPECTION: ${updates.deviceNotes}`;
                 
-                await this.client.query(`
+                await this.client!.query(`
                     UPDATE device_test 
                     SET notes = $1
                     WHERE imei = $2
@@ -276,7 +293,7 @@ export class OperatorService {
             
             // Update working status
             if (updates.workingStatus) {
-                await this.client.query(`
+                await this.client!.query(`
                     UPDATE item 
                     SET working = $1, updated_at = NOW()
                     WHERE imei = $2
@@ -287,7 +304,7 @@ export class OperatorService {
             
             // Update battery health (if provided)
             if (updates.batteryHealth) {
-                await this.client.query(`
+                await this.client!.query(`
                     UPDATE item 
                     SET battery_health = $1, updated_at = NOW()
                     WHERE imei = $2
@@ -321,21 +338,21 @@ export class OperatorService {
      */
     private async updateDeviceLocation(imei: string, newLocation: string, operatorName: string, reason: string): Promise<void> {
         // Get current location first
-        const currentLocationResult = await this.client.query(`
+        const currentLocationResult = await this.client!.query(`
             SELECT location FROM item WHERE imei = $1
         `, [imei]);
         
         const currentLocation = currentLocationResult.rows[0]?.location || 'Unknown';
         
         // Update item table
-        await this.client.query(`
+        await this.client!.query(`
             UPDATE item 
             SET location = $1, updated_at = NOW()
             WHERE imei = $2
         `, [newLocation, imei]);
         
         // Add to movement history
-        await this.client.query(`
+        await this.client!.query(`
             INSERT INTO movement_history (imei, location_original, location_updated, movement_date)
             VALUES ($1, $2, $3, NOW())
         `, [imei, currentLocation, newLocation]);
@@ -345,7 +362,7 @@ export class OperatorService {
      * Log operator actions
      */
     private async logOperatorAction(imei: string, role: string, actionType: string, details: any): Promise<void> {
-        await this.client.query(`
+        await this.client!.query(`
             INSERT INTO operator_actions (imei, operator_role, action_type, new_value, created_at)
             VALUES ($1, $2, $3, $4, NOW())
         `, [imei, role, actionType, JSON.stringify(details)]);
@@ -381,7 +398,7 @@ export class OperatorService {
             LIMIT $1
         `;
         
-        const result = await this.client.query(query, [limit]);
+        const result = await this.client!.query(query, [limit]);
         return result.rows;
     }
 
@@ -391,8 +408,12 @@ export class OperatorService {
     async cleanup(): Promise<void> {
         try {
             if (this.client) {
-                await this.client.end();
-                console.log('🔌 OperatorService connection closed');
+                this.client.release();
+                this.client = null;
+            }
+            if (this.pool) {
+                await this.pool.end();
+                console.log('🔌 OperatorService connection pool closed');
             }
         } catch (error) {
             console.error('❌ Error during cleanup:', error);

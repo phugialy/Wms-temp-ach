@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg';
 import { logger } from '../utils/logger';
+import { DatabaseConnectionService } from './DatabaseConnectionService';
 
 interface ImeiData {
   imei: string;
@@ -29,13 +30,16 @@ interface CacheEntry {
 }
 
 export class HybridSkuMatchingService {
-  private pool!: Pool;
-  private client: PoolClient | null = null;
+  private dbService: DatabaseConnectionService;
   private cache: Map<string, CacheEntry> = new Map();
   private cacheTTL: number = 5 * 60 * 1000; // 5 minutes
   private maxCacheSize: number = 1000; // Maximum cache entries
   private memoryCleanupInterval: NodeJS.Timeout | null = null;
   private isInitialized: boolean = false;
+
+  constructor() {
+    this.dbService = DatabaseConnectionService.getInstance();
+  }
 
   async initialize(): Promise<void> {
     try {
@@ -44,17 +48,8 @@ export class HybridSkuMatchingService {
         return;
       }
 
-      this.pool = new Pool({
-        connectionString: process.env['DIRECT_URL'],
-        ssl: { rejectUnauthorized: false },
-        max: 5,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-        keepAlive: true,
-        keepAliveInitialDelayMillis: 10000,
-      });
-      
-      this.client = await this.pool.connect();
+      // Use the existing database connection service
+      // No need to create our own pool - use the singleton
       
       // Start memory cleanup interval
       this.startMemoryCleanup();
@@ -71,14 +66,6 @@ export class HybridSkuMatchingService {
     try {
       // Stop memory cleanup interval
       this.stopMemoryCleanup();
-      
-      if (this.client) {
-        this.client.release();
-        this.client = null;
-      }
-      if (this.pool) {
-        await this.pool.end();
-      }
       
       // Clear cache on cleanup
       this.cache.clear();
@@ -643,11 +630,22 @@ export class HybridSkuMatchingService {
   }
 
   private modelsMatch(inputModel: string, skuModel: string): boolean {
-    // Check if input model matches SKU model
-    const inputWords = inputModel.split(/\s+/);
-    const skuWords = skuModel.split('-');
+    // Normalize both model names to handle variations like "PIXEL 7 DUAL" vs "PIXEL 7"
+    const normalizedInput = this.normalizeModelName(inputModel);
+    const normalizedSku = this.normalizeModelName(skuModel);
     
-    // Enhanced model matching with fuzzy logic
+    // First check: STRICT model number validation on normalized names
+    if (!this.hasCompatibleModelNumbers(normalizedInput, normalizedSku)) {
+      return false; // Different model numbers = no match
+    }
+    
+    // Exact match on normalized names
+    if (normalizedInput === normalizedSku) return true;
+    
+    // Enhanced model matching with fuzzy logic (using normalized names)
+    const inputWords = normalizedInput.split(/\s+/);
+    const skuWords = normalizedSku.split('-');
+    
     return inputWords.some(word => skuWords.some(skuWord => {
       const inputLower = word.toLowerCase();
       const skuLower = skuWord.toLowerCase();
@@ -655,14 +653,16 @@ export class HybridSkuMatchingService {
       // Exact match
       if (inputLower === skuLower) return true;
       
-      // Contains match
+      // Contains match (but only if model numbers are compatible)
       if (inputLower.includes(skuLower) || skuLower.includes(inputLower)) return true;
       
-      // Model variation matching (e.g., PIXEL-6-PRO vs PIXEL-7-PRO)
+      // Model variation matching (e.g., PIXEL-6-PRO vs PIXEL-6PRO)
       if (this.isModelVariation(inputLower, skuLower)) return true;
       
-      // Fuzzy matching for similar models
-      if (this.calculateSimilarity(inputLower, skuLower) > 0.7) return true;
+      // Improved fuzzy matching - only for similar model numbers, not different ones
+      if (this.isSimilarModelNumber(inputLower, skuLower)) {
+        if (this.calculateSimilarity(inputLower, skuLower) > 0.8) return true;
+      }
       
       return false;
     }));
@@ -690,6 +690,49 @@ export class HybridSkuMatchingService {
     return false;
   }
 
+  private hasCompatibleModelNumbers(inputModel: string, skuModel: string): boolean {
+    // Extract model numbers from both strings
+    const inputNumbers = inputModel.match(/\d+/g) || [];
+    const skuNumbers = skuModel.match(/\d+/g) || [];
+    
+    // If both have numbers, they must be EXACTLY the same
+    if (inputNumbers.length > 0 && skuNumbers.length > 0) {
+      const inputNum = parseInt(inputNumbers[0]!);
+      const skuNum = parseInt(skuNumbers[0]!);
+      
+      // STRICT: Only allow matching for EXACT same model numbers
+      // This prevents Pixel 4 from matching Pixel 7, S23 from matching S24, etc.
+      return inputNum === skuNum;
+    }
+    
+    // If no numbers in either, they're compatible
+    if (inputNumbers.length === 0 && skuNumbers.length === 0) {
+      return true;
+    }
+    
+    // If one has numbers and the other doesn't, they're not compatible
+    return false;
+  }
+
+  private isSimilarModelNumber(inputModel: string, skuModel: string): boolean {
+    // Extract model numbers from both strings
+    const inputNumbers = inputModel.match(/\d+/g) || [];
+    const skuNumbers = skuModel.match(/\d+/g) || [];
+    
+    // If both have numbers, they must be EXACTLY the same
+    if (inputNumbers.length > 0 && skuNumbers.length > 0) {
+      const inputNum = parseInt(inputNumbers[0]!);
+      const skuNum = parseInt(skuNumbers[0]!);
+      
+      // STRICT: Only allow similarity for EXACT same model numbers
+      // This prevents Pixel 4 from matching Pixel 7, S23 from matching S24, etc.
+      return inputNum === skuNum;
+    }
+    
+    // If no numbers, allow similarity check for non-numeric models
+    return inputNumbers.length === 0 && skuNumbers.length === 0;
+  }
+
   private isNumberDifference(str1: string, str2: string): boolean {
     const num1 = parseInt(str1);
     const num2 = parseInt(str2);
@@ -703,13 +746,26 @@ export class HybridSkuMatchingService {
   }
 
   private calculateSimilarity(str1: string, str2: string): number {
-    // Simple similarity calculation based on common characters
+    // Improved similarity calculation that's more strict about model numbers
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
     
     if (longer.length === 0) return 1.0;
     
-    // Simple character-based similarity
+    // Extract numbers from both strings
+    const numbers1 = str1.match(/\d+/g) || [];
+    const numbers2 = str2.match(/\d+/g) || [];
+    
+    // If both have numbers, they must be the same for high similarity
+    if (numbers1.length > 0 && numbers2.length > 0) {
+      const num1 = parseInt(numbers1[0]!);
+      const num2 = parseInt(numbers2[0]!);
+      if (num1 !== num2) {
+        return 0; // Different model numbers = no similarity
+      }
+    }
+    
+    // Simple character-based similarity for non-numeric parts
     let matches = 0;
     for (let i = 0; i < shorter.length; i++) {
       if (shorter[i] && longer.includes(shorter[i]!)) {
@@ -761,7 +817,9 @@ export class HybridSkuMatchingService {
       'titanium': ['silver', 'gray', 'grey', 'metallic'],
       'graphite': ['gray', 'grey', 'dark', 'charcoal'],
       'mystic': ['purple', 'violet', 'lavender'],
-      'phantom': ['black', 'dark', 'shadow'],
+      'phantom black': ['black', 'dark', 'shadow', 'blk'],
+      'phantom white': ['white', 'light', 'ivory', 'cream', 'wht'],
+      'phantom': ['black', 'dark', 'shadow'], // Keep as fallback for other phantom colors
       'titan': ['silver', 'gray', 'grey', 'metallic'],
       'natural': ['beige', 'tan', 'nude', 'cream'],
       'deep': ['dark', 'rich', 'vivid'],
@@ -770,7 +828,19 @@ export class HybridSkuMatchingService {
     };
     
     // Check if colors are aliases of each other
-    for (const [baseColor, aliases] of Object.entries(colorAliases)) {
+    // Prioritize exact matches first (e.g., "phantom white" before "phantom")
+    const sortedAliases = Object.entries(colorAliases).sort((a, b) => b[0].length - a[0].length);
+    
+    for (const [baseColor, aliases] of sortedAliases) {
+      // Check if input color contains the base color (for multi-word colors)
+      if (inputColor.includes(baseColor) && aliases.includes(skuColor)) {
+        return true;
+      }
+      // Check if sku color contains the base color
+      if (skuColor.includes(baseColor) && aliases.includes(inputColor)) {
+        return true;
+      }
+      // Check exact matches
       if ((inputColor === baseColor && aliases.includes(skuColor)) ||
           (skuColor === baseColor && aliases.includes(inputColor))) {
         return true;
@@ -1289,6 +1359,85 @@ export class HybridSkuMatchingService {
   }
 
   /**
+   * MODEL NORMALIZATION: Normalize model names to treat variations as the same
+   * Examples: "PIXEL 7 DUAL" → "PIXEL 7", "IPHONE 12 PRO MAX" → "IPHONE 12 PRO MAX"
+   */
+  private normalizeModelName(modelName: string): string {
+    if (!modelName) return modelName;
+    
+    // Convert to uppercase for consistent comparison
+    let normalized = modelName.toUpperCase().trim();
+    
+    // Remove common variations that should be treated as the same model
+    const normalizationRules = [
+      // Pixel models - remove "DUAL" suffix
+      { pattern: /\s+DUAL\s*$/i, replacement: '' },
+      // iPhone models - standardize spacing
+      { pattern: /\s+/g, replacement: ' ' },
+      // Remove extra spaces
+      { pattern: /\s+$/, replacement: '' },
+      { pattern: /^\s+/, replacement: '' }
+    ];
+    
+    // Apply normalization rules
+    for (const rule of normalizationRules) {
+      normalized = normalized.replace(rule.pattern, rule.replacement);
+    }
+    
+    return normalized;
+  }
+
+  /**
+   * POST-PROCESSING: Remove duplicate SKUs, keeping the highest scoring match
+   * This approach is safer than modifying the SQL query logic
+   */
+  private deduplicateMatches(matches: any[]): any[] {
+    if (!matches || matches.length === 0) {
+      return matches;
+    }
+
+    const skuMap = new Map<string, any>();
+    
+    // Process each match and keep the highest scoring one for each SKU
+    for (const match of matches) {
+      const skuCode = match.sku_code;
+      
+      if (!skuMap.has(skuCode)) {
+        // First time seeing this SKU
+        skuMap.set(skuCode, match);
+      } else {
+        // We've seen this SKU before - keep the one with higher score
+        const existingMatch = skuMap.get(skuCode);
+        if (match.match_score > existingMatch.match_score) {
+          skuMap.set(skuCode, match);
+        }
+      }
+    }
+    
+    // Convert back to array and maintain original order (by score)
+    const deduplicatedMatches = Array.from(skuMap.values());
+    
+    // Sort by match score (highest first) to maintain proper ordering
+    deduplicatedMatches.sort((a, b) => {
+      if (b.match_score !== a.match_score) {
+        return b.match_score - a.match_score;
+      }
+      // If scores are equal, prefer SKUs without post-fix
+      const aHasPostfix = a.post_fix && a.post_fix.trim() !== '';
+      const bHasPostfix = b.post_fix && b.post_fix.trim() !== '';
+      if (aHasPostfix !== bHasPostfix) {
+        return aHasPostfix ? 1 : -1;
+      }
+      // Finally, sort alphabetically by SKU code
+      return a.sku_code.localeCompare(b.sku_code);
+    });
+    
+    logger.info(`🧹 DEDUPLICATION: ${matches.length} → ${deduplicatedMatches.length} matches (removed ${matches.length - deduplicatedMatches.length} duplicates)`);
+    
+    return deduplicatedMatches;
+  }
+
+  /**
    * CORE METHOD: Tag-first hybrid matching with single query
    * Uses sku_tags array and individual tag columns for maximum accuracy
    * Includes graceful degradation and comprehensive error handling
@@ -1310,14 +1459,8 @@ export class HybridSkuMatchingService {
         return cachedResult;
       }
 
-      // Ensure database connection
-      if (!this.client) {
-        if (this.pool) {
-          this.client = await this.pool.connect();
-        } else {
-          throw new Error('Database client not initialized');
-        }
-      }
+      // Use the existing database connection service
+      // No need to manage our own connection
 
       logger.info(`🔍 HYBRID MATCHING: Processing device ${imeiData.imei}`);
 
@@ -1329,6 +1472,9 @@ export class HybridSkuMatchingService {
       
       const processingTime = Date.now() - startTime;
       let matches = queryResult.rows || [];
+      
+      // POST-PROCESSING: Remove duplicates based on SKU code, keeping the highest score
+      matches = this.deduplicateMatches(matches);
       
       // Filter out SKUs with post-fix values (should not be selected)
       matches = matches.filter((sku: any) => {
@@ -1409,7 +1555,7 @@ export class HybridSkuMatchingService {
       const maxResults = options.maxResults || 5; // Fewer results for fallback
       
       // Simple field-based query as fallback
-      const result = await this.client!.query(`
+      const result = await this.dbService.query(`
         SELECT 
           sku_code, brand, model, capacity, color, carrier, post_fix, device_type,
           CASE 
@@ -1477,7 +1623,7 @@ export class HybridSkuMatchingService {
    * Combines sku_tags array matching with individual tag columns and pattern matching
    */
   private async executeHybridQuery(imeiData: ImeiData, minScore: number, maxResults: number) {
-    return await this.client!.query(`
+    return await this.dbService.query(`
       WITH device_data AS (
         SELECT 
           $1::text as imei,
@@ -1547,7 +1693,17 @@ export class HybridSkuMatchingService {
                (sm.sku_tags && ARRAY[nd.enhanced_capacity::text] AND nd.enhanced_capacity IS NOT NULL AND nd.enhanced_capacity != ''))::int +
               (sm.sku_tags && ARRAY[nd.norm_color::text] AND nd.norm_color IS NOT NULL AND nd.norm_color != '')::int +
               (sm.sku_tags && ARRAY[nd.norm_carrier::text] AND nd.norm_carrier IS NOT NULL AND nd.norm_carrier != '')::int
-            ) = 5 THEN 100
+            ) = 5 
+            -- CRITICAL: For models with numbers, ensure exact model number match
+            AND (
+              -- If both input and SKU have model numbers, they must match exactly
+              (nd.norm_model ~ '\d+' AND sm.sku_code ~ '\d+' AND
+               REGEXP_REPLACE(nd.norm_model, '.*?(\d+).*', '\\1', 'g') = 
+               REGEXP_REPLACE(sm.sku_code, '.*?(\d+).*', '\\1', 'g'))
+              OR
+              -- If neither has model numbers, allow generic matching
+              (nd.norm_model !~ '\d+' AND sm.sku_code !~ '\d+')
+            ) THEN 100
             
             -- Excellent match: Brand + Model + Capacity + (Color OR Carrier)
             WHEN (
@@ -1558,7 +1714,17 @@ export class HybridSkuMatchingService {
             ) = 3 AND (
               (sm.sku_tags && ARRAY[nd.norm_color::text] AND nd.norm_color IS NOT NULL AND nd.norm_color != '')::int +
               (sm.sku_tags && ARRAY[nd.norm_carrier::text] AND nd.norm_carrier IS NOT NULL AND nd.norm_carrier != '')::int
-            ) >= 1 THEN 95
+            ) >= 1 
+            -- CRITICAL: For models with numbers, ensure exact model number match
+            AND (
+              -- If both input and SKU have model numbers, they must match exactly
+              (nd.norm_model ~ '\d+' AND sm.sku_code ~ '\d+' AND
+               REGEXP_REPLACE(nd.norm_model, '.*?(\d+).*', '\\1', 'g') = 
+               REGEXP_REPLACE(sm.sku_code, '.*?(\d+).*', '\\1', 'g'))
+              OR
+              -- If neither has model numbers, allow generic matching
+              (nd.norm_model !~ '\d+' AND sm.sku_code !~ '\d+')
+            ) THEN 95
             
             -- Very good match: Brand + Model + Capacity
             WHEN (
@@ -1566,7 +1732,17 @@ export class HybridSkuMatchingService {
               (sm.sku_tags && ARRAY[nd.norm_model::text] AND nd.norm_model IS NOT NULL AND nd.norm_model != '')::int +
               ((sm.sku_tags && ARRAY[nd.norm_capacity::text] AND nd.norm_capacity IS NOT NULL AND nd.norm_capacity != '') OR 
                (sm.sku_tags && ARRAY[nd.enhanced_capacity::text] AND nd.enhanced_capacity IS NOT NULL AND nd.enhanced_capacity != ''))::int
-            ) = 3 THEN 90
+            ) = 3 
+            -- CRITICAL: For models with numbers, ensure exact model number match
+            AND (
+              -- If both input and SKU have model numbers, they must match exactly
+              (nd.norm_model ~ '\d+' AND sm.sku_code ~ '\d+' AND
+               REGEXP_REPLACE(nd.norm_model, '.*?(\d+).*', '\\1', 'g') = 
+               REGEXP_REPLACE(sm.sku_code, '.*?(\d+).*', '\\1', 'g'))
+              OR
+              -- If neither has model numbers, allow generic matching
+              (nd.norm_model !~ '\d+' AND sm.sku_code !~ '\d+')
+            ) THEN 90
             
             -- Good match: Brand + Model + (Color OR Carrier)
             WHEN (
@@ -1644,16 +1820,15 @@ export class HybridSkuMatchingService {
                    AND LOWER(sm.model) ILIKE '%' || LOWER(nd.norm_model) || '%' THEN 35
               WHEN (COALESCE(sm.model, '') = '') AND COALESCE(nd.norm_model, '') != '' 
                    AND LOWER(sm.sku_code) ILIKE '%' || LOWER(nd.norm_model) || '%'
-                   -- CRITICAL: For Fold/Flip models, require exact model number match
+                   -- CRITICAL: For ALL models with numbers, require exact model number match
                    AND (
-                     -- If input has Fold/Flip number, SKU must have the same number
-                     (LOWER(nd.norm_model) ~ '(fold|flip)\s*(\d+)' AND 
-                      LOWER(sm.sku_code) ~ '(fold|flip)(\d+)' AND
-                      REGEXP_REPLACE(LOWER(nd.norm_model), '.*(fold|flip)\s*(\d+).*', '\\2', 'g') = 
-                      REGEXP_REPLACE(LOWER(sm.sku_code), '.*(fold|flip)(\d+).*', '\\2', 'g'))
+                     -- If both input and SKU have model numbers, they must match exactly
+                     (LOWER(nd.norm_model) ~ '\d+' AND LOWER(sm.sku_code) ~ '\d+' AND
+                      REGEXP_REPLACE(LOWER(nd.norm_model), '.*?(\d+).*', '\\1', 'g') = 
+                      REGEXP_REPLACE(LOWER(sm.sku_code), '.*?(\d+).*', '\\1', 'g'))
                      OR
-                     -- If input doesn't have Fold/Flip number, allow generic matching
-                     (LOWER(nd.norm_model) !~ '(fold|flip)\s*(\d+)')
+                     -- If neither has model numbers, allow generic matching
+                     (LOWER(nd.norm_model) !~ '\d+' AND LOWER(sm.sku_code) !~ '\d+')
                    ) THEN 30
               ELSE 0
             END +
@@ -1697,7 +1872,7 @@ export class HybridSkuMatchingService {
           )
       )
       -- Combine all matching strategies with improved fallback logic
-      SELECT 
+      SELECT
         sku_code, sku_tags, brand, model, capacity, color, carrier, post_fix, device_type,
         model_tag, capacity_tag, color_tag, carrier_tag, postfix_tag,
         match_score, match_type,
