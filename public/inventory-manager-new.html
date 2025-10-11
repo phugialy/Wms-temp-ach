@@ -218,7 +218,8 @@
             const [filterCarrier, setFilterCarrier] = useState('');
             const [filterCondition, setFilterCondition] = useState('');
             const [filterWorkingStatus, setFilterWorkingStatus] = useState('');
-            const [sortBy, setSortBy] = useState('createdAt');
+            const [filterDate, setFilterDate] = useState('');
+            const [sortBy, setSortBy] = useState('updated_at');
             const [sortOrder, setSortOrder] = useState('desc');
             const [selectedItems, setSelectedItems] = useState([]);
             const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -351,14 +352,42 @@
                     filtered = filtered.filter(item => item.working === filterWorkingStatus);
                 }
 
-                // Sort
+                // Date filter - show all items updated on the selected date
+                if (filterDate && filterDate.trim()) {
+                    try {
+                        const selectedDateStr = filterDate.trim(); // Format: YYYY-MM-DD
+                        
+                        filtered = filtered.filter(item => {
+                            try {
+                                // Use updated_at if available, fallback to created_at
+                                const itemDateStr = item.updated_at || item.created_at;
+                                if (!itemDateStr || typeof itemDateStr !== 'string') {
+                                    return false;
+                                }
+                                
+                                // Simple string comparison - extract date part only
+                                const itemDateOnly = itemDateStr.split('T')[0]; // "2025-10-09T21:33:38" → "2025-10-09"
+                                return itemDateOnly === selectedDateStr;
+                            } catch (itemError) {
+                                return false;
+                            }
+                        });
+                    } catch (dateError) {
+                        console.error('Error in date filtering:', dateError);
+                        // If date filtering fails, don't filter by date
+                    }
+                }
+
+                // Sort - simplified to avoid Date object creation
                 filtered.sort((a, b) => {
                     let aVal = a[sortBy];
                     let bVal = b[sortBy];
 
-                    if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
-                        aVal = new Date(aVal || 0);
-                        bVal = new Date(bVal || 0);
+                    // For date fields, use string comparison instead of Date objects
+                    if (sortBy === 'created_at' || sortBy === 'updated_at') {
+                        // Simple string comparison - much faster and safer
+                        aVal = aVal || '';
+                        bVal = bVal || '';
                     } else if (typeof aVal === 'string') {
                         aVal = aVal.toLowerCase();
                         bVal = bVal.toLowerCase();
@@ -443,7 +472,7 @@
             // Export to CSV
             const exportToCSV = () => {
                 const filteredData = getFilteredInventory();
-                const headers = ['ID', 'Name', 'Brand', 'Model', 'Storage', 'Color', 'Carrier', 'IMEI', 'Serial Number', 'Working Status', 'Condition', 'Battery Health', 'Location', 'Created At'];
+                const headers = ['ID', 'Name', 'Brand', 'Model', 'Storage', 'Color', 'Carrier', 'IMEI', 'Serial Number', 'Working Status', 'Condition', 'Battery Health', 'Location', 'Last Updated'];
                 
                 const csvContent = [
                     headers.join(','),
@@ -461,7 +490,7 @@
                         `"${item.condition || ''}"`,
                         item.batteryHealth || '',
                         `"${item.location || ''}"`,
-                        item.createdAt || ''
+                        (item.updated_at || item.created_at) || ''
                     ].join(','))
                 ].join('\n');
 
@@ -705,18 +734,47 @@
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
-                                                <select
-                                                    value={sortBy}
-                                                    onChange={(e) => setSortBy(e.target.value)}
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Updated On</label>
+                                                <input
+                                                    type="date"
+                                                    value={filterDate}
+                                                    onChange={(e) => setFilterDate(e.target.value)}
                                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                >
-                                                    <option value="createdAt">Date Created</option>
-                                                    <option value="name">Name</option>
-                                                    <option value="brand">Brand</option>
-                                                    <option value="working">Working Status</option>
-                                                    <option value="condition">Condition</option>
-                                                </select>
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="mt-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                                                    <select
+                                                        value={sortBy}
+                                                        onChange={(e) => setSortBy(e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    >
+                                                        <option value="updated_at">Last Updated</option>
+                                                        <option value="created_at">Date Created</option>
+                                                        <option value="name">Name</option>
+                                                        <option value="brand">Brand</option>
+                                                        <option value="working">Working Status</option>
+                                                        <option value="condition">Condition</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">&nbsp;</label>
+                                                    <button
+                                                        onClick={() => {
+                                                            setFilterDate('');
+                                                            setFilterBrand('');
+                                                            setFilterCarrier('');
+                                                            setFilterCondition('');
+                                                            setFilterWorkingStatus('');
+                                                        }}
+                                                        className="w-full px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                                                    >
+                                                        Clear All Filters
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -782,6 +840,7 @@
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working Status</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Condition</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                             </tr>
                                         </thead>
@@ -831,6 +890,9 @@
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                         {item.location || 'N/A'}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        {(item.updated_at || item.created_at) ? new Date(item.updated_at || item.created_at).toLocaleDateString() : 'N/A'}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                         <button

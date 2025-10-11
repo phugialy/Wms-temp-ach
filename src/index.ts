@@ -14,7 +14,7 @@ import bulkInventoryRoutes from './routes/bulk-inventory.route';
 import imeiQueueRoutes from './routes/imei-queue.route';
 import imeiArchivalRoutes from './routes/imei-archival.route';
 import hybridQueueRoutes from './routes/hybrid-queue.route';
-import operatorRoutes from './routes/operator.route';
+// import operatorRoutes from './routes/operator.route'; // Disabled - using focused inventory system
 import skuMatchingRoutes from './routes/sku-matching.route';
 import enhancedSkuMasterRoutes from './api/enhancedSkuMasterApi';
 import skuManualUpdateRoutes from './api/skuManualUpdateApi';
@@ -32,6 +32,10 @@ import skuInventoryRoutes from './routes/sku-inventory.route';
 import genericModelTestRoutes from './routes/generic-model-test.route';
 import bulkOperationsRoutes from './routes/bulk-operations.route';
 import performanceTestRoutes from './routes/performance-test.route';
+import cleanInputRoutes from './routes/clean-input.route';
+import app1ImeiProcessingRoutes from './routes/app1-imei-processing.route';
+import simpleImeiRoutes from './routes/simple-imei.route';
+import inventoryAddRoutes from './routes/inventory-add.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -80,7 +84,7 @@ app.use('/api/bulk-inventory', bulkInventoryRoutes);
 app.use('/api/imei-queue', imeiQueueRoutes);
 app.use('/api/imei-archival', imeiArchivalRoutes);
 app.use('/api/hybrid-queue', hybridQueueRoutes);
-app.use('/api/operator', operatorRoutes);
+// app.use('/api/operator', operatorRoutes); // Disabled - using focused inventory system
 app.use('/api/sku-matching', skuMatchingRoutes);
 app.use('/api/enhanced-sku-master', enhancedSkuMasterRoutes);
 app.use('/api/sku-manual-update', skuManualUpdateRoutes);
@@ -98,6 +102,10 @@ app.use('/api/sku-inventory', skuInventoryRoutes);
 app.use('/api/generic-model-test', genericModelTestRoutes);
 app.use('/api/bulk-operations', bulkOperationsRoutes);
 app.use('/api/performance-test', performanceTestRoutes);
+app.use('/api/input', cleanInputRoutes);
+app.use('/api/imei', app1ImeiProcessingRoutes);
+app.use('/api/simple-imei', simpleImeiRoutes);
+app.use('/api/inventory', inventoryAddRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

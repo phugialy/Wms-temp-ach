@@ -8,32 +8,41 @@ datasource db {
 }
 
 model Item {
-  imei          String    @id @db.VarChar(15)
-  model         String?   @db.VarChar(100)
-  modelNumber   String?   @map("model_number") @db.VarChar(100)
-  carrier       String?   @db.VarChar(50)
-  capacity      String?   @db.VarChar(50)
-  color         String?   @db.VarChar(50)
-  batteryHealth String?   @map("battery_health") @db.VarChar(50)
-  batteryCount  Int?      @map("battery_count")
-  working       String?   @default("PENDING") @db.VarChar(20)
-  location      String?   @default("Default Location") @db.VarChar(100)
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  product       Product   @relation(fields: [imei], references: [imei], onDelete: Cascade, onUpdate: NoAction)
+  imei             String    @id @db.VarChar(15)
+  model            String?   @db.VarChar(100)
+  modelNumber      String?   @map("model_number") @db.VarChar(100)
+  carrier          String?   @db.VarChar(50)
+  capacity         String?   @db.VarChar(50)
+  color            String?   @db.VarChar(50)
+  batteryHealth    String?   @map("battery_health") @db.VarChar(50)
+  batteryCount     Int?      @map("battery_count")
+  working          String?   @default("PENDING") @db.VarChar(20)
+  location         String?   @default("Default Location") @db.VarChar(100)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  matched_sku      String?   @db.VarChar(255)
+  sku_match_score  Decimal?  @db.Decimal(5, 2)
+  sku_match_method String?   @db.VarChar(100)
+  sku_match_status String?   @db.VarChar(50)
+  sku_match_notes  String?
+  sku_matched_at   DateTime? @db.Timestamptz(6)
+  product          Product   @relation(fields: [imei], references: [imei], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([capacity], map: "idx_item_capacity")
   @@index([carrier], map: "idx_item_carrier")
   @@index([color], map: "idx_item_color")
   @@index([model], map: "idx_item_model")
   @@index([working], map: "idx_item_working")
+  @@index([matched_sku], map: "idx_item_matched_sku")
+  @@index([sku_match_status], map: "idx_item_sku_match_status")
+  @@index([sku_matched_at], map: "idx_item_sku_matched_at")
   @@map("item")
 }
 
 model Product {
   imei                 String                 @id @db.VarChar(15)
   dateIn               DateTime?              @default(now()) @map("date_in") @db.Timestamptz(6)
-  sku                  String                 @db.VarChar(200)
+  sku                  String?                @db.VarChar(200)
   brand                String?                @db.VarChar(100)
   createdAt            DateTime?              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -413,37 +422,29 @@ model normalization_tags {
 }
 
 model NoMatchQueue {
-  id                Int       @id @default(autoincrement())
-  imei              String    @unique @db.VarChar(15)
-  brand             String?   @db.VarChar(100)
-  model             String?   @db.VarChar(200)
-  capacity          String?   @db.VarChar(50)
-  color             String?   @db.VarChar(100)
-  carrier           String?   @db.VarChar(100)
-  device_notes      String?   @db.Text
-  original_sku      String?   @db.VarChar(200)
-  
-  // Normalization results (what we tried to match)
-  normalized_model     String? @db.VarChar(100)
-  normalized_capacity  String? @db.VarChar(50)
-  normalized_color     String? @db.VarChar(100)
-  normalized_carrier   String? @db.VarChar(100)
-  
-  // Fallback attempts
-  fallback_attempts Json?     @default("[]")
-  fallback_reason   String?   @db.Text
-  
-  // Status tracking
-  status      String?  @default("pending") @db.VarChar(50)
-  priority    Int?     @default(5)
-  
-  // Metadata
-  created_at   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updated_at   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  reviewed_at  DateTime? @map("reviewed_at") @db.Timestamptz(6)
-  reviewed_by  String?   @map("reviewed_by") @db.VarChar(100)
-  resolved_at  DateTime? @map("resolved_at") @db.Timestamptz(6)
-  resolved_sku String?   @map("resolved_sku") @db.VarChar(200)
+  id                  Int       @id @default(autoincrement())
+  imei                String    @unique @db.VarChar(15)
+  brand               String?   @db.VarChar(100)
+  model               String?   @db.VarChar(200)
+  capacity            String?   @db.VarChar(50)
+  color               String?   @db.VarChar(100)
+  carrier             String?   @db.VarChar(100)
+  device_notes        String?
+  original_sku        String?   @db.VarChar(200)
+  normalized_model    String?   @db.VarChar(100)
+  normalized_capacity String?   @db.VarChar(50)
+  normalized_color    String?   @db.VarChar(100)
+  normalized_carrier  String?   @db.VarChar(100)
+  fallback_attempts   Json?     @default("[]")
+  fallback_reason     String?
+  status              String?   @default("pending") @db.VarChar(50)
+  priority            Int?      @default(5)
+  created_at          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updated_at          DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reviewed_at         DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewed_by         String?   @map("reviewed_by") @db.VarChar(100)
+  resolved_at         DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolved_sku        String?   @map("resolved_sku") @db.VarChar(200)
 
   @@index([status], map: "idx_no_match_queue_status")
   @@index([priority], map: "idx_no_match_queue_priority")
@@ -451,4 +452,248 @@ model NoMatchQueue {
   @@index([brand], map: "idx_no_match_queue_brand")
   @@index([model], map: "idx_no_match_queue_model")
   @@map("no_match_queue")
+}
+
+model bulk_operation_executions {
+  id                         Int                          @id @default(autoincrement())
+  scheduled_operation_id     Int?
+  execution_started_at       DateTime?                    @default(now()) @db.Timestamp(6)
+  execution_completed_at     DateTime?                    @db.Timestamp(6)
+  execution_status           String?                      @default("RUNNING") @db.VarChar(20)
+  total_devices_processed    Int?                         @default(0)
+  devices_passed             Int?                         @default(0)
+  devices_failed             Int?                         @default(0)
+  devices_pending            Int?                         @default(0)
+  devices_added_to_db        Int?                         @default(0)
+  skus_added                 Int?                         @default(0)
+  execution_duration_seconds Int?
+  error_message              String?
+  scheduled_bulk_operations  scheduled_bulk_operations?   @relation(fields: [scheduled_operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bulk_operation_sku_results bulk_operation_sku_results[]
+}
+
+model bulk_operation_sku_results {
+  id                        Int                        @id @default(autoincrement())
+  execution_id              Int?
+  sku_code                  String                     @db.VarChar(100)
+  brand                     String?                    @db.VarChar(50)
+  model                     String?                    @db.VarChar(100)
+  capacity                  String?                    @db.VarChar(20)
+  color                     String?                    @db.VarChar(30)
+  carrier                   String?                    @db.VarChar(50)
+  device_count              Int?                       @default(0)
+  working_count             Int?                       @default(0)
+  failed_count              Int?                       @default(0)
+  bulk_operation_executions bulk_operation_executions? @relation(fields: [execution_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model scheduled_bulk_operations {
+  id                        Int                         @id @default(autoincrement())
+  station_id                String                      @db.VarChar(50)
+  location_inspection       String                      @db.VarChar(100)
+  operation_type            String                      @default("BULK_ADD") @db.VarChar(50)
+  schedule_date             DateTime                    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  schedule_time             DateTime                    @db.Time(6)
+  schedule_type             String?                     @default("once") @db.VarChar(20)
+  is_active                 Boolean?                    @default(true)
+  is_modified               Boolean?                    @default(false)
+  created_at                DateTime?                   @default(now()) @db.Timestamp(6)
+  updated_at                DateTime?                   @default(now()) @db.Timestamp(6)
+  created_by                String?                     @db.VarChar(100)
+  notes                     String?
+  bulk_operation_executions bulk_operation_executions[]
+}
+
+model sku_brand_reference {
+  id                  Int                   @id @default(autoincrement())
+  brand_name          String                @db.VarChar(50)
+  brand_code          String                @unique @db.VarChar(20)
+  sku_patterns        String[]
+  description         String?
+  is_active           Boolean?              @default(true)
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamp(6)
+  sku_model_reference sku_model_reference[]
+
+  @@index([is_active], map: "idx_sku_brand_reference_active")
+  @@index([brand_code], map: "idx_sku_brand_reference_code")
+}
+
+model sku_capacity_reference {
+  id             Int       @id @default(autoincrement())
+  capacity_value String    @db.VarChar(20)
+  capacity_code  String    @unique @db.VarChar(10)
+  sku_patterns   String[]
+  description    String?
+  is_active      Boolean?  @default(true)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([is_active], map: "idx_sku_capacity_reference_active")
+  @@index([capacity_code], map: "idx_sku_capacity_reference_code")
+}
+
+model sku_carrier_reference {
+  id           Int       @id @default(autoincrement())
+  carrier_name String    @db.VarChar(50)
+  carrier_code String    @unique @db.VarChar(20)
+  sku_patterns String[]
+  description  String?
+  is_active    Boolean?  @default(true)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([is_active], map: "idx_sku_carrier_reference_active")
+  @@index([carrier_code], map: "idx_sku_carrier_reference_code")
+}
+
+model sku_color_reference {
+  id           Int       @id @default(autoincrement())
+  color_name   String    @db.VarChar(50)
+  color_code   String    @unique @db.VarChar(10)
+  sku_patterns String[]
+  description  String?
+  is_active    Boolean?  @default(true)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([is_active], map: "idx_sku_color_reference_active")
+  @@index([color_code], map: "idx_sku_color_reference_code")
+}
+
+model sku_device_type_reference {
+  id           Int       @id @default(autoincrement())
+  device_type  String    @unique @db.VarChar(20)
+  sku_patterns String[]
+  description  String?
+  is_active    Boolean?  @default(true)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([is_active], map: "idx_sku_device_type_reference_active")
+  @@index([device_type], map: "idx_sku_device_type_reference_type")
+}
+
+model sku_history {
+  id            Int       @id @default(autoincrement())
+  sku_code      String    @db.VarChar(255)
+  action        String    @db.VarChar(50)
+  old_data      Json?
+  new_data      Json?
+  changed_by    String?   @db.VarChar(255)
+  change_reason String?
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([action], map: "idx_sku_history_action")
+  @@index([changed_by], map: "idx_sku_history_changed_by")
+  @@index([created_at], map: "idx_sku_history_created_at")
+  @@index([sku_code], map: "idx_sku_history_sku_code")
+}
+
+model sku_manual_update_log {
+  id           Int       @id @default(autoincrement())
+  sku_code     String    @db.VarChar(100)
+  changes_made Json
+  updated_by   String?   @db.VarChar(100)
+  update_notes String?
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([sku_code], map: "idx_sku_manual_update_log_sku_code")
+  @@index([updated_at], map: "idx_sku_manual_update_log_updated_at")
+}
+
+model sku_model_reference {
+  id                  Int                  @id @default(autoincrement())
+  brand_id            Int?
+  model_name          String               @db.VarChar(100)
+  model_code          String               @unique @db.VarChar(50)
+  sku_patterns        String[]
+  device_type         String?              @default("PHONE") @db.VarChar(20)
+  description         String?
+  is_active           Boolean?             @default(true)
+  created_at          DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?            @default(now()) @db.Timestamp(6)
+  sku_brand_reference sku_brand_reference? @relation(fields: [brand_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([is_active], map: "idx_sku_model_reference_active")
+  @@index([brand_id], map: "idx_sku_model_reference_brand")
+  @@index([model_code], map: "idx_sku_model_reference_code")
+}
+
+model sku_postfix_reference {
+  id           Int       @id @default(autoincrement())
+  postfix_name String    @db.VarChar(50)
+  postfix_code String    @unique @db.VarChar(20)
+  sku_patterns String[]
+  description  String?
+  is_active    Boolean?  @default(true)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([is_active], map: "idx_sku_postfix_reference_active")
+  @@index([postfix_code], map: "idx_sku_postfix_reference_code")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model undefined_sku {
+  id                       Int       @id @default(autoincrement())
+  imei                     String    @unique @db.VarChar(255)
+  device_data              Json
+  reason                   String?
+  suggested_sku            String?   @db.VarChar(255)
+  confidence_score         Decimal?  @db.Decimal(5, 2)
+  created_at               DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime? @default(now()) @db.Timestamptz(6)
+  undefined_reason         String?   @db.VarChar(500)
+  smart_suggestion_sku     String?   @db.VarChar(255)
+  smart_suggestion_score   Int?
+  smart_suggestion_details Json?
+  confidence_level         String?   @db.VarChar(50)
+  match_type               String?   @db.VarChar(100)
+  processing_method        String?   @db.VarChar(100)
+  requires_attention       Boolean?  @default(true)
+  review_status            String?   @default("pending") @db.VarChar(50)
+  reviewed_by              String?   @db.VarChar(255)
+  reviewed_at              DateTime? @db.Timestamp(6)
+  review_notes             String?
+  resolution_status        String?   @default("unresolved") @db.VarChar(50)
+  resolved_sku             String?   @db.VarChar(255)
+  resolved_at              DateTime? @db.Timestamp(6)
+  resolved_by              String?   @db.VarChar(255)
+
+  @@index([created_at], map: "idx_undefined_sku_created_at")
+  @@index([imei], map: "idx_undefined_sku_imei")
+  @@index([reason], map: "idx_undefined_sku_reason")
+}
+
+model ImeiDataQueue {
+  id            BigInt    @id @default(autoincrement())
+  imei          String    @unique @db.VarChar(15)
+  brand         String?   @db.VarChar(50)
+  model         String?   @db.VarChar(100)
+  capacity      String?   @db.VarChar(50)
+  color         String?   @db.VarChar(50)
+  carrier       String?   @db.VarChar(50)
+  deviceNotes   String?   @map("device_notes") @db.Text
+  workingStatus String?   @map("working_status") @db.VarChar(20)
+  batteryHealth String?   @map("battery_health") @db.VarChar(20)
+  source        String?   @default("api") @db.VarChar(20)
+  batchId       String?   @map("batch_id") @db.VarChar(50)
+  inputStatus   String?   @default("received") @map("input_status") @db.VarChar(20)
+  errorMessage  String?   @map("error_message") @db.Text
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@index([imei], map: "idx_imei_data_queue_imei")
+  @@index([batchId], map: "idx_imei_data_queue_batch_id")
+  @@index([inputStatus], map: "idx_imei_data_queue_input_status")
+  @@index([source], map: "idx_imei_data_queue_source")
+  @@index([createdAt], map: "idx_imei_data_queue_created_at")
+  @@index([processedAt], map: "idx_imei_data_queue_processed_at")
+  @@index([inputStatus, batchId], map: "idx_imei_data_queue_status_batch")
+  @@index([inputStatus, createdAt], map: "idx_imei_data_queue_status_created")
+  @@map("imei_data_queue")
 }

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Item to Inventory - IMEI Centric</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            border: 2px solid #f0f0f0;
+            border-radius: 10px;
+            background: #fafafa;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #4facfe;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+        }
+
+        .response {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .response.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .response.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .response.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4facfe;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .performance-indicator {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .performance-indicator.fast {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .performance-indicator.slow {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .required {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 Add Item to Inventory</h1>
+            <p>IMEI-centric inventory management</p>
+        </div>
+
+        <div class="content">
+            <!-- Single Item Add -->
+            <div class="section">
+                <h2>➕ Add Single Item</h2>
+                <p>Add one item to inventory with IMEI and device details</p>
+                
+                <div class="form-group">
+                    <label for="imei">IMEI <span class="required">*</span>:</label>
+                    <input type="text" id="imei" placeholder="123456789012345" maxlength="15" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="brand">Brand <span class="required">*</span>:</label>
+                    <input type="text" id="brand" placeholder="Samsung" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="model">Model <span class="required">*</span>:</label>
+                    <input type="text" id="model" placeholder="Galaxy S23" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="capacity">Capacity:</label>
+                    <input type="text" id="capacity" placeholder="256GB">
+                </div>
+
+                <div class="form-group">
+                    <label for="color">Color:</label>
+                    <input type="text" id="color" placeholder="Black">
+                </div>
+
+                <div class="form-group">
+                    <label for="carrier">Carrier:</label>
+                    <input type="text" id="carrier" placeholder="Unlocked">
+                </div>
+
+                <div class="form-group">
+                    <label for="working_status">Working Status:</label>
+                    <select id="working_status">
+                        <option value="PENDING">PENDING</option>
+                        <option value="YES">YES</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="battery_health">Battery Health:</label>
+                    <input type="text" id="battery_health" placeholder="Good">
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Location:</label>
+                    <input type="text" id="location" placeholder="Default Location">
+                </div>
+
+                <div class="form-group">
+                    <label for="notes">Notes:</label>
+                    <textarea id="notes" placeholder="Additional notes..."></textarea>
+                </div>
+
+                <button class="btn" onclick="addSingleItem()">📦 Add Item to Inventory</button>
+                <button class="btn btn-danger" onclick="clearForm()">🗑️ Clear Form</button>
+
+                <div class="loading" id="singleLoading">
+                    <div class="spinner"></div>
+                    <p>Adding item to inventory...</p>
+                </div>
+
+                <div id="singleResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <!-- Bulk Add -->
+            <div class="section">
+                <h2>📦 Bulk Add Items</h2>
+                <p>Add multiple items to inventory at once</p>
+                
+                <div class="form-group">
+                    <label for="bulkItems">Items (JSON format):</label>
+                    <textarea id="bulkItems" style="min-height: 200px; font-family: 'Courier New', monospace;" placeholder='[
+  {
+    "imei": "123456789012345",
+    "brand": "Samsung",
+    "model": "Galaxy S23",
+    "capacity": "256GB",
+    "color": "Black",
+    "carrier": "Unlocked",
+    "working_status": "YES"
+  },
+  {
+    "imei": "123456789012346",
+    "brand": "Apple",
+    "model": "iPhone 14",
+    "capacity": "128GB",
+    "color": "Blue",
+    "carrier": "Verizon",
+    "working_status": "YES"
+  }
+]'></textarea>
+                </div>
+
+                <button class="btn btn-success" onclick="bulkAddItems()">📦 Bulk Add Items</button>
+                <button class="btn" onclick="generateSampleItems()">📝 Generate Sample Items</button>
+                <button class="btn btn-danger" onclick="clearBulkForm()">🗑️ Clear</button>
+
+                <div class="loading" id="bulkLoading">
+                    <div class="spinner"></div>
+                    <p>Adding items to inventory...</p>
+                </div>
+
+                <div id="bulkResponse" class="response" style="display: none;"></div>
+            </div>
+
+            <!-- Stats -->
+            <div class="section">
+                <h2>📊 Inventory Statistics</h2>
+                <p>View current inventory statistics</p>
+                
+                <button class="btn" onclick="getInventoryStats()">📈 Get Statistics</button>
+                <button class="btn" onclick="getSystemHealth()">🏥 System Health</button>
+
+                <div class="loading" id="statsLoading">
+                    <div class="spinner"></div>
+                    <p>Loading statistics...</p>
+                </div>
+
+                <div id="statsResponse" class="response" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/inventory';
+
+        // Utility functions
+        function showLoading(elementId) {
+            document.getElementById(elementId).classList.add('show');
+        }
+
+        function hideLoading(elementId) {
+            document.getElementById(elementId).classList.remove('show');
+        }
+
+        function showResponse(elementId, data, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `response ${type}`;
+            element.textContent = JSON.stringify(data, null, 2);
+            element.style.display = 'block';
+        }
+
+        function hideResponse(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+
+        function addPerformanceIndicator(elementId, processingTime) {
+            const element = document.getElementById(elementId);
+            const indicator = document.createElement('span');
+            indicator.className = `performance-indicator ${processingTime < 100 ? 'fast' : 'slow'}`;
+            indicator.textContent = `${processingTime}ms`;
+            element.appendChild(indicator);
+        }
+
+        // Single Item Functions
+        async function addSingleItem() {
+            const imei = document.getElementById('imei').value;
+            const brand = document.getElementById('brand').value;
+            const model = document.getElementById('model').value;
+            const capacity = document.getElementById('capacity').value;
+            const color = document.getElementById('color').value;
+            const carrier = document.getElementById('carrier').value;
+            const working_status = document.getElementById('working_status').value;
+            const battery_health = document.getElementById('battery_health').value;
+            const location = document.getElementById('location').value;
+            const notes = document.getElementById('notes').value;
+
+            if (!imei || !brand || !model) {
+                showResponse('singleResponse', { error: 'IMEI, Brand, and Model are required' }, 'error');
+                return;
+            }
+
+            showLoading('singleLoading');
+            hideResponse('singleResponse');
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE}/add-item`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        imei, brand, model, capacity, color, carrier,
+                        working_status, battery_health, location, notes
+                    })
+                });
+
+                const result = await response.json();
+                const totalTime = Date.now() - startTime;
+
+                hideLoading('singleLoading');
+
+                if (result.success) {
+                    showResponse('singleResponse', result, 'success');
+                    addPerformanceIndicator('singleResponse', result.processingTime);
+                } else {
+                    showResponse('singleResponse', result, 'error');
+                }
+
+            } catch (error) {
+                hideLoading('singleLoading');
+                showResponse('singleResponse', { error: error.message }, 'error');
+            }
+        }
+
+        // Bulk Add Functions
+        async function bulkAddItems() {
+            const bulkData = document.getElementById('bulkItems').value;
+            
+            if (!bulkData.trim()) {
+                showResponse('bulkResponse', { error: 'Please enter items data' }, 'error');
+                return;
+            }
+
+            try {
+                const items = JSON.parse(bulkData);
+                if (!Array.isArray(items)) {
+                    throw new Error('Data must be an array of item objects');
+                }
+
+                showLoading('bulkLoading');
+                hideResponse('bulkResponse');
+
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE}/bulk-add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ items })
+                });
+
+                const result = await response.json();
+                const totalTime = Date.now() - startTime;
+
+                hideLoading('bulkLoading');
+
+                if (result.success) {
+                    showResponse('bulkResponse', result, 'success');
+                    addPerformanceIndicator('bulkResponse', result.processingTime);
+                } else {
+                    showResponse('bulkResponse', result, 'error');
+                }
+
+            } catch (error) {
+                hideLoading('bulkLoading');
+                showResponse('bulkResponse', { error: error.message }, 'error');
+            }
+        }
+
+        // Stats Functions
+        async function getInventoryStats() {
+            showLoading('statsLoading');
+            hideResponse('statsResponse');
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE}/stats`);
+                const result = await response.json();
+                const totalTime = Date.now() - startTime;
+
+                hideLoading('statsLoading');
+
+                if (result.success) {
+                    showResponse('statsResponse', result, 'success');
+                    addPerformanceIndicator('statsResponse', result.processingTime);
+                } else {
+                    showResponse('statsResponse', result, 'error');
+                }
+
+            } catch (error) {
+                hideLoading('statsLoading');
+                showResponse('statsResponse', { error: error.message }, 'error');
+            }
+        }
+
+        async function getSystemHealth() {
+            showLoading('statsLoading');
+            hideResponse('statsResponse');
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE}/health`);
+                const result = await response.json();
+                const totalTime = Date.now() - startTime;
+
+                hideLoading('statsLoading');
+
+                if (result.success) {
+                    showResponse('statsResponse', result, 'success');
+                    addPerformanceIndicator('statsResponse', result.processingTime);
+                } else {
+                    showResponse('statsResponse', result, 'error');
+                }
+
+            } catch (error) {
+                hideLoading('statsLoading');
+                showResponse('statsResponse', { error: error.message }, 'error');
+            }
+        }
+
+        // Utility Functions
+        function generateSampleItems() {
+            const sampleItems = [
+                {
+                    imei: "123456789012345",
+                    brand: "Samsung",
+                    model: "Galaxy S23",
+                    capacity: "256GB",
+                    color: "Black",
+                    carrier: "Unlocked",
+                    working_status: "YES",
+                    battery_health: "Good",
+                    location: "Default Location"
+                },
+                {
+                    imei: "123456789012346",
+                    brand: "Apple",
+                    model: "iPhone 14",
+                    capacity: "128GB",
+                    color: "Blue",
+                    carrier: "Verizon",
+                    working_status: "YES",
+                    battery_health: "Good",
+                    location: "Default Location"
+                },
+                {
+                    imei: "123456789012347",
+                    brand: "Google",
+                    model: "Pixel 7",
+                    capacity: "256GB",
+                    color: "White",
+                    carrier: "T-Mobile",
+                    working_status: "PENDING",
+                    battery_health: "Unknown",
+                    location: "Default Location"
+                }
+            ];
+
+            document.getElementById('bulkItems').value = JSON.stringify(sampleItems, null, 2);
+        }
+
+        function clearForm() {
+            document.getElementById('imei').value = '';
+            document.getElementById('brand').value = '';
+            document.getElementById('model').value = '';
+            document.getElementById('capacity').value = '';
+            document.getElementById('color').value = '';
+            document.getElementById('carrier').value = '';
+            document.getElementById('working_status').value = 'PENDING';
+            document.getElementById('battery_health').value = '';
+            document.getElementById('location').value = '';
+            document.getElementById('notes').value = '';
+            hideResponse('singleResponse');
+        }
+
+        function clearBulkForm() {
+            document.getElementById('bulkItems').value = '';
+            hideResponse('bulkResponse');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Inventory Add Interface loaded');
+        });
+    </script>
+</body>
+</html>
+
+

@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { DatabaseConnectionService } from './DatabaseConnectionService';
 const { CompleteSkuMatchingService } = require('./CompleteSkuMatchingService');
 
 /**
@@ -11,21 +12,13 @@ const { CompleteSkuMatchingService } = require('./CompleteSkuMatchingService');
  * - INSPECTOR: Update device characteristics and notes
  */
 export class OperatorService {
-    private pool: Pool;
+    private dbService: DatabaseConnectionService;
     private client: PoolClient | null = null;
     private availableLocations: string[];
     private postfixOptions: Record<string, { grade: string; condition: string; postfix: string }>;
 
-    constructor() {
-        this.pool = new Pool({
-            connectionString: process.env['DIRECT_URL'],
-            ssl: { rejectUnauthorized: false },
-            max: 5,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-            keepAlive: true,
-            keepAliveInitialDelayMillis: 10000,
-        });
+constructor() {
+        this.dbService = DatabaseConnectionService.getInstance();
         
         // Available locations from your system
         this.availableLocations = [
@@ -56,7 +49,7 @@ export class OperatorService {
      */
     async initialize(): Promise<boolean> {
         try {
-            this.client = await this.pool.connect();
+            this.client = await this.dbService.getClient();
             console.log('✅ OperatorService connected to database');
             return true;
         } catch (error) {
@@ -70,7 +63,7 @@ export class OperatorService {
      */
     private async ensureConnection(): Promise<void> {
         if (!this.client) {
-            this.client = await this.pool.connect();
+            this.client = await this.dbService.getClient();
         }
     }
 
@@ -411,10 +404,8 @@ export class OperatorService {
                 this.client.release();
                 this.client = null;
             }
-            if (this.pool) {
-                await this.pool.end();
-                console.log('🔌 OperatorService connection pool closed');
-            }
+            // Note: DatabaseConnectionService manages its own pool
+            console.log('🔌 OperatorService connection released');
         } catch (error) {
             console.error('❌ Error during cleanup:', error);
         }
