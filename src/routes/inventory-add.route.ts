@@ -86,7 +86,7 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
   const startTime = Date.now();
   
   try {
-    const { items } = req.body;
+    const { items, station, location } = req.body;
     
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({
@@ -97,9 +97,41 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    logger.info(`📦 BULK INVENTORY ADD: Adding ${items.length} items`);
+    // Enhanced logging for bulk-add operation
+    logger.info(`📦 BULK INVENTORY ADD: Starting bulk operation with ${items.length} items`);
+    logger.info(`📦 BULK INVENTORY ADD: Station: ${station}, Location: ${location}`);
+    
+    // Log sample item structure for debugging
+    if (items.length > 0) {
+      logger.info(`📦 Sample item structure:`, JSON.stringify(items[0], null, 2));
+      logger.info(`📦 Sample item validation check:`, {
+        hasImei: !!items[0].imei,
+        hasBrand: !!items[0].brand,
+        hasModel: !!items[0].model,
+        imeiValue: items[0].imei,
+        brandValue: items[0].brand,
+        modelValue: items[0].model,
+        workingStatus: items[0].working_status
+      });
+    }
 
-    const result = await inventoryService.bulkAddItems(items);
+    const result = await inventoryService.bulkAddItems(items, station, location);
+    
+    // Log the result summary
+    logger.info(`📦 BULK INVENTORY ADD RESULT:`, {
+      success: result.success,
+      totalItems: result.totalItems,
+      processedItems: result.processedItems,
+      failedItems: result.failedItems,
+      processingTime: result.processingTime,
+      message: result.message,
+      errorCount: result.errors?.length || 0
+    });
+    
+    // Log first few errors if any
+    if (result.errors && result.errors.length > 0) {
+      logger.warn(`📦 BULK INVENTORY ADD ERRORS (showing first 3):`, result.errors.slice(0, 3));
+    }
 
     res.json({
       success: result.success,
@@ -109,7 +141,8 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
         failedItems: result.failedItems,
         processingTime: result.processingTime,
         message: result.message,
-        errors: result.errors
+        errors: result.errors,
+        sessionId: result.sessionId
       },
       processingTime: Date.now() - startTime
     });

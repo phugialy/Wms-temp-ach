@@ -67,3 +67,4 @@ COMMENT ON COLUMN imei_data_queue.updated_at IS 'Record last update timestamp';
 COMMENT ON COLUMN imei_data_queue.processed_at IS 'SKU processing completion timestamp';
 
 
+

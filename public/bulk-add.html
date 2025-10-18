@@ -359,7 +359,8 @@
             // Add successful items to inventory using new focused inventory system
             const addToInventory = async () => {
                 // Process ALL items that have valid data, not just those with 'success' status
-                const validItems = processedData.filter(item => item && item.imei && item.name);
+                // Note: phonecheck API returns 'model' field, not 'name'
+                const validItems = processedData.filter(item => item && item.imei && (item.model || item.name));
                 
                 console.log('📊 Processing Summary:');
                 console.log('  - Total processed data:', processedData.length);
@@ -385,7 +386,20 @@
                 // Prepare all items for new focused inventory system
                 const itemsToProcess = [];
                 
-                for (const item of validItems) {
+                // Remove duplicates by IMEI before processing
+                const seenIMEIs = new Set();
+                const uniqueItems = validItems.filter(item => {
+                    if (seenIMEIs.has(item.imei)) {
+                        console.warn(`⚠️ Skipping duplicate IMEI: ${item.imei}`);
+                        return false;
+                    }
+                    seenIMEIs.add(item.imei);
+                    return true;
+                });
+                
+                console.log(`📊 Duplicate removal: ${validItems.length} → ${uniqueItems.length} items`);
+                
+                for (const item of uniqueItems) {
                     try {
                         // Enhanced working status determination with case sensitivity handling
                         let workingStatus = 'PENDING';
@@ -419,7 +433,7 @@
                         // Transform data for new focused inventory system (IMEI-centric approach)
                         const inventoryItem = {
                             imei: item.imei || '',
-                            brand: item.brand || 'Unknown',
+                            brand: item.brand || item.make || 'Unknown',
                             model: item.model || 'Unknown',
                             capacity: item.capacity || item.storage || 'N/A',
                             color: item.color || 'N/A',
@@ -463,11 +477,16 @@
                         setCurrentStep(1);
                         setProgress(10);
                         
+                        console.log(`🚀 Sending ${itemsToProcess.length} items to bulk-add endpoint...`);
+                        console.log('📦 Sample item being sent:', JSON.stringify(itemsToProcess[0], null, 2));
+                        
                         const response = await fetch('/api/inventory/bulk-add', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                items: itemsToProcess
+                                items: itemsToProcess,
+                                station: selectedStation,
+                                location: selectedLocation
                             })
                         });
 
