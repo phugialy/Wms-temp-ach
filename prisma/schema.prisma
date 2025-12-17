@@ -697,3 +697,45 @@ model ImeiDataQueue {
   @@index([inputStatus, createdAt], map: "idx_imei_data_queue_status_created")
   @@map("imei_data_queue")
 }
+
+// Cron Job Execution Tracking
+model CronJobExecution {
+  id              BigInt    @id @default(autoincrement())
+  workflowType    String    @map("workflow_type") @db.VarChar(50) // 'bulk-add', etc.
+  triggerSource   String    @map("trigger_source") @db.VarChar(50) // 'vercel-cron', 'manual', 'api'
+  status          String    @default("pending") @db.VarChar(20) // 'pending', 'running', 'completed', 'failed'
+  
+  // Workflow parameters
+  stations        String[]  // Array of station names
+  dateFrom        DateTime? @map("date_from") @db.Date
+  dateTo          DateTime? @map("date_to") @db.Date
+  location        String?   @db.VarChar(100)
+  
+  // Execution tracking
+  startedAt       DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(6)
+  durationMs      Int?      @map("duration_ms")
+  
+  // Results
+  devicesFound    Int       @default(0) @map("devices_found")
+  devicesProcessed Int      @default(0) @map("devices_processed")
+  devicesAdded    Int       @default(0) @map("devices_added")
+  devicesFailed   Int       @default(0) @map("devices_failed")
+  
+  // Error tracking
+  errorMessage    String?   @map("error_message") @db.Text
+  errorDetails    Json?     @map("error_details")
+  
+  // Metadata
+  metadata        Json?     // Additional workflow-specific data
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workflowType], map: "idx_cron_job_workflow_type")
+  @@index([status], map: "idx_cron_job_status")
+  @@index([triggerSource], map: "idx_cron_job_trigger_source")
+  @@index([startedAt], map: "idx_cron_job_started_at")
+  @@index([completedAt], map: "idx_cron_job_completed_at")
+  @@index([dateFrom, dateTo], map: "idx_cron_job_date_range")
+  @@map("cron_job_execution")
+}

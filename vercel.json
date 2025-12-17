@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/workflows/bulk-add",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
+
