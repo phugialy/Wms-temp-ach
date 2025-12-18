@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Modal } from '@/components/ui/Modal';
+import { useToastStore } from '../stores/toastStore';
 
 interface CronJobExecution {
   id: string;
@@ -39,47 +42,239 @@ interface WorkflowStats {
   };
 }
 
+const AVAILABLE_STATIONS = [
+  'dncltz1', 'dncltz2', 'dncltz3', 'dncltz4', 'dncltz5',
+  'dncltz6', 'dncltz7', 'dncltz8', 'dncltz9', 'dncltz10'
+];
+
+const AVAILABLE_LOCATIONS = [
+  'DNCL-Inspection',
+  'DNCL-Testing',
+  'DNCL-Storage',
+  'DNCL-Warehouse-A',
+  'DNCL-Warehouse-B',
+  'DNCL-Processing',
+  'DNCL-QC',
+  'DNCL-Shipping'
+];
+
+const CRON_SCHEDULE = '0 2 * * *'; // Daily at 2 AM UTC (from vercel.json)
+
 export const CronJobManagement = () => {
   const [executions, setExecutions] = useState<CronJobExecution[]>([]);
   const [stats, setStats] = useState<WorkflowStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedExecution, setSelectedExecution] = useState<CronJobExecution | null>(null);
-  const { toast } = useToast();
+  const [showTriggerModal, setShowTriggerModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  
+  // Filter states
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [workflowFilter, setWorkflowFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Manual trigger form states
+  const [triggerForm, setTriggerForm] = useState({
+    stations: [] as string[],
+    dateFrom: '',
+    dateTo: '',
+    location: '',
+  });
+  const [triggering, setTriggering] = useState(false);
+  
+  const addToast = useToastStore((state) => state.addToast);
 
   useEffect(() => {
     loadData();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadData, 30000);
+    // Refresh every 10 seconds to keep data up to date
+    const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Set default dates for trigger form
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    
+    setTriggerForm(prev => ({
+      ...prev,
+      dateFrom: yesterday.toISOString().split('T')[0],
+      dateTo: today.toISOString().split('T')[0],
+    }));
   }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const [executionsRes, statsRes] = await Promise.all([
-        fetch('/api/workflows/executions?limit=50'),
+        fetch('/api/workflows/executions?limit=100'),
         fetch('/api/workflows/stats')
       ]);
 
       if (executionsRes.ok) {
         const executionsData = await executionsRes.json();
-        setExecutions(executionsData.data || []);
+        if (executionsData.success) {
+          setExecutions(executionsData.data || []);
+        } else {
+          console.error('API returned error:', executionsData.error);
+          addToast(executionsData.error || 'Failed to load executions', 'error');
+        }
+      } else {
+        const errorData = await executionsRes.json().catch(() => ({}));
+        console.error('Failed to load executions:', errorData);
+        addToast(errorData.error || 'Failed to load executions', 'error');
       }
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
-        setStats(statsData.data);
+        if (statsData.success) {
+          setStats(statsData.data);
+        } else {
+          console.error('API returned error:', statsData.error);
+          addToast(statsData.error || 'Failed to load stats', 'error');
+        }
+      } else {
+        const errorData = await statsRes.json().catch(() => ({}));
+        console.error('Failed to load stats:', errorData);
+        addToast(errorData.error || 'Failed to load stats', 'error');
       }
     } catch (error) {
       console.error('Error loading cron job data:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load cron job data',
-        variant: 'destructive'
-      });
+      addToast('Failed to load cron job data', 'error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleManualTrigger = async () => {
+    if (!triggerForm.stations.length || !triggerForm.dateFrom || !triggerForm.dateTo || !triggerForm.location) {
+      addToast('Please fill in all required fields', 'error');
+      return;
+    }
+
+    setTriggering(true);
+    try {
+      const response = await fetch('/api/workflows/bulk-add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stations: triggerForm.stations,
+          dateFrom: triggerForm.dateFrom,
+          dateTo: triggerForm.dateTo,
+          location: triggerForm.location,
+          triggerSource: 'manual'
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        addToast(`Workflow triggered successfully! Execution ID: ${result.executionId}`, 'success');
+        setShowTriggerModal(false);
+        setTriggerForm({
+          stations: [],
+          dateFrom: '',
+          dateTo: '',
+          location: '',
+        });
+        // Reload data after a short delay
+        setTimeout(loadData, 2000);
+      } else {
+        addToast(result.error || 'Failed to trigger workflow', 'error');
+      }
+    } catch (error) {
+      console.error('Error triggering workflow:', error);
+      addToast('Failed to trigger workflow', 'error');
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleRetryExecution = async (execution: CronJobExecution) => {
+    if (!confirm(`Retry this workflow execution with the same parameters?`)) {
+      return;
+    }
+
+    setTriggering(true);
+    try {
+      const response = await fetch('/api/workflows/bulk-add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stations: execution.stations,
+          dateFrom: execution.dateFrom,
+          dateTo: execution.dateTo,
+          location: execution.location || '',
+          triggerSource: 'manual-retry'
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        addToast(`Workflow retried successfully! New Execution ID: ${result.executionId}`, 'success');
+        setTimeout(loadData, 2000);
+      } else {
+        addToast(result.error || 'Failed to retry workflow', 'error');
+      }
+    } catch (error) {
+      console.error('Error retrying workflow:', error);
+      addToast('Failed to retry workflow', 'error');
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const toggleStation = (station: string) => {
+    setTriggerForm(prev => ({
+      ...prev,
+      stations: prev.stations.includes(station)
+        ? prev.stations.filter(s => s !== station)
+        : [...prev.stations, station]
+    }));
+  };
+
+  const getFilteredExecutions = () => {
+    let filtered = [...executions];
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(e => e.status === statusFilter);
+    }
+
+    // Workflow filter
+    if (workflowFilter !== 'all') {
+      filtered = filtered.filter(e => e.workflowType === workflowFilter);
+    }
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(e => 
+        e.id.toLowerCase().includes(query) ||
+        e.workflowType.toLowerCase().includes(query) ||
+        e.triggerSource.toLowerCase().includes(query) ||
+        e.location?.toLowerCase().includes(query) ||
+        e.stations.some(s => s.toLowerCase().includes(query))
+      );
+    }
+
+    return filtered;
+  };
+
+  const getNextRunTime = () => {
+    // Parse cron schedule: "0 2 * * *" = Daily at 2 AM UTC
+    // This is a simplified calculation - in production, use a proper cron parser
+    const now = new Date();
+    const nextRun = new Date();
+    nextRun.setUTCHours(2, 0, 0, 0);
+    
+    if (nextRun <= now) {
+      nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    }
+    
+    return nextRun;
   };
 
   const formatDuration = (ms: number | null) => {
@@ -111,6 +306,8 @@ export const CronJobManagement = () => {
     );
   };
 
+  const filteredExecutions = getFilteredExecutions();
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -120,10 +317,49 @@ export const CronJobManagement = () => {
             Monitor and manage automated workflow executions
           </p>
         </div>
-        <Button onClick={loadData} disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="default" 
+            onClick={() => setShowTriggerModal(true)}
+            disabled={triggering}
+          >
+            <i className="fas fa-play mr-2"></i>
+            Manual Trigger
+          </Button>
+          <Button onClick={loadData} disabled={loading} variant="outline">
+            <i className={`fas fa-sync-alt mr-2 ${loading ? 'animate-spin' : ''}`}></i>
+            {loading ? 'Loading...' : 'Refresh'}
+          </Button>
+        </div>
       </div>
+
+      {/* Schedule Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Schedule Configuration</CardTitle>
+          <CardDescription>Current cron job schedule settings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <div className="text-sm text-muted-foreground">Schedule</div>
+              <div className="text-lg font-mono font-semibold">{CRON_SCHEDULE}</div>
+              <div className="text-xs text-muted-foreground mt-1">Daily at 2 AM UTC</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Next Run</div>
+              <div className="text-lg font-semibold">
+                {getNextRunTime().toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Workflow Type</div>
+              <div className="text-lg font-semibold">bulk-add</div>
+              <div className="text-xs text-muted-foreground mt-1">Bulk device import workflow</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Statistics Cards */}
       {stats && (
@@ -194,17 +430,72 @@ export const CronJobManagement = () => {
         </div>
       )}
 
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Execution History</CardTitle>
+          <CardDescription>Filter and search workflow executions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Status</label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="running">Running</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Workflow Type</label>
+              <Select value={workflowFilter} onValueChange={setWorkflowFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Workflows</SelectItem>
+                  <SelectItem value="bulk-add">Bulk Add</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium mb-2 block">Search</label>
+              <Input
+                placeholder="Search by ID, workflow, location, or station..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredExecutions.length} of {executions.length} executions
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Executions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Executions</CardTitle>
-          <CardDescription>Workflow execution history</CardDescription>
+          <CardTitle>Executions</CardTitle>
+          <CardDescription>Workflow execution history and details</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8">Loading...</div>
-          ) : executions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No executions found</div>
+            <div className="text-center py-8">
+              <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+              <div className="mt-2 text-muted-foreground">Loading...</div>
+            </div>
+          ) : filteredExecutions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {executions.length === 0 ? 'No executions found' : 'No executions match your filters'}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -224,20 +515,22 @@ export const CronJobManagement = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {executions.map((execution) => (
-                    <TableRow key={execution.id}>
+                  {filteredExecutions.map((execution) => (
+                    <TableRow key={execution.id} className={execution.status === 'running' ? 'bg-blue-50' : ''}>
                       <TableCell className="font-mono text-xs">
                         {execution.id.slice(-8)}
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{execution.workflowType}</div>
                         <div className="text-xs text-muted-foreground">
-                          {execution.triggerSource}
+                          <Badge variant="outline" className="text-xs">
+                            {execution.triggerSource}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(execution.status)}</TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
                           {execution.stations.slice(0, 2).map((station, idx) => (
                             <Badge key={idx} variant="outline" className="text-xs">
                               {station}
@@ -260,15 +553,24 @@ export const CronJobManagement = () => {
                       </TableCell>
                       <TableCell>{execution.location || 'N/A'}</TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          <div>Found: {execution.devicesFound}</div>
-                          <div className="text-green-600">Added: {execution.devicesAdded}</div>
+                        <div className="text-sm space-y-1">
+                          <div>Found: <strong>{execution.devicesFound}</strong></div>
+                          <div className="text-green-600">Added: <strong>{execution.devicesAdded}</strong></div>
                           {execution.devicesFailed > 0 && (
-                            <div className="text-red-600">Failed: {execution.devicesFailed}</div>
+                            <div className="text-red-600">Failed: <strong>{execution.devicesFailed}</strong></div>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{formatDuration(execution.durationMs)}</TableCell>
+                      <TableCell>
+                        {execution.status === 'running' ? (
+                          <div className="flex items-center gap-2">
+                            <i className="fas fa-spinner fa-spin text-blue-600"></i>
+                            <span>{formatDuration(execution.durationMs)}</span>
+                          </div>
+                        ) : (
+                          formatDuration(execution.durationMs)
+                        )}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {formatDate(execution.startedAt)}
                       </TableCell>
@@ -276,13 +578,30 @@ export const CronJobManagement = () => {
                         {formatDate(execution.completedAt)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedExecution(execution)}
-                        >
-                          Details
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedExecution(execution);
+                              setShowDetailsModal(true);
+                            }}
+                          >
+                            <i className="fas fa-eye mr-1"></i>
+                            View
+                          </Button>
+                          {execution.status === 'failed' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRetryExecution(execution)}
+                              disabled={triggering}
+                            >
+                              <i className="fas fa-redo mr-1"></i>
+                              Retry
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -293,97 +612,249 @@ export const CronJobManagement = () => {
         </CardContent>
       </Card>
 
+      {/* Manual Trigger Modal */}
+      <Modal
+        isOpen={showTriggerModal}
+        onClose={() => setShowTriggerModal(false)}
+        title="Manually Trigger Workflow"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium mb-2 block">Stations *</label>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+              {AVAILABLE_STATIONS.map(station => (
+                <label key={station} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={triggerForm.stations.includes(station)}
+                    onChange={() => toggleStation(station)}
+                    className="rounded"
+                  />
+                  <span className="text-sm">{station}</span>
+                </label>
+              ))}
+            </div>
+            {triggerForm.stations.length > 0 && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                Selected: {triggerForm.stations.join(', ')}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date From *</label>
+              <Input
+                type="date"
+                value={triggerForm.dateFrom}
+                onChange={(e) => setTriggerForm(prev => ({ ...prev, dateFrom: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date To *</label>
+              <Input
+                type="date"
+                value={triggerForm.dateTo}
+                onChange={(e) => setTriggerForm(prev => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-2 block">Location *</label>
+            <Select
+              value={triggerForm.location}
+              onValueChange={(value) => setTriggerForm(prev => ({ ...prev, location: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select location" />
+              </SelectTrigger>
+              <SelectContent>
+                {AVAILABLE_LOCATIONS.map(location => (
+                  <SelectItem key={location} value={location}>
+                    {location}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setShowTriggerModal(false)}
+              disabled={triggering}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleManualTrigger}
+              disabled={triggering || !triggerForm.stations.length || !triggerForm.dateFrom || !triggerForm.dateTo || !triggerForm.location}
+            >
+              {triggering ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Triggering...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-play mr-2"></i>
+                  Trigger Workflow
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Execution Details Modal */}
-      {selectedExecution && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <div className="flex justify-between items-start">
+      <Modal
+        isOpen={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedExecution(null);
+        }}
+        title="Execution Details"
+        size="xl"
+      >
+        {selectedExecution && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-semibold mb-3">Workflow Information</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <CardTitle>Execution Details</CardTitle>
-                  <CardDescription>ID: {selectedExecution.id}</CardDescription>
+                  <span className="text-muted-foreground">Execution ID:</span>
+                  <div className="font-mono font-semibold">{selectedExecution.id}</div>
                 </div>
+                <div>
+                  <span className="text-muted-foreground">Type:</span>
+                  <div className="font-semibold">{selectedExecution.workflowType}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Trigger Source:</span>
+                  <div>
+                    <Badge variant="outline">{selectedExecution.triggerSource}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Status:</span>
+                  <div>{getStatusBadge(selectedExecution.status)}</div>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Location:</span>
+                  <div className="font-semibold">{selectedExecution.location || 'N/A'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Stations</h3>
+              <div className="flex flex-wrap gap-2">
+                {selectedExecution.stations.map((station, idx) => (
+                  <Badge key={idx} variant="outline" className="text-sm">
+                    {station}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Date Range</h3>
+              <div className="text-sm space-y-1">
+                <div>
+                  <span className="text-muted-foreground">From:</span>{' '}
+                  <strong>{new Date(selectedExecution.dateFrom).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">To:</span>{' '}
+                  <strong>{new Date(selectedExecution.dateTo).toLocaleString()}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Execution Results</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-3 bg-gray-50 rounded-md">
+                  <div className="text-xs text-muted-foreground">Devices Found</div>
+                  <div className="text-2xl font-bold">{selectedExecution.devicesFound}</div>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-md">
+                  <div className="text-xs text-muted-foreground">Devices Processed</div>
+                  <div className="text-2xl font-bold">{selectedExecution.devicesProcessed}</div>
+                </div>
+                <div className="p-3 bg-green-50 rounded-md">
+                  <div className="text-xs text-muted-foreground">Devices Added</div>
+                  <div className="text-2xl font-bold text-green-600">{selectedExecution.devicesAdded}</div>
+                </div>
+                {selectedExecution.devicesFailed > 0 && (
+                  <div className="p-3 bg-red-50 rounded-md">
+                    <div className="text-xs text-muted-foreground">Devices Failed</div>
+                    <div className="text-2xl font-bold text-red-600">{selectedExecution.devicesFailed}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Timing Information</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Duration:</span>
+                  <div className="font-semibold">{formatDuration(selectedExecution.durationMs)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Created:</span>
+                  <div>{formatDate(selectedExecution.createdAt)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Started:</span>
+                  <div>{formatDate(selectedExecution.startedAt)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Completed:</span>
+                  <div>{formatDate(selectedExecution.completedAt)}</div>
+                </div>
+              </div>
+            </div>
+
+            {selectedExecution.errorMessage && (
+              <div>
+                <h3 className="font-semibold mb-3 text-red-600">Error Details</h3>
+                <div className="text-sm text-red-600 bg-red-50 p-4 rounded-md border border-red-200">
+                  <div className="font-semibold mb-2">Error Message:</div>
+                  <div className="whitespace-pre-wrap">{selectedExecution.errorMessage}</div>
+                </div>
+              </div>
+            )}
+
+            {selectedExecution.status === 'failed' && (
+              <div className="flex justify-end pt-4 border-t">
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedExecution(null)}
+                  onClick={() => {
+                    handleRetryExecution(selectedExecution);
+                    setShowDetailsModal(false);
+                  }}
+                  disabled={triggering}
                 >
-                  ✕
+                  {triggering ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin mr-2"></i>
+                      Retrying...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-redo mr-2"></i>
+                      Retry This Execution
+                    </>
+                  )}
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Workflow Information</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Type:</span> {selectedExecution.workflowType}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Trigger:</span> {selectedExecution.triggerSource}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Status:</span> {getStatusBadge(selectedExecution.status)}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Location:</span> {selectedExecution.location || 'N/A'}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Stations</h3>
-                <div className="flex flex-wrap gap-2">
-                  {selectedExecution.stations.map((station, idx) => (
-                    <Badge key={idx} variant="outline">
-                      {station}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Date Range</h3>
-                <div className="text-sm">
-                  <div>From: {new Date(selectedExecution.dateFrom).toLocaleString()}</div>
-                  <div>To: {new Date(selectedExecution.dateTo).toLocaleString()}</div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Results</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>Devices Found: <strong>{selectedExecution.devicesFound}</strong></div>
-                  <div>Devices Processed: <strong>{selectedExecution.devicesProcessed}</strong></div>
-                  <div className="text-green-600">Devices Added: <strong>{selectedExecution.devicesAdded}</strong></div>
-                  {selectedExecution.devicesFailed > 0 && (
-                    <div className="text-red-600">Devices Failed: <strong>{selectedExecution.devicesFailed}</strong></div>
-                  )}
-                  <div>Duration: <strong>{formatDuration(selectedExecution.durationMs)}</strong></div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Timestamps</h3>
-                <div className="text-sm space-y-1">
-                  <div>Created: {formatDate(selectedExecution.createdAt)}</div>
-                  <div>Started: {formatDate(selectedExecution.startedAt)}</div>
-                  <div>Completed: {formatDate(selectedExecution.completedAt)}</div>
-                </div>
-              </div>
-
-              {selectedExecution.errorMessage && (
-                <div>
-                  <h3 className="font-semibold mb-2 text-red-600">Error</h3>
-                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded">
-                    {selectedExecution.errorMessage}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

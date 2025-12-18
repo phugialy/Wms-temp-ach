@@ -82,7 +82,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 We encountered an unexpected error. Please try refreshing the page.
               </p>
 
-              {import.meta.env.DEV && this.state.error && (
+              {(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && (window as any).__DEV__)) && this.state.error && (
                 <div className="mb-6 text-left">
                   <details className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <summary className="cursor-pointer font-semibold text-red-800 mb-2">
@@ -103,7 +103,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               )}
 
               <div className="flex justify-center space-x-3">
-                <Button onClick={this.handleReset} variant="primary">
+                <Button onClick={this.handleReset} variant="default">
                   Try Again
                 </Button>
                 <Button

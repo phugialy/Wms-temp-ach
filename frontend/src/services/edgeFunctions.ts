@@ -5,8 +5,10 @@
  * fallback to Express API routes if Edge Functions are unavailable.
  */
 
-const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || 'https://yviavhfpvufbgughpwsd.supabase.co/functions/v1';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2aWF2aGZwdnVmYmd1Z2hwd3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3OTE4OTgsImV4cCI6MjA3MTM2Nzg5OH0.G5rb2KMqD95-Wv01AvSricGYn8cqu9vvMYdyHkMht60';
+import { supabaseConfig } from '../config/supabase';
+
+const EDGE_FUNCTION_URL = supabaseConfig.edgeFunctionUrl;
+const SUPABASE_ANON_KEY = supabaseConfig.anonKey;
 
 interface EdgeFunctionResponse<T = any> {
   success: boolean;

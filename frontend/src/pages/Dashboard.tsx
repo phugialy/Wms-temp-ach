@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Spinner } from '../components/ui/Spinner';
-import { apiClient } from '../services/api';
 import { edgeFunctions } from '../services/edgeFunctions';
 import { useToastStore } from '../stores/toastStore';
 import { api } from '../services/api';
@@ -60,7 +58,7 @@ export const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const { showToast } = useToastStore();
+  const addToast = useToastStore((state) => state.addToast);
 
   useEffect(() => {
     loadDashboardData();
@@ -120,7 +118,7 @@ export const Dashboard = () => {
       const errorMessage = err.response?.data?.error || err.message || 'Failed to load dashboard data';
       setError(errorMessage);
       console.error('Failed to load dashboard data:', err);
-      showToast('Failed to load dashboard data. Please try again.', 'error');
+      addToast('Failed to load dashboard data. Please try again.', 'error');
     } finally {
       setLoading(false);
     }

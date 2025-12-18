@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Workflow API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .loading { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Workflow API Functionality Test</h1>
+    <p>This page tests if workflow endpoints are working after the Vite removal changes.</p>
+    
+    <div class="test">
+        <h3>Test 1: Get Workflow Stats</h3>
+        <button onclick="testStats()">Test Stats Endpoint</button>
+        <div id="stats-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 2: Get Execution History</h3>
+        <button onclick="testExecutions()">Test Executions Endpoint</button>
+        <div id="executions-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 3: Test Manual Trigger (Dry Run)</h3>
+        <button onclick="testTrigger()">Test Trigger Endpoint</button>
+        <div id="trigger-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        async function testStats() {
+            const resultDiv = document.getElementById('stats-result');
+            resultDiv.innerHTML = '<div class="loading">Loading...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/workflows/stats`);
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Success!</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Error:</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Network Error:</strong>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testExecutions() {
+            const resultDiv = document.getElementById('executions-result');
+            resultDiv.innerHTML = '<div class="loading">Loading...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/workflows/executions?limit=5&offset=0`);
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Success!</strong>
+                            <p>Found ${data.data?.length || 0} executions</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Error:</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Network Error:</strong>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testTrigger() {
+            const resultDiv = document.getElementById('trigger-result');
+            resultDiv.innerHTML = '<div class="loading">Testing trigger endpoint (validation only)...</div>';
+            
+            try {
+                // Test with invalid data to check validation (won't actually trigger)
+                const response = await fetch(`${API_BASE}/workflows/bulk-add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stations: [], // Invalid - should return validation error
+                        dateFrom: '2024-01-01',
+                        dateTo: '2024-01-02',
+                        location: 'Test Location'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // We expect a 400 error for validation, which means the endpoint is working
+                if (response.status === 400 && data.error) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Endpoint Working!</strong>
+                            <p>Validation is working correctly (expected error for empty stations):</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Endpoint Working!</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Unexpected Response:</strong>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Network Error:</strong>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { path: '/sku-matching', label: 'SKU Matching', icon: 'fas fa-link', section: 'Administration', roles: ['ADMIN'] },
   { path: '/data-cleanup', label: 'Data Cleanup', icon: 'fas fa-broom', section: 'Administration', roles: ['ADMIN'] },
   { path: '/queue-management', label: 'Queue Management', icon: 'fas fa-tasks', section: 'Administration', roles: ['ADMIN'] },
+  { path: '/cron-jobs', label: 'Cron Job Management', icon: 'fas fa-clock', section: 'Administration', roles: ['ADMIN', 'MANAGER'] },
   
   // Analytics
   { path: '/dashboard', label: 'Executive Dashboard', icon: 'fas fa-chart-line', section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },

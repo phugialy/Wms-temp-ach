@@ -5,7 +5,7 @@ import type { ApiResponse } from '../types';
 // Create axios instance with default config
 const api: AxiosInstance = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 15000, // Reduced from 30s to 15s for faster failure detection
   headers: {
     'Content-Type': 'application/json',
   },
@@ -43,15 +43,21 @@ api.interceptors.response.use(
     // (reduce noise from old HTML pages and missing optional endpoints)
     if (error.response?.status === 404) {
       // Only log 404s for critical endpoints
-      const criticalEndpoints = ['/inventory', '/inventory/stats', '/admin/dashboard'];
+      const criticalEndpoints = ['/inventory', '/inventory/stats', '/admin/dashboard', '/workflows'];
       const isCritical = criticalEndpoints.some(endpoint => 
         error.config?.url?.includes(endpoint)
       );
       
-      if (!isCritical) {
-        // Don't log non-critical 404s
-        return Promise.reject(error);
+      if (isCritical) {
+        // Log critical 404s (including workflow endpoints)
+        console.error('Critical endpoint not found:', {
+          url: error.config?.url,
+          status: error.response.status,
+          data: error.response.data
+        });
       }
+      
+      return Promise.reject(error);
     }
     
     // Log server errors (500+)
@@ -78,13 +84,43 @@ api.interceptors.response.use(
 // API helper functions
 export const apiClient = {
   get: async <T = any>(url: string, params?: any): Promise<ApiResponse<T>> => {
-    const response = await api.get<ApiResponse<T>>(url, { params });
-    return response.data;
+    console.log(`[ApiClient] GET ${url}`, params ? { params } : '');
+    try {
+      const response = await api.get<ApiResponse<T>>(url, { params });
+      console.log(`[ApiClient] GET ${url} - Response:`, {
+        status: response.status,
+        data: response.data,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error(`[ApiClient] GET ${url} - Error:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw error;
+    }
   },
 
   post: async <T = any>(url: string, data?: any): Promise<ApiResponse<T>> => {
-    const response = await api.post<ApiResponse<T>>(url, data);
-    return response.data;
+    console.log(`[ApiClient] POST ${url}`, data ? { data } : '');
+    try {
+      const response = await api.post<ApiResponse<T>>(url, data);
+      console.log(`[ApiClient] POST ${url} - Response:`, {
+        status: response.status,
+        data: response.data,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error(`[ApiClient] POST ${url} - Error:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw error;
+    }
   },
 
   put: async <T = any>(url: string, data?: any): Promise<ApiResponse<T>> => {
