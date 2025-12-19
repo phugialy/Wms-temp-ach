@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Card,
   Table,
@@ -13,10 +13,15 @@ import {
   Col,
   Tag,
   DatePicker,
+  TimePicker,
   Checkbox,
   Descriptions,
   Alert,
   App,
+  Tabs,
+  Form,
+  Switch,
+  Divider,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -26,9 +31,17 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
+  FileExcelOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  SettingOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import * as XLSX from 'xlsx';
 import {
   workflowService,
   type CronJobExecution,
@@ -36,6 +49,11 @@ import {
   type DeviceInfo,
   type BulkAddWorkflowParams,
 } from '../services/workflowService';
+import {
+  cronScheduleService,
+  type CronJobSchedule,
+  type CreateCronScheduleParams,
+} from '../services/cronScheduleService';
 
 const { RangePicker } = DatePicker;
 const { Search } = Input;
@@ -82,24 +100,80 @@ export const CronJobManagementModern = () => {
     location: '',
   });
   const [triggering, setTriggering] = useState(false);
+  
+  // Cron Schedule Management states
+  const [cronSchedules, setCronSchedules] = useState<CronJobSchedule[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<CronJobSchedule | null>(null);
+  const [scheduleForm] = Form.useForm();
+  
+  // Use ref to track loading state to avoid race conditions
+  const isLoadingRef = useRef(false);
+  const hasInitialLoadRef = useRef(false);
 
   useEffect(() => {
-    console.log('[CronJobManagement] Component mounted');
-    loadData();
+    console.log('[CronJobManagement] ========== COMPONENT MOUNTED ==========');
+    console.log('[CronJobManagement] Initial state check:', {
+      isLoadingRef: isLoadingRef.current,
+      hasInitialLoad: hasInitialLoadRef.current,
+      loadingState: loading,
+      executionsCount: executions.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // CRITICAL: Always reset ref on mount to ensure clean state
+    // This handles React StrictMode double-mounting in development
+    const wasLoading = isLoadingRef.current;
+    isLoadingRef.current = false;
+    console.log('[CronJobManagement] Reset isLoadingRef:', { wasLoading, now: isLoadingRef.current });
+    
+    // Only load on initial mount, not on re-renders
+    if (!hasInitialLoadRef.current) {
+      hasInitialLoadRef.current = true;
+      console.log('[CronJobManagement] ✅ First mount - triggering initial data load');
+      console.log('[CronJobManagement] Calling loadData(true) in next tick...');
+      
+      // Use requestAnimationFrame to ensure React has finished mounting
+      // This is more reliable than setTimeout for ensuring clean state
+      requestAnimationFrame(() => {
+        console.log('[CronJobManagement] requestAnimationFrame callback - calling loadData(true)');
+        console.log('[CronJobManagement] isLoadingRef before loadData:', isLoadingRef.current);
+        loadData(true); // Force initial load - bypasses guard
+      });
+    } else {
+      console.log('[CronJobManagement] ⚠️ Subsequent mount detected (React StrictMode?) - skipping initial load');
+      console.log('[CronJobManagement] If you see this and no data loaded, there may be a React StrictMode issue');
+    }
     // Auto-refresh removed - user can manually refresh using the Refresh button
   }, []);
 
-  const loadData = async () => {
-    // Prevent duplicate concurrent requests
-    if (loading) {
-      console.log('[CronJobManagement] Load data already in progress, skipping...');
+  const loadData = async (force: boolean = false) => {
+    console.log('[CronJobManagement] ===== loadData() called =====', {
+      force,
+      isLoadingRef: isLoadingRef.current,
+      loadingState: loading,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Prevent duplicate concurrent requests unless forced
+    if (isLoadingRef.current && !force) {
+      console.warn('[CronJobManagement] ⚠️ Load data already in progress, skipping...');
+      console.warn('[CronJobManagement] Use force=true to override, or wait for current request to complete');
+      console.warn('[CronJobManagement] Current state:', {
+        isLoadingRef: isLoadingRef.current,
+        loadingState: loading
+      });
       return;
     }
     
     try {
+      console.log('[CronJobManagement] ✅ Proceeding with data load');
+      isLoadingRef.current = true;
       setLoading(true);
       setError(null);
-      console.log('[CronJobManagement] ===== Starting data load =====');
+      console.log('[CronJobManagement] ===== Starting data load =====', { force });
+      console.log('[CronJobManagement] isLoadingRef set to:', isLoadingRef.current);
       console.log('[CronJobManagement] Calling workflowService.getExecutionHistory()...');
       console.log('[CronJobManagement] Calling workflowService.getWorkflowStats()...');
       
@@ -148,8 +222,14 @@ export const CronJobManagementModern = () => {
       console.log('[CronJobManagement] Data loading complete');
     } catch (error) {
       console.error('[CronJobManagement] Error loading cron job data:', error);
+      console.error('[CronJobManagement] Error stack:', error instanceof Error ? error.stack : 'No stack');
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       setError(`Failed to load cron job data: ${errorMsg}`);
+      
+      // Ensure we set empty arrays on error so UI doesn't stay stuck
+      if (executions.length === 0) {
+        setExecutions([]);
+      }
       
       if (error instanceof Error) {
         message.error(`Failed to load cron job data: ${error.message}`);
@@ -157,6 +237,8 @@ export const CronJobManagementModern = () => {
         message.error('Failed to load cron job data. Please check if the backend server is running.');
       }
     } finally {
+      console.log('[CronJobManagement] Setting loading to false');
+      isLoadingRef.current = false;
       setLoading(false);
     }
   };
@@ -182,6 +264,109 @@ export const CronJobManagementModern = () => {
       message.error('Failed to load device list. Please try again.');
     } finally {
       setLoadingDevices(false);
+    }
+  };
+
+  const exportToCSV = () => {
+    if (executionDevices.length === 0) {
+      message.warning('No device data to export. Please load the device list first.');
+      return;
+    }
+
+    try {
+      // Prepare CSV headers
+      const headers = ['IMEI', 'Station', 'Brand', 'Model', 'Capacity', 'Color', 'Carrier', 'Processed At'];
+      
+      // Prepare CSV rows
+      const rows = executionDevices.map(device => [
+        device.imei,
+        device.station || 'N/A',
+        device.brand || 'N/A',
+        device.model || 'N/A',
+        device.capacity || 'N/A',
+        device.color || 'N/A',
+        device.carrier || 'N/A',
+        device.processedAt ? formatDate(device.processedAt) : 'N/A',
+      ]);
+
+      // Combine headers and rows
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      
+      // Generate filename with execution ID and timestamp
+      const executionId = selectedExecution?.id ? selectedExecution.id.slice(-8) : 'unknown';
+      const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
+      link.setAttribute('download', `cron-job-devices_${executionId}_${timestamp}.csv`);
+      
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      message.success(`Exported ${executionDevices.length} devices to CSV`);
+    } catch (error) {
+      console.error('[CronJobManagement] Error exporting to CSV:', error);
+      message.error('Failed to export to CSV. Please try again.');
+    }
+  };
+
+  const exportToExcel = () => {
+    if (executionDevices.length === 0) {
+      message.warning('No device data to export. Please load the device list first.');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const excelData = executionDevices.map(device => ({
+        'IMEI': device.imei,
+        'Station': device.station || 'N/A',
+        'Brand': device.brand || 'N/A',
+        'Model': device.model || 'N/A',
+        'Capacity': device.capacity || 'N/A',
+        'Color': device.color || 'N/A',
+        'Carrier': device.carrier || 'N/A',
+        'Processed At': device.processedAt ? formatDate(device.processedAt) : 'N/A',
+      }));
+
+      // Create workbook and worksheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Devices');
+
+      // Set column widths for better readability
+      const columnWidths = [
+        { wch: 18 }, // IMEI
+        { wch: 12 }, // Station
+        { wch: 12 }, // Brand
+        { wch: 20 }, // Model
+        { wch: 12 }, // Capacity
+        { wch: 12 }, // Color
+        { wch: 12 }, // Carrier
+        { wch: 20 }, // Processed At
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // Generate filename with execution ID and timestamp
+      const executionId = selectedExecution?.id ? selectedExecution.id.slice(-8) : 'unknown';
+      const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss');
+      const filename = `cron-job-devices_${executionId}_${timestamp}.xlsx`;
+
+      // Write file
+      XLSX.writeFile(workbook, filename);
+      
+      message.success(`Exported ${executionDevices.length} devices to Excel`);
+    } catch (error) {
+      console.error('[CronJobManagement] Error exporting to Excel:', error);
+      message.error('Failed to export to Excel. Please try again.');
     }
   };
 
@@ -391,7 +576,7 @@ export const CronJobManagementModern = () => {
           type="error"
           showIcon
           action={
-            <Button size="small" onClick={loadData}>
+            <Button size="small" onClick={() => loadData(true)}>
               Retry
             </Button>
           }
@@ -399,6 +584,104 @@ export const CronJobManagementModern = () => {
       </div>
     );
   }
+
+  // Load cron schedules
+  const loadCronSchedules = async () => {
+    setLoadingSchedules(true);
+    try {
+      const schedules = await cronScheduleService.getCronSchedules();
+      setCronSchedules(schedules);
+    } catch (error) {
+      console.error('[CronJobManagement] Error loading cron schedules:', error);
+      message.error('Failed to load cron schedules');
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  // Handle create/update cron schedule
+  const handleSaveSchedule = async (values: any) => {
+    try {
+      const params: CreateCronScheduleParams = {
+        name: values.name,
+        workflowType: 'bulk-add',
+        stations: values.stations,
+        location: values.location,
+        dateRangeDays: values.dateRangeDays || 1,
+        scheduleTime: values.scheduleTime.format('HH:mm'),
+        timezone: values.timezone || 'UTC',
+        frequency: values.frequency,
+        weeklyDays: values.frequency === 'weekly' ? values.weeklyDays : undefined,
+        description: values.description,
+      };
+
+      let result;
+      if (editingSchedule) {
+        result = await cronScheduleService.updateCronSchedule(editingSchedule.id, params);
+      } else {
+        result = await cronScheduleService.createCronSchedule(params);
+      }
+
+      if (result.success) {
+        message.success(editingSchedule ? 'Cron schedule updated successfully' : 'Cron schedule created successfully');
+        setShowScheduleModal(false);
+        setEditingSchedule(null);
+        scheduleForm.resetFields();
+        loadCronSchedules();
+      } else {
+        message.error(result.error || 'Failed to save cron schedule');
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error saving cron schedule:', error);
+      message.error('Failed to save cron schedule');
+    }
+  };
+
+  // Handle toggle active status
+  const handleToggleSchedule = async (schedule: CronJobSchedule) => {
+    try {
+      const result = await cronScheduleService.toggleCronSchedule(schedule.id, !schedule.isActive);
+      if (result.success) {
+        message.success(`Cron schedule ${!schedule.isActive ? 'activated' : 'deactivated'}`);
+        loadCronSchedules();
+      } else {
+        message.error(result.error || 'Failed to toggle cron schedule');
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error toggling cron schedule:', error);
+      message.error('Failed to toggle cron schedule');
+    }
+  };
+
+  // Handle delete schedule
+  const handleDeleteSchedule = async (schedule: CronJobSchedule) => {
+    Modal.confirm({
+      title: 'Delete Cron Schedule',
+      content: `Are you sure you want to delete "${schedule.name}"? This action cannot be undone.`,
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          const result = await cronScheduleService.deleteCronSchedule(schedule.id);
+          if (result.success) {
+            message.success('Cron schedule deleted successfully');
+            loadCronSchedules();
+          } else {
+            message.error(result.error || 'Failed to delete cron schedule');
+          }
+        } catch (error) {
+          console.error('[CronJobManagement] Error deleting cron schedule:', error);
+          message.error('Failed to delete cron schedule');
+        }
+      },
+    });
+  };
+
+  // Load schedules on mount
+  useEffect(() => {
+    loadCronSchedules();
+  }, []);
 
   return (
     <div style={{ padding: 24 }}>
@@ -421,7 +704,7 @@ export const CronJobManagementModern = () => {
             onClick={() => {
               console.log('[CronJobManagement] Refresh button clicked');
               console.log('[CronJobManagement] Current loading state:', loading);
-              loadData();
+              loadData(true); // Force refresh even if already loading
             }}
             loading={loading}
           >
@@ -442,7 +725,20 @@ export const CronJobManagementModern = () => {
         />
       )}
 
-      {/* Statistics Cards */}
+      <Tabs
+        defaultActiveKey="executions"
+        items={[
+          {
+            key: 'executions',
+            label: (
+              <span>
+                <HistoryOutlined />
+                Execution History
+              </span>
+            ),
+            children: (
+              <div>
+                {/* Statistics Cards */}
       {stats && (
         <Row gutter={16} style={{ marginBottom: 24 }}>
           <Col span={6}>
@@ -583,6 +879,180 @@ export const CronJobManagementModern = () => {
           })}
         />
       </Card>
+              </div>
+            ),
+          },
+          {
+            key: 'schedules',
+            label: (
+              <span>
+                <SettingOutlined />
+                Cron Management
+              </span>
+            ),
+            children: (
+              <div>
+                <Card style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Scheduled Cron Jobs</h3>
+                      <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                        Create and manage automated workflow schedules
+                      </div>
+                    </div>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        setEditingSchedule(null);
+                        scheduleForm.resetFields();
+                        scheduleForm.setFieldsValue({
+                          frequency: 'daily',
+                          dateRangeDays: 1,
+                          timezone: 'UTC',
+                          scheduleTime: dayjs('02:00', 'HH:mm'),
+                        });
+                        setShowScheduleModal(true);
+                      }}
+                    >
+                      Create Schedule
+                    </Button>
+                  </div>
+
+                  <Table
+                    dataSource={cronSchedules}
+                    rowKey="id"
+                    loading={loadingSchedules}
+                    columns={[
+                      {
+                        title: 'Name',
+                        dataIndex: 'name',
+                        key: 'name',
+                        width: 200,
+                        render: (name: string, record: CronJobSchedule) => (
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{name}</div>
+                            {record.description && (
+                              <div style={{ fontSize: 12, color: '#8c8c8c' }}>{record.description}</div>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Schedule',
+                        key: 'schedule',
+                        width: 200,
+                        render: (_, record: CronJobSchedule) => (
+                          <div>
+                            <div><strong>Time:</strong> {record.scheduleTime}</div>
+                            <div><strong>Frequency:</strong> {record.frequency === 'daily' ? 'Daily' : 'Weekly'}</div>
+                            {record.frequency === 'weekly' && record.weeklyDays.length > 0 && (
+                              <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                                Days: {record.weeklyDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Workflow',
+                        key: 'workflow',
+                        width: 250,
+                        render: (_, record: CronJobSchedule) => (
+                          <div>
+                            <div><strong>Stations:</strong> {record.stations.length} selected</div>
+                            <div><strong>Location:</strong> {record.location}</div>
+                            <div><strong>Date Range:</strong> Last {record.dateRangeDays} day(s)</div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Status',
+                        key: 'status',
+                        width: 150,
+                        render: (_, record: CronJobSchedule) => (
+                          <div>
+                            <Switch
+                              checked={record.isActive}
+                              onChange={() => handleToggleSchedule(record)}
+                              checkedChildren="Active"
+                              unCheckedChildren="Inactive"
+                            />
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                              {record.nextRunAt ? `Next: ${formatDate(record.nextRunAt)}` : 'No next run'}
+                            </div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Runs',
+                        key: 'runs',
+                        width: 120,
+                        render: (_, record: CronJobSchedule) => (
+                          <div>
+                            <div>Total: <strong>{record.totalRuns}</strong></div>
+                            <div style={{ color: '#3f8600' }}>Success: <strong>{record.successfulRuns}</strong></div>
+                            {record.failedRuns > 0 && (
+                              <div style={{ color: '#cf1322' }}>Failed: <strong>{record.failedRuns}</strong></div>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Actions',
+                        key: 'actions',
+                        width: 150,
+                        fixed: 'right' as const,
+                        render: (_, record: CronJobSchedule) => (
+                          <Space>
+                            <Button
+                              type="link"
+                              icon={<EditOutlined />}
+                              onClick={() => {
+                                setEditingSchedule(record);
+                                const [hours, minutes] = record.scheduleTime.split(':');
+                                scheduleForm.setFieldsValue({
+                                  name: record.name,
+                                  stations: record.stations,
+                                  location: record.location,
+                                  dateRangeDays: record.dateRangeDays,
+                                  scheduleTime: dayjs(`${hours}:${minutes}`, 'HH:mm'),
+                                  timezone: record.timezone,
+                                  frequency: record.frequency,
+                                  weeklyDays: record.weeklyDays,
+                                  description: record.description,
+                                });
+                                setShowScheduleModal(true);
+                              }}
+                              size="small"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="link"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteSchedule(record)}
+                              size="small"
+                            >
+                              Delete
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                    }}
+                  />
+                </Card>
+              </div>
+            ),
+          },
+        ]}
+        style={{ marginTop: 16 }}
+      />
 
       {/* Trigger Workflow Modal */}
       <Modal
@@ -723,19 +1193,39 @@ export const CronJobManagementModern = () => {
                     {Number(selectedExecution.devicesAdded) || 0} devices were added in this execution
                     {executionDevices.length > 0 && ` • ${executionDevices.length} devices currently displayed`}
                   </div>
-                  <Button
-                    type="primary"
-                    icon={<EyeOutlined />}
-                    onClick={async () => {
-                      console.log('[CronJobManagement] devicesAdded:', selectedExecution.devicesAdded);
-                      if (selectedExecution.id) {
-                        await loadExecutionDevices(selectedExecution.id);
-                      }
-                    }}
-                    loading={loadingDevices}
-                  >
-                    {executionDevices.length > 0 ? 'Reload Device List' : '🔍 Show IMEI List'}
-                  </Button>
+                  <Space>
+                    {executionDevices.length > 0 && (
+                      <>
+                        <Button
+                          icon={<FileTextOutlined />}
+                          onClick={exportToCSV}
+                          disabled={executionDevices.length === 0}
+                        >
+                          Export CSV
+                        </Button>
+                        <Button
+                          icon={<FileExcelOutlined />}
+                          onClick={exportToExcel}
+                          disabled={executionDevices.length === 0}
+                        >
+                          Export Excel
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      type="primary"
+                      icon={<EyeOutlined />}
+                      onClick={async () => {
+                        console.log('[CronJobManagement] devicesAdded:', selectedExecution.devicesAdded);
+                        if (selectedExecution.id) {
+                          await loadExecutionDevices(selectedExecution.id);
+                        }
+                      }}
+                      loading={loadingDevices}
+                    >
+                      {executionDevices.length > 0 ? 'Reload Device List' : '🔍 Show IMEI List'}
+                    </Button>
+                  </Space>
                 </div>
 
                 {loadingDevices && (
@@ -825,6 +1315,174 @@ export const CronJobManagementModern = () => {
             )}
           </div>
         )}
+      </Modal>
+
+      <style>{`
+        .ant-table-row-completed {
+          background-color: #f6ffed !important;
+        }
+        .ant-table-row-completed:hover {
+          background-color: #d9f7be !important;
+        }
+        .ant-table-row-failed {
+          background-color: #fff1f0 !important;
+        }
+        .ant-table-row-failed:hover {
+          background-color: #ffccc7 !important;
+        }
+        .ant-table-row-running {
+          background-color: #e6f7ff !important;
+        }
+        .ant-table-row-running:hover {
+          background-color: #bae7ff !important;
+        }
+      `}</style>
+
+      {/* Create/Edit Cron Schedule Modal */}
+      <Modal
+        title={editingSchedule ? 'Edit Cron Schedule' : 'Create Cron Schedule'}
+        open={showScheduleModal}
+        onOk={() => scheduleForm.submit()}
+        onCancel={() => {
+          setShowScheduleModal(false);
+          setEditingSchedule(null);
+          scheduleForm.resetFields();
+        }}
+        width={700}
+        okText={editingSchedule ? 'Update' : 'Create'}
+      >
+        <Form
+          form={scheduleForm}
+          layout="vertical"
+          onFinish={handleSaveSchedule}
+          initialValues={{
+            frequency: 'daily',
+            dateRangeDays: 1,
+            timezone: 'UTC',
+            scheduleTime: dayjs('02:00', 'HH:mm'),
+          }}
+        >
+          <Form.Item
+            name="name"
+            label="Schedule Name"
+            rules={[{ required: true, message: 'Please enter a schedule name' }]}
+          >
+            <Input placeholder="e.g., Daily Morning Import" />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="Description"
+          >
+            <Input.TextArea rows={2} placeholder="Optional description for this schedule" />
+          </Form.Item>
+
+          <Divider orientation="left" style={{ margin: '16px 0' }}>Workflow Parameters</Divider>
+
+          <Form.Item
+            name="stations"
+            label="Stations *"
+            rules={[{ required: true, message: 'Please select at least one station' }]}
+          >
+            <Checkbox.Group options={AVAILABLE_STATIONS} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="location"
+            label="Location *"
+            rules={[{ required: true, message: 'Please select a location' }]}
+          >
+            <Select placeholder="Select location" style={{ width: '100%' }}>
+              {AVAILABLE_LOCATIONS.map(loc => (
+                <Select.Option key={loc} value={loc}>{loc}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="dateRangeDays"
+            label="Date Range (Days Back)"
+            rules={[{ required: true, message: 'Please specify date range' }]}
+            tooltip="How many days back to process (e.g., 1 = yesterday, 7 = last week)"
+          >
+            <Input type="number" min={1} max={30} />
+          </Form.Item>
+
+          <Divider orientation="left" style={{ margin: '16px 0' }}>Schedule Configuration</Divider>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="scheduleTime"
+                label="Schedule Time *"
+                rules={[{ required: true, message: 'Please select a time' }]}
+              >
+                <TimePicker
+                  format="HH:mm"
+                  style={{ width: '100%' }}
+                  placeholder="Select time"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="timezone"
+                label="Timezone"
+                rules={[{ required: true, message: 'Please select timezone' }]}
+              >
+                <Select style={{ width: '100%' }}>
+                  <Select.Option value="UTC">UTC</Select.Option>
+                  <Select.Option value="America/New_York">Eastern Time (ET)</Select.Option>
+                  <Select.Option value="America/Chicago">Central Time (CT)</Select.Option>
+                  <Select.Option value="America/Denver">Mountain Time (MT)</Select.Option>
+                  <Select.Option value="America/Los_Angeles">Pacific Time (PT)</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="frequency"
+            label="Frequency *"
+            rules={[{ required: true, message: 'Please select frequency' }]}
+          >
+            <Select style={{ width: '100%' }}>
+              <Select.Option value="daily">Daily</Select.Option>
+              <Select.Option value="weekly">Weekly</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.frequency !== currentValues.frequency}
+          >
+            {({ getFieldValue }) => {
+              const frequency = getFieldValue('frequency');
+              if (frequency === 'weekly') {
+                return (
+                  <Form.Item
+                    name="weeklyDays"
+                    label="Select Days *"
+                    rules={[{ required: true, message: 'Please select at least one day' }]}
+                  >
+                    <Checkbox.Group style={{ width: '100%' }}>
+                      <Row>
+                        <Col span={8}><Checkbox value={0}>Sunday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={1}>Monday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={2}>Tuesday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={3}>Wednesday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={4}>Thursday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={5}>Friday</Checkbox></Col>
+                        <Col span={8}><Checkbox value={6}>Saturday</Checkbox></Col>
+                      </Row>
+                    </Checkbox.Group>
+                  </Form.Item>
+                );
+              }
+              return null;
+            }}
+          </Form.Item>
+        </Form>
       </Modal>
 
       <style>{`
