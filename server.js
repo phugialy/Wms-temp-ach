@@ -21,6 +21,7 @@ const imeiQueueApi = require('./src/api/imeiQueueApi');
 const skuMasterApi = require('./src/api/skuMasterApi');
 const skuMatchingApi = require('./src/api/skuMatchingApi');
 const skuTestApi = require('./src/routes/skuTest');
+const workflowApi = require('./src/api/workflowApi');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
@@ -30,6 +31,7 @@ app.use('/api/imei-queue', imeiQueueApi);
 app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
 app.use('/api/sku-test', skuTestApi);
+app.use('/api/workflows', workflowApi);
 app.use('/api', bulkDataApi);
 app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
@@ -42,11 +44,23 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Serve static HTML files
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Serve frontend build files (React app)
+const frontendDistPath = path.join(__dirname, 'frontend', 'dist');
+const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 
+// Check if frontend is built
+const fs = require('fs');
+const frontendBuilt = fs.existsSync(frontendIndexPath);
+
+if (frontendBuilt) {
+  // Serve static files from frontend/dist
+  app.use(express.static(frontendDistPath));
+  console.log('✅ Frontend build found - serving React app');
+} else {
+  console.log('⚠️  Frontend not built - run "pnpm build:frontend" to build the UI');
+}
+
+// Legacy static HTML files (fallback)
 app.get('/admin-dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
 });
@@ -67,6 +81,28 @@ app.get('/sku-test', (req, res) => {
   res.redirect('/api/sku-test');
 });
 
+// Serve React app for all non-API routes (SPA fallback)
+app.get('*', (req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  
+  // If frontend is built, serve React app
+  if (frontendBuilt) {
+    return res.sendFile(frontendIndexPath);
+  }
+  
+  // Fallback to legacy index.html
+  const legacyIndexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(legacyIndexPath)) {
+    return res.sendFile(legacyIndexPath);
+  }
+  
+  // No frontend available
+  next();
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err);
@@ -79,10 +115,25 @@ app.use((err, req, res, next) => {
 
 // 404 handler
 app.use((req, res) => {
+  // If it's an API route, return JSON
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({
+      success: false,
+      error: 'API endpoint not found',
+      path: req.path
+    });
+  }
+  
+  // For non-API routes, try to serve frontend or return error
+  if (frontendBuilt) {
+    return res.sendFile(frontendIndexPath);
+  }
+  
   res.status(404).json({
     success: false,
     error: 'Endpoint not found',
-    path: req.path
+    path: req.path,
+    message: 'Frontend not built. Run "pnpm build:frontend" to build the UI'
   });
 });
 

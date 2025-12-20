@@ -53,16 +53,19 @@ export const getCronSchedules = async (): Promise<CronJobSchedule[]> => {
     const response = await apiClient.get<{ success: boolean; data?: CronJobSchedule[] }>(
       '/workflows/schedules'
     );
-    const result = response.data || response;
+    console.log('[CronScheduleService] Get schedules response:', response);
+    // apiClient.get already returns response.data, so response IS the ApiResponse object
+    const result = response;
     if (result.success && result.data) {
       return result.data;
     }
+    // Fallback: if response is already an array (shouldn't happen but handle it)
     if (Array.isArray(result)) {
       return result;
     }
     return [];
   } catch (error: any) {
-    console.error('Error getting cron schedules:', error);
+    console.error('[CronScheduleService] Error getting cron schedules:', error);
     return [];
   }
 };
@@ -80,7 +83,8 @@ export const createCronSchedule = async (
       params
     );
     console.log('[CronScheduleService] Response received:', response);
-    const result = response.data || response;
+    // apiClient.post already returns response.data, so response IS the ApiResponse object
+    const result = response;
     console.log('[CronScheduleService] Parsed result:', result);
     console.log('[CronScheduleService] Success:', result.success);
     
@@ -114,21 +118,37 @@ export const updateCronSchedule = async (
   params: UpdateCronScheduleParams
 ): Promise<{ success: boolean; data?: CronJobSchedule; error?: string }> => {
   try {
+    console.log('[CronScheduleService] Updating schedule with params:', { id, params });
     const response = await apiClient.put<{ success: boolean; data?: CronJobSchedule; error?: string }>(
       `/workflows/schedules/${id}`,
       params
     );
-    const result = response.data || response;
-    return {
-      success: result.success || false,
-      data: result.data,
-      error: result.error,
-    };
-  } catch (error: any) {
-    console.error('Error updating cron schedule:', error);
+    console.log('[CronScheduleService] Update response received:', response);
+    // apiClient.put already returns response.data, so response IS the ApiResponse object
+    const result = response;
+    console.log('[CronScheduleService] Parsed result:', result);
+    console.log('[CronScheduleService] Success flag:', result.success);
+    console.log('[CronScheduleService] Has data:', !!result.data);
+    
+    if (result.success && result.data) {
+      return {
+        success: true,
+        data: result.data,
+      };
+    }
+    
     return {
       success: false,
-      error: error.response?.data?.error || error.message || 'Failed to update cron schedule',
+      data: result.data,
+      error: result.error || 'Unknown error occurred',
+    };
+  } catch (error: any) {
+    console.error('[CronScheduleService] Error updating cron schedule:', error);
+    console.error('[CronScheduleService] Error response:', error.response?.data);
+    console.error('[CronScheduleService] Error status:', error.response?.status);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to update cron schedule',
     };
   }
 };
@@ -138,19 +158,31 @@ export const updateCronSchedule = async (
  */
 export const deleteCronSchedule = async (id: string): Promise<{ success: boolean; error?: string }> => {
   try {
+    console.log('[CronScheduleService] Deleting schedule:', id);
     const response = await apiClient.delete<{ success: boolean; error?: string }>(
       `/workflows/schedules/${id}`
     );
-    const result = response.data || response;
-    return {
-      success: result.success || false,
-      error: result.error,
-    };
-  } catch (error: any) {
-    console.error('Error deleting cron schedule:', error);
+    console.log('[CronScheduleService] Delete response received:', response);
+    // apiClient.delete already returns response.data, so response IS the ApiResponse object
+    const result = response;
+    console.log('[CronScheduleService] Delete result:', result);
+    
+    if (result.success) {
+      return {
+        success: true,
+      };
+    }
+    
     return {
       success: false,
-      error: error.response?.data?.error || error.message || 'Failed to delete cron schedule',
+      error: result.error || 'Unknown error occurred',
+    };
+  } catch (error: any) {
+    console.error('[CronScheduleService] Error deleting cron schedule:', error);
+    console.error('[CronScheduleService] Error response:', error.response?.data);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to delete cron schedule',
     };
   }
 };

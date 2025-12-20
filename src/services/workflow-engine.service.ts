@@ -1,15 +1,14 @@
-import { PrismaClient } from '@prisma/client';
 import { PhonecheckService } from './phonecheck.service';
 import { logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma/client';
 
 export interface BulkAddWorkflowParams {
   stations: string[];
   dateFrom: string; // ISO date string
   dateTo: string; // ISO date string
   location: string;
-  triggerSource?: string; // 'vercel-cron', 'manual', 'api'
+  triggerSource?: string; // 'vercel-cron', 'manual', 'api', 'scheduled-cron'
+  scheduleId?: bigint; // ID of the schedule that triggered this execution
 }
 
 export interface WorkflowExecutionResult {
@@ -45,6 +44,7 @@ export class WorkflowEngineService {
           workflowType: 'bulk-add',
           triggerSource: params.triggerSource || 'api',
           status: 'running',
+          scheduleId: params.scheduleId,
           stations: params.stations,
           dateFrom: new Date(params.dateFrom),
           dateTo: new Date(params.dateTo),
@@ -65,6 +65,8 @@ export class WorkflowEngineService {
       logger.info('🚀 Workflow execution started', {
         executionId: executionId.toString(),
         workflowType: 'bulk-add',
+        scheduleId: params.scheduleId ? params.scheduleId.toString() : null, // Log schedule ID if present
+        triggerSource: params.triggerSource || 'api',
         stations: params.stations,
         dateFrom: params.dateFrom,
         dateTo: params.dateTo,
@@ -76,6 +78,7 @@ export class WorkflowEngineService {
       let totalDevicesAdded = 0;
       let totalDevicesFailed = 0;
       const errors: any[] = [];
+      const processedDevices: any[] = []; // Track successfully added devices
 
       // Step 2: Process each station
       for (const station of params.stations) {
@@ -141,6 +144,18 @@ export class WorkflowEngineService {
 
               totalDevicesProcessed++;
               totalDevicesAdded++;
+              
+              // Track device details for metadata
+              processedDevices.push({
+                imei: imei,
+                station: station,
+                model: enhancedData?.['Model'] || enhancedData?.['model'] || device?.['Model'] || device?.['model'] || 'N/A',
+                brand: enhancedData?.['Brand'] || enhancedData?.['brand'] || device?.['Brand'] || device?.['brand'] || 'N/A',
+                capacity: enhancedData?.['Capacity'] || enhancedData?.['capacity'] || device?.['Capacity'] || device?.['capacity'] || 'N/A',
+                color: enhancedData?.['Color'] || enhancedData?.['color'] || device?.['Color'] || device?.['color'] || 'N/A',
+                carrier: enhancedData?.['Carrier'] || enhancedData?.['carrier'] || device?.['Carrier'] || device?.['carrier'] || 'N/A',
+                processedAt: new Date().toISOString()
+              });
 
             } catch (deviceError) {
               totalDevicesProcessed++;
@@ -187,7 +202,11 @@ export class WorkflowEngineService {
           devicesAdded: totalDevicesAdded,
           devicesFailed: totalDevicesFailed,
           errorMessage: errors.length > 0 ? `${errors.length} devices failed` : null,
-          errorDetails: errors.length > 0 ? ({ errors: errors.slice(0, 100) } as any) : null // Limit to first 100 errors
+          errorDetails: errors.length > 0 ? ({ errors: errors.slice(0, 100) } as any) : null, // Limit to first 100 errors
+          metadata: {
+            devices: processedDevices.slice(0, 1000), // Store up to 1000 devices in metadata
+            totalDevices: processedDevices.length
+          } as any
         }
       });
 
@@ -338,14 +357,53 @@ export class WorkflowEngineService {
   }
 
   /**
-   * Get execution history
+   * Get execution history with optional date filtering
    */
-  async getExecutionHistory(limit: number = 50, offset: number = 0) {
-    return await prisma.cronJobExecution.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset
-    });
+  async getExecutionHistory(limit: number = 50, offset: number = 0, dateFrom?: Date, dateTo?: Date) {
+    try {
+      console.log(`[WorkflowEngine] Getting execution history: limit=${limit}, offset=${offset}`, {
+        dateFrom: dateFrom?.toISOString(),
+        dateTo: dateTo?.toISOString()
+      });
+      
+      const whereClause: any = {};
+      if (dateFrom || dateTo) {
+        whereClause.createdAt = {};
+        if (dateFrom) whereClause.createdAt.gte = dateFrom;
+        if (dateTo) whereClause.createdAt.lte = dateTo;
+      }
+      
+      const executions = await prisma.cronJobExecution.findMany({
+        where: whereClause,
+        include: {
+          schedule: {
+            select: {
+              id: true,
+              name: true,
+              scheduleTime: true,
+              frequency: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset
+      });
+      console.log(`[WorkflowEngine] Found ${executions.length} executions`);
+      return executions;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('[WorkflowEngine] Error getting execution history:', {
+        message: errorMessage,
+        stack: errorStack,
+        limit,
+        offset
+      });
+      logger.error('Error getting execution history', { error: errorMessage, stack: errorStack });
+      // Return empty array if database connection fails
+      return [];
+    }
   }
 
   /**
@@ -358,53 +416,264 @@ export class WorkflowEngineService {
   }
 
   /**
-   * Get execution statistics
+   * Get execution statistics with totals by period (daily, weekly, monthly)
    */
   async getExecutionStats() {
-    const [total, completed, failed, running, pending] = await Promise.all([
-      prisma.cronJobExecution.count(),
-      prisma.cronJobExecution.count({ where: { status: 'completed' } }),
-      prisma.cronJobExecution.count({ where: { status: 'failed' } }),
-      prisma.cronJobExecution.count({ where: { status: 'running' } }),
-      prisma.cronJobExecution.count({ where: { status: 'pending' } })
-    ]);
+    try {
+      console.log('[WorkflowEngine] Getting execution stats...');
+      const [total, completed, failed, running, pending] = await Promise.all([
+        prisma.cronJobExecution.count(),
+        prisma.cronJobExecution.count({ where: { status: 'completed' } }),
+        prisma.cronJobExecution.count({ where: { status: 'failed' } }),
+        prisma.cronJobExecution.count({ where: { status: 'running' } }),
+        prisma.cronJobExecution.count({ where: { status: 'pending' } })
+      ]);
 
-    const recentExecutions = await prisma.cronJobExecution.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      select: {
-        devicesFound: true,
-        devicesAdded: true,
-        devicesFailed: true,
-        durationMs: true,
-        status: true
+      console.log('[WorkflowEngine] Counts:', { total, completed, failed, running, pending });
+
+      // Calculate date ranges
+      const now = new Date();
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Get executions for each period
+      const [dailyExecutions, weeklyExecutions, monthlyExecutions] = await Promise.all([
+        prisma.cronJobExecution.findMany({
+          where: {
+            createdAt: { gte: oneDayAgo },
+            status: 'completed'
+          },
+          select: {
+            devicesFound: true,
+            devicesAdded: true,
+            durationMs: true
+          }
+        }),
+        prisma.cronJobExecution.findMany({
+          where: {
+            createdAt: { gte: oneWeekAgo },
+            status: 'completed'
+          },
+          select: {
+            devicesFound: true,
+            devicesAdded: true,
+            durationMs: true
+          }
+        }),
+        prisma.cronJobExecution.findMany({
+          where: {
+            createdAt: { gte: oneMonthAgo },
+            status: 'completed'
+          },
+          select: {
+            devicesFound: true,
+            devicesAdded: true,
+            durationMs: true
+          }
+        })
+      ]);
+
+      // Calculate totals for each period
+      const calculateTotals = (executions: Array<{ devicesFound: number; devicesAdded: number; durationMs: number | null }>) => {
+        return {
+          devicesFound: executions.reduce((sum, e) => sum + e.devicesFound, 0),
+          devicesAdded: executions.reduce((sum, e) => sum + e.devicesAdded, 0),
+          durationMs: executions.reduce((sum, e) => sum + (e.durationMs || 0), 0)
+        };
+      };
+
+      const dailyTotals = calculateTotals(dailyExecutions);
+      const weeklyTotals = calculateTotals(weeklyExecutions);
+      const monthlyTotals = calculateTotals(monthlyExecutions);
+
+      const stats = {
+        total,
+        completed,
+        failed,
+        running,
+        pending,
+        totals: {
+          daily: dailyTotals,
+          weekly: weeklyTotals,
+          monthly: monthlyTotals
+        },
+        // Keep averages for backward compatibility (deprecated)
+        averages: {
+          devicesFound: Math.round(weeklyTotals.devicesFound / Math.max(weeklyExecutions.length, 1)),
+          devicesAdded: Math.round(weeklyTotals.devicesAdded / Math.max(weeklyExecutions.length, 1)),
+          durationMs: Math.round(weeklyTotals.durationMs / Math.max(weeklyExecutions.length, 1))
+        }
+      };
+
+      console.log('[WorkflowEngine] Stats calculated:', stats);
+      return stats;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('[WorkflowEngine] Error getting execution stats:', {
+        message: errorMessage,
+        stack: errorStack,
+        error
+      });
+      logger.error('Error getting execution stats', { error: errorMessage, stack: errorStack });
+      // Return empty stats if database connection fails
+      return {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        running: 0,
+        pending: 0,
+        averages: {
+          devicesFound: 0,
+          devicesAdded: 0,
+          durationMs: 0
+        }
+      };
+    }
+  }
+
+  /**
+   * Get device statistics by station/worker
+   * Aggregates device counts from all executions grouped by station
+   */
+  async getDeviceStatsByStation(dateFrom?: Date, dateTo?: Date) {
+    console.log('[WorkflowEngine] Getting device stats by station...', { dateFrom, dateTo });
+    try {
+      // Build date filter
+      const whereClause: any = {
+        status: 'completed' // Only count completed executions
+      };
+
+      if (dateFrom || dateTo) {
+        whereClause.createdAt = {};
+        if (dateFrom) {
+          whereClause.createdAt.gte = dateFrom;
+        }
+        if (dateTo) {
+          whereClause.createdAt.lte = dateTo;
+        }
       }
-    });
 
-    const avgDevicesFound = recentExecutions.length > 0
-      ? recentExecutions.reduce((sum, e) => sum + e.devicesFound, 0) / recentExecutions.length
-      : 0;
+      // Get all completed executions with metadata
+      const executions = await prisma.cronJobExecution.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          stations: true,
+          devicesAdded: true,
+          devicesFound: true,
+          devicesProcessed: true,
+          devicesFailed: true,
+          metadata: true,
+          createdAt: true,
+          completedAt: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
 
-    const avgDevicesAdded = recentExecutions.length > 0
-      ? recentExecutions.reduce((sum, e) => sum + e.devicesAdded, 0) / recentExecutions.length
-      : 0;
+      console.log(`[WorkflowEngine] Found ${executions.length} completed executions`);
 
-    const avgDurationMs = recentExecutions.length > 0
-      ? recentExecutions.reduce((sum, e) => sum + (e.durationMs || 0), 0) / recentExecutions.length
-      : 0;
+      // Aggregate by station
+      const stationStats: Record<string, {
+        station: string;
+        totalDevicesAdded: number;
+        totalDevicesFound: number;
+        totalDevicesProcessed: number;
+        totalDevicesFailed: number;
+        executionCount: number;
+        executions: Array<{
+          executionId: string;
+          devicesAdded: number;
+          devicesFound: number;
+          createdAt: string;
+          completedAt: string | null;
+        }>;
+      }> = {};
 
-    return {
-      total,
-      completed,
-      failed,
-      running,
-      pending,
-      averages: {
-        devicesFound: Math.round(avgDevicesFound),
-        devicesAdded: Math.round(avgDevicesAdded),
-        durationMs: Math.round(avgDurationMs)
+      for (const execution of executions) {
+        const devices = (execution.metadata as any)?.devices || [];
+        
+        // Group devices by station from metadata
+        const devicesByStation: Record<string, any[]> = {};
+        for (const device of devices) {
+          const station = device.station || 'unknown';
+          if (!devicesByStation[station]) {
+            devicesByStation[station] = [];
+          }
+          devicesByStation[station].push(device);
+        }
+
+        // Update stats for each station in this execution
+        for (const station of execution.stations) {
+          if (!stationStats[station]) {
+            stationStats[station] = {
+              station,
+              totalDevicesAdded: 0,
+              totalDevicesFound: 0,
+              totalDevicesProcessed: 0,
+              totalDevicesFailed: 0,
+              executionCount: 0,
+              executions: []
+            };
+          }
+
+          // Count devices for this specific station from metadata
+          const stationDeviceCount = devicesByStation[station]?.length || 0;
+          
+          // If no devices in metadata, estimate based on execution stats and number of stations
+          // This handles older executions that might not have metadata
+          const estimatedDevicesPerStation = stationDeviceCount > 0 
+            ? stationDeviceCount 
+            : Math.floor(execution.devicesAdded / execution.stations.length);
+
+          stationStats[station].totalDevicesAdded += stationDeviceCount > 0 ? stationDeviceCount : estimatedDevicesPerStation;
+          stationStats[station].totalDevicesFound += Math.floor(execution.devicesFound / execution.stations.length);
+          stationStats[station].totalDevicesProcessed += Math.floor(execution.devicesProcessed / execution.stations.length);
+          stationStats[station].totalDevicesFailed += Math.floor(execution.devicesFailed / execution.stations.length);
+          stationStats[station].executionCount += 1;
+          stationStats[station].executions.push({
+            executionId: execution.id.toString(),
+            devicesAdded: stationDeviceCount > 0 ? stationDeviceCount : estimatedDevicesPerStation,
+            devicesFound: Math.floor(execution.devicesFound / execution.stations.length),
+            createdAt: execution.createdAt.toISOString(),
+            completedAt: execution.completedAt?.toISOString() || null
+          });
+        }
       }
-    };
+
+      // Convert to array and sort by total devices added
+      const statsArray = Object.values(stationStats).sort((a, b) => 
+        b.totalDevicesAdded - a.totalDevicesAdded
+      );
+
+      console.log(`[WorkflowEngine] Calculated stats for ${statsArray.length} stations`);
+      return {
+        stations: statsArray,
+        total: statsArray.reduce((sum, s) => sum + s.totalDevicesAdded, 0),
+        dateRange: {
+          from: dateFrom?.toISOString() || null,
+          to: dateTo?.toISOString() || null
+        }
+      };
+    } catch (error: any) {
+      logger.error('Error getting device stats by station', { 
+        error: error.message, 
+        stack: error.stack 
+      });
+      console.error('[WorkflowEngine] Error getting device stats by station:', {
+        message: error.message,
+        stack: error.stack
+      });
+      return {
+        stations: [],
+        total: 0,
+        dateRange: {
+          from: dateFrom?.toISOString() || null,
+          to: dateTo?.toISOString() || null
+        }
+      };
+    }
   }
 }
 

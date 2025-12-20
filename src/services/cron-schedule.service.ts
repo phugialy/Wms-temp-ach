@@ -243,16 +243,50 @@ export class CronScheduleService {
         logger.info(`[CronSchedule] Executing scheduled job: ${schedule.name} (ID: ${schedule.id})`);
         
         // Calculate date range based on dateRangeDays
-        const dateTo = dayjs().tz(schedule.timezone);
-        const dateFrom = dateTo.subtract(schedule.dateRangeDays, 'day');
+        // Phonecheck API requires same date for from/to, with time range from 1 AM (or 00:00 for today) to current time
+        const now = dayjs().tz(schedule.timezone);
+        const currentTime = now.format('HH:mm:ss');
+        
+        let targetDate: dayjs.Dayjs;
+        let startTime: string;
+        
+        if (schedule.dateRangeDays === 0) {
+          // Process today: from 00:00 to current time
+          targetDate = now;
+          startTime = '00:00:00';
+        } else {
+          // Process past date: from 01:00 to current time (but on the target date)
+          targetDate = now.subtract(schedule.dateRangeDays, 'day');
+          startTime = '01:00:00';
+        }
+        
+        // Both dates are the same calendar date (Phonecheck API requirement)
+        const dateString = targetDate.format('YYYY-MM-DD');
+        
+        logger.info(`[CronSchedule] Date range calculated: ${dateString} ${startTime} to ${dateString} ${currentTime}`, {
+          dateRangeDays: schedule.dateRangeDays,
+          targetDate: dateString,
+          startTime,
+          endTime: currentTime,
+        });
 
-        // Execute workflow
+        // Execute workflow with schedule ID for proper indexing and tracking
+        // This ensures the execution is linked to this schedule in the database
+        logger.info(`[CronSchedule] Executing workflow with scheduleId: ${schedule.id}`, {
+          scheduleId: schedule.id.toString(),
+          scheduleName: schedule.name,
+          stations: schedule.stations,
+          location: schedule.location,
+          dateRange: dateString,
+        });
+        
         const result = await workflowEngine.executeBulkAddWorkflow({
           stations: schedule.stations,
-          dateFrom: dateFrom.format('YYYY-MM-DD'),
-          dateTo: dateTo.format('YYYY-MM-DD'),
+          dateFrom: dateString, // Same date for both
+          dateTo: dateString,   // Same date for both (Phonecheck API requirement)
           location: schedule.location,
           triggerSource: 'scheduled-cron',
+          scheduleId: schedule.id, // CRITICAL: Link execution to schedule for proper indexing
         });
 
         // Update schedule stats

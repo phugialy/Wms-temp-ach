@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
 
 // Import routes
 import itemsRoutes from './routes/items.route';
@@ -34,6 +35,7 @@ import bulkOperationsRoutes from './routes/bulk-operations.route';
 import performanceTestRoutes from './routes/performance-test.route';
 import cleanInputRoutes from './routes/clean-input.route';
 import workflowRoutes from './routes/workflow.route';
+import cronScheduleRoutes from './routes/cron-schedule.route';
 import app1ImeiProcessingRoutes from './routes/app1-imei-processing.route';
 import simpleImeiRoutes from './routes/simple-imei.route';
 import inventoryAddRoutes from './routes/inventory-add.route';
@@ -57,6 +59,11 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Serve static files
 app.use(express.static('public'));
+
+// Serve frontend build files (if they exist in production)
+// Using CommonJS-compatible approach
+const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
+app.use(express.static(frontendDistPath));
 
 // Logging middleware
 app.use(morgan('combined', {
@@ -94,6 +101,7 @@ app.use('/api/cleanup', cleanupRoutes);
 app.use('/api', inventoryApiRoutes);
 app.use('/api/workflow', synchronousWorkflowRoutes);
 app.use('/api/workflows', workflowRoutes);
+app.use('/api/workflows/schedules', cronScheduleRoutes);
 app.use('/api/comprehensive-sku-test', comprehensiveSkuTestRoutes);
 app.use('/api/sample-match-results', sampleMatchResultsRoutes);
 app.use('/api/sku-matching-analysis', skuMatchingAnalysisRoutes);
@@ -109,10 +117,31 @@ app.use('/api/imei', app1ImeiProcessingRoutes);
 app.use('/api/simple-imei', simpleImeiRoutes);
 app.use('/api/inventory', inventoryAddRoutes);
 
-// 404 handler
-app.use('*', (req, res) => {
+// Serve React app for all non-API routes (SPA fallback)
+app.get('*', (req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  
+  // Serve index.html for React Router
+  const indexPath = path.join(process.cwd(), 'frontend', 'dist', 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      // If frontend not built, return JSON error
+      res.status(404).json({ 
+        error: 'Route not found',
+        path: req.originalUrl,
+        message: 'Frontend not built. Run "npm run build" in the frontend folder, or access the dev server at http://localhost:3000'
+      });
+    }
+  });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
   res.status(404).json({ 
-    error: 'Route not found',
+    error: 'API route not found',
     path: req.originalUrl 
   });
 });
@@ -133,11 +162,23 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// Initialize cron schedules on server start
+import { CronScheduleService } from './services/cron-schedule.service';
+const cronScheduleService = new CronScheduleService();
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`🚀 WMS Backend server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env['NODE_ENV']}`);
   logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
+  
+  // Initialize active cron schedules
+  try {
+    await cronScheduleService.initializeAllSchedules();
+    logger.info('✅ Cron schedules initialized');
+  } catch (error) {
+    logger.error('Failed to initialize cron schedules:', error);
+  }
 });
 
 export default app; 

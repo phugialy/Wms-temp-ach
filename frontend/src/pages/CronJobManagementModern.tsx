@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   Table,
@@ -22,6 +22,8 @@ import {
   Form,
   Switch,
   Divider,
+  Tooltip,
+  Empty,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -41,7 +43,12 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import * as XLSX from 'xlsx';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 import {
   workflowService,
   type CronJobExecution,
@@ -73,7 +80,18 @@ const AVAILABLE_LOCATIONS = [
   'DNCL-Warehouse-B',
   'DNCL-Processing',
   'DNCL-QC',
-  'DNCL-Shipping'
+  'DNCL-Shipping',
+  'DNCL-RETURN'
+];
+
+const WEEK_DAYS = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
 ];
 
 export const CronJobManagementModern = () => {
@@ -93,6 +111,22 @@ export const CronJobManagementModern = () => {
   const [workflowFilter, setWorkflowFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Archive and retention states
+  const [activeTab, setActiveTab] = useState<string>('executions');
+  const [archiveExecutions, setArchiveExecutions] = useState<CronJobExecution[]>([]);
+  const [loadingArchive, setLoadingArchive] = useState(false);
+  const [archiveRetentionDays, setArchiveRetentionDays] = useState<number>(() => {
+    // Load from localStorage or default to 14 days
+    const saved = localStorage.getItem('archiveRetentionDays');
+    return saved ? parseInt(saved, 10) : 14;
+  });
+  const [showRetentionModal, setShowRetentionModal] = useState(false);
+  
+  // Save retention days to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('archiveRetentionDays', archiveRetentionDays.toString());
+  }, [archiveRetentionDays]);
+  
   // Manual trigger form states
   const [triggerForm, setTriggerForm] = useState({
     stations: [] as string[],
@@ -104,9 +138,13 @@ export const CronJobManagementModern = () => {
   // Cron Schedule Management states
   const [cronSchedules, setCronSchedules] = useState<CronJobSchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<CronJobSchedule | null>(null);
   const [scheduleForm] = Form.useForm();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<CronJobSchedule | null>(null);
+  const [deletingSchedule, setDeletingSchedule] = useState(false);
   
   // Use ref to track loading state to avoid race conditions
   const isLoadingRef = useRef(false);
@@ -177,9 +215,13 @@ export const CronJobManagementModern = () => {
       console.log('[CronJobManagement] Calling workflowService.getExecutionHistory()...');
       console.log('[CronJobManagement] Calling workflowService.getWorkflowStats()...');
       
+      // Calculate date range: last 7 days for main history
+      const sevenDaysAgo = dayjs().subtract(7, 'day').startOf('day').toISOString();
+      const now = dayjs().endOf('day').toISOString();
+      
       // Use Promise.allSettled to handle partial failures gracefully
       const [executionsResult, statsResult] = await Promise.allSettled([
-        workflowService.getExecutionHistory(100, 0),
+        workflowService.getExecutionHistory(100, 0, sevenDaysAgo, now), // Only last 7 days
         workflowService.getWorkflowStats(),
       ]);
       
@@ -474,6 +516,55 @@ export const CronJobManagementModern = () => {
       render: (id: string) => <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{id.slice(-8)}</span>,
     },
     {
+      title: 'Schedule',
+      key: 'schedule',
+      width: 180,
+      render: (_: any, record: CronJobExecution) => {
+        // If we have schedule name from the API, show it
+        if (record.scheduleName) {
+          return (
+            <div>
+              <div style={{ fontWeight: 500, color: '#1890ff' }}>{record.scheduleName}</div>
+              {record.scheduleTime && (
+                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                  {record.scheduleTime} {record.scheduleFrequency === 'daily' ? '(Daily)' : '(Weekly)'}
+                </div>
+              )}
+            </div>
+          );
+        }
+        
+        // For scheduled-cron executions without schedule_id (old executions)
+        // Show that it was from a schedule, even if we can't identify which one
+        if (record.triggerSource === 'scheduled-cron') {
+          return (
+            <div>
+              <div style={{ fontWeight: 500, color: '#52c41a' }}>Scheduled Run</div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                (Schedule not linked)
+              </div>
+            </div>
+          );
+        }
+        
+        // Manual triggers
+        if (record.triggerSource === 'manual') {
+          return (
+            <span style={{ color: '#8c8c8c', fontStyle: 'italic' }}>
+              Manual Trigger
+            </span>
+          );
+        }
+        
+        // Fallback for other trigger sources
+        return (
+          <span style={{ color: '#8c8c8c', fontStyle: 'italic' }}>
+            {record.triggerSource || 'Unknown'}
+          </span>
+        );
+      },
+    },
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
@@ -601,39 +692,113 @@ export const CronJobManagementModern = () => {
 
   // Handle create/update cron schedule
   const handleSaveSchedule = async (values: any) => {
+    setSavingSchedule(true);
     try {
+      // Handle custom date range days
+      let dateRangeDays = values.dateRangeDays;
+      if (dateRangeDays === 'custom') {
+        dateRangeDays = values.customDateRangeDays || values._actualDateRangeDays;
+        if (!dateRangeDays || isNaN(dateRangeDays) || dateRangeDays < 1) {
+          message.error('Please enter a valid number of days (1-90) for custom date range');
+          return;
+        }
+      }
+      
+      // Validate dateRangeDays (0 is valid for "Today")
+      if (dateRangeDays === undefined || dateRangeDays === null || dateRangeDays === '' || isNaN(dateRangeDays)) {
+        message.error('Please select a valid date range option');
+        return;
+      }
+      
+      // Ensure it's a number and within valid range (0-90)
+      dateRangeDays = parseInt(dateRangeDays);
+      if (isNaN(dateRangeDays) || dateRangeDays < 0 || dateRangeDays > 90) {
+        message.error('Date range must be between 0 (Today) and 90 days');
+        return;
+      }
+
+      // Validate all required fields before building params
+      if (!values.name || !values.name.trim()) {
+        message.error('Schedule name is required');
+        return;
+      }
+      
+      if (!values.stations || values.stations.length === 0) {
+        message.error('Please select at least one station');
+        return;
+      }
+      
+      if (!values.location || !values.location.trim()) {
+        message.error('Location is required');
+        return;
+      }
+      
+      if (!values.scheduleTime) {
+        message.error('Schedule time is required');
+        return;
+      }
+      
+      if (!values.frequency) {
+        message.error('Frequency is required');
+        return;
+      }
+      
+      if (values.frequency === 'weekly' && (!values.weeklyDays || values.weeklyDays.length === 0)) {
+        message.error('Please select at least one day for weekly schedule');
+        return;
+      }
+
       const params: CreateCronScheduleParams = {
-        name: values.name,
+        name: values.name.trim(),
         workflowType: 'bulk-add',
         stations: values.stations,
-        location: values.location,
-        dateRangeDays: values.dateRangeDays || 1,
+        location: values.location.trim(),
+        dateRangeDays: dateRangeDays,
         scheduleTime: values.scheduleTime.format('HH:mm'),
         timezone: values.timezone || 'UTC',
         frequency: values.frequency,
         weeklyDays: values.frequency === 'weekly' ? values.weeklyDays : undefined,
-        description: values.description,
+        description: values.description?.trim() || undefined,
       };
 
+      console.log('[CronJobManagement] Submitting schedule:', { editingSchedule: !!editingSchedule, params });
+      
       let result;
       if (editingSchedule) {
+        console.log('[CronJobManagement] Updating schedule:', editingSchedule.id);
         result = await cronScheduleService.updateCronSchedule(editingSchedule.id, params);
       } else {
+        console.log('[CronJobManagement] Creating new schedule');
         result = await cronScheduleService.createCronSchedule(params);
       }
 
+      console.log('[CronJobManagement] Save result:', result);
+
       if (result.success) {
-        message.success(editingSchedule ? 'Cron schedule updated successfully' : 'Cron schedule created successfully');
+        message.success({
+          content: editingSchedule ? 'Cron schedule updated successfully' : 'Cron schedule created successfully',
+          duration: 3,
+        });
         setShowScheduleModal(false);
         setEditingSchedule(null);
         scheduleForm.resetFields();
         loadCronSchedules();
       } else {
-        message.error(result.error || 'Failed to save cron schedule');
+        console.error('[CronJobManagement] Save failed:', result.error);
+        message.error({
+          content: result.error || 'Failed to save cron schedule',
+          duration: 5,
+        });
       }
     } catch (error) {
       console.error('[CronJobManagement] Error saving cron schedule:', error);
-      message.error('Failed to save cron schedule');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error({
+        content: `Failed to save cron schedule: ${errorMessage}`,
+        duration: 5,
+      });
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -653,35 +818,90 @@ export const CronJobManagementModern = () => {
     }
   };
 
-  // Handle delete schedule
-  const handleDeleteSchedule = async (schedule: CronJobSchedule) => {
-    Modal.confirm({
-      title: 'Delete Cron Schedule',
-      content: `Are you sure you want to delete "${schedule.name}"? This action cannot be undone.`,
-      okText: 'Delete',
-      okType: 'danger',
-      cancelText: 'Cancel',
-      onOk: async () => {
-        try {
-          const result = await cronScheduleService.deleteCronSchedule(schedule.id);
-          if (result.success) {
-            message.success('Cron schedule deleted successfully');
-            loadCronSchedules();
-          } else {
-            message.error(result.error || 'Failed to delete cron schedule');
-          }
-        } catch (error) {
-          console.error('[CronJobManagement] Error deleting cron schedule:', error);
-          message.error('Failed to delete cron schedule');
-        }
-      },
-    });
+  // Handle delete schedule - show confirmation modal
+  const handleDeleteSchedule = (schedule: CronJobSchedule) => {
+    console.log('[CronJobManagement] Delete button clicked for schedule:', schedule.id, schedule.name);
+    setScheduleToDelete(schedule);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm and execute delete
+  const confirmDeleteSchedule = async () => {
+    if (!scheduleToDelete) return;
+
+    console.log('[CronJobManagement] Delete confirmed, calling deleteCronSchedule');
+    setDeletingSchedule(true);
+    
+    try {
+      const result = await cronScheduleService.deleteCronSchedule(scheduleToDelete.id);
+      console.log('[CronJobManagement] Delete result:', result);
+      console.log('[CronJobManagement] Delete result.success:', result.success);
+      console.log('[CronJobManagement] Delete result.error:', result.error);
+      
+      if (result.success) {
+        console.log('[CronJobManagement] Delete successful, reloading schedules');
+        message.success('Cron schedule deleted successfully');
+        setShowDeleteModal(false);
+        setScheduleToDelete(null);
+        await loadCronSchedules();
+      } else {
+        console.error('[CronJobManagement] Delete failed:', result.error);
+        message.error(result.error || 'Failed to delete cron schedule');
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error deleting cron schedule:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error(`Failed to delete cron schedule: ${errorMessage}`);
+    } finally {
+      setDeletingSchedule(false);
+    }
+  };
+
+  // Cancel delete
+  const cancelDeleteSchedule = () => {
+    console.log('[CronJobManagement] Delete cancelled by user');
+    setShowDeleteModal(false);
+    setScheduleToDelete(null);
   };
 
   // Load schedules on mount
   useEffect(() => {
     loadCronSchedules();
   }, []);
+
+  // Load archive data when Archive tab is active
+  const loadArchiveData = useCallback(async () => {
+    setLoadingArchive(true);
+    try {
+      // Load executions older than 7 days, up to retention period
+      const retentionDate = dayjs().subtract(archiveRetentionDays, 'day').startOf('day').toISOString();
+      const sevenDaysAgo = dayjs().subtract(7, 'day').startOf('day').toISOString();
+      
+      console.log('[CronJobManagement] Loading archive data:', {
+        retentionDate,
+        sevenDaysAgo,
+        retentionDays: archiveRetentionDays
+      });
+      
+      const archiveData = await workflowService.getExecutionHistory(1000, 0, retentionDate, sevenDaysAgo);
+      console.log('[CronJobManagement] Loaded archive data:', archiveData.length, 'executions');
+      setArchiveExecutions(archiveData);
+    } catch (error) {
+      console.error('[CronJobManagement] Error loading archive:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error(`Failed to load archive data: ${errorMsg}`);
+      setArchiveExecutions([]);
+    } finally {
+      setLoadingArchive(false);
+    }
+  }, [archiveRetentionDays, message]);
+
+  // Load archive when tab is switched to Archive
+  useEffect(() => {
+    if (activeTab === 'archive') {
+      loadArchiveData();
+    }
+  }, [activeTab, loadArchiveData]);
 
   return (
     <div style={{ padding: 24 }}>
@@ -783,39 +1003,100 @@ export const CronJobManagementModern = () => {
         </Row>
       )}
 
-      {/* Average Statistics */}
-      {stats && stats.averages && (
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Avg Devices Found"
-                value={stats.averages.devicesFound}
-                precision={0}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Avg Devices Added"
-                value={stats.averages.devicesAdded}
-                precision={0}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Avg Duration"
-                value={stats.averages.durationMs / 1000}
-                suffix="s"
-                precision={1}
-              />
-            </Card>
-          </Col>
-        </Row>
+      {/* Total Statistics by Period */}
+      {stats && stats.totals && (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={24}>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12, color: '#595959' }}>
+                Total Statistics
+              </div>
+            </Col>
+          </Row>
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={8}>
+              <Card>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#1890ff' }}>
+                  Daily
+                </div>
+                <Statistic
+                  title="Devices Found"
+                  value={stats.totals.daily.devicesFound}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Devices Added"
+                  value={stats.totals.daily.devicesAdded}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Duration"
+                  value={Math.round(stats.totals.daily.durationMs / 1000)}
+                  suffix="s"
+                  precision={0}
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#52c41a' }}>
+                  Weekly
+                </div>
+                <Statistic
+                  title="Devices Found"
+                  value={stats.totals.weekly.devicesFound}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Devices Added"
+                  value={stats.totals.weekly.devicesAdded}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Duration"
+                  value={Math.round(stats.totals.weekly.durationMs / 1000)}
+                  suffix="s"
+                  precision={0}
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: '#fa8c16' }}>
+                  Monthly
+                </div>
+                <Statistic
+                  title="Devices Found"
+                  value={stats.totals.monthly.devicesFound}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Devices Added"
+                  value={stats.totals.monthly.devicesAdded}
+                  precision={0}
+                  style={{ marginBottom: 16 }}
+                />
+                <Statistic
+                  title="Duration"
+                  value={Math.round(stats.totals.monthly.durationMs / 1000)}
+                  suffix="s"
+                  precision={0}
+                />
+              </Card>
+            </Col>
+          </Row>
+        </>
       )}
+
+      {/* Execution History Description */}
+      <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 16 }}>
+        Execution history for last 7 days
+      </div>
 
       {/* Filters */}
       <Card style={{ marginBottom: 16 }}>
@@ -908,7 +1189,9 @@ export const CronJobManagementModern = () => {
                         scheduleForm.resetFields();
                         scheduleForm.setFieldsValue({
                           frequency: 'daily',
-                          dateRangeDays: 1,
+                          weeklyDays: [],
+                          dateRangeDays: 1, // Default to "Yesterday"
+                          customDateRangeDays: undefined,
                           timezone: 'UTC',
                           scheduleTime: dayjs('02:00', 'HH:mm'),
                         });
@@ -923,6 +1206,21 @@ export const CronJobManagementModern = () => {
                     dataSource={cronSchedules}
                     rowKey="id"
                     loading={loadingSchedules}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={
+                            <span>
+                              <div style={{ marginBottom: 8 }}>No cron schedules configured</div>
+                              <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                                Click "Create Schedule" to set up your first automated workflow
+                              </div>
+                            </span>
+                          }
+                        />
+                      ),
+                    }}
                     columns={[
                       {
                         title: 'Name',
@@ -958,13 +1256,25 @@ export const CronJobManagementModern = () => {
                         title: 'Workflow',
                         key: 'workflow',
                         width: 250,
-                        render: (_, record: CronJobSchedule) => (
-                          <div>
-                            <div><strong>Stations:</strong> {record.stations.length} selected</div>
-                            <div><strong>Location:</strong> {record.location}</div>
-                            <div><strong>Date Range:</strong> Last {record.dateRangeDays} day(s)</div>
-                          </div>
-                        ),
+                        render: (_, record: CronJobSchedule) => {
+                          const getDateRangeLabel = (days: number) => {
+                            if (days === 1) return 'Yesterday';
+                            if (days === 2) return 'Last 2 Days';
+                            if (days === 3) return 'Last 3 Days';
+                            if (days === 7) return 'Last Week';
+                            if (days === 14) return 'Last 2 Weeks';
+                            if (days === 30) return 'Last Month';
+                            return `Last ${days} days`;
+                          };
+                          
+                          return (
+                            <div>
+                              <div><strong>Stations:</strong> {record.stations.length} selected</div>
+                              <div><strong>Location:</strong> {record.location}</div>
+                              <div><strong>Date Range:</strong> {getDateRangeLabel(record.dateRangeDays)}</div>
+                            </div>
+                          );
+                        },
                       },
                       {
                         title: 'Status',
@@ -972,14 +1282,23 @@ export const CronJobManagementModern = () => {
                         width: 150,
                         render: (_, record: CronJobSchedule) => (
                           <div>
-                            <Switch
-                              checked={record.isActive}
-                              onChange={() => handleToggleSchedule(record)}
-                              checkedChildren="Active"
-                              unCheckedChildren="Inactive"
-                            />
+                            <Tooltip title={record.isActive ? 'Schedule is active and will run automatically' : 'Schedule is inactive and will not run'}>
+                              <Switch
+                                checked={record.isActive}
+                                onChange={() => handleToggleSchedule(record)}
+                                checkedChildren="Active"
+                                unCheckedChildren="Inactive"
+                                loading={loadingSchedules}
+                              />
+                            </Tooltip>
                             <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
-                              {record.nextRunAt ? `Next: ${formatDate(record.nextRunAt)}` : 'No next run'}
+                              {record.nextRunAt ? (
+                                <Tooltip title={`Next scheduled execution time in ${record.timezone}`}>
+                                  Next: {formatDate(record.nextRunAt)}
+                                </Tooltip>
+                              ) : (
+                                'No next run'
+                              )}
                             </div>
                           </div>
                         ),
@@ -1005,38 +1324,61 @@ export const CronJobManagementModern = () => {
                         fixed: 'right' as const,
                         render: (_, record: CronJobSchedule) => (
                           <Space>
-                            <Button
-                              type="link"
-                              icon={<EditOutlined />}
-                              onClick={() => {
-                                setEditingSchedule(record);
+                            <Tooltip title="Edit schedule">
+                              <Button
+                                type="link"
+                                icon={<EditOutlined />}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent table row click
+                                  setEditingSchedule(record);
                                 const [hours, minutes] = record.scheduleTime.split(':');
+                                
+                                // Determine if dateRangeDays should be "custom" or a preset
+                                const dateRangeDays = record.dateRangeDays ?? 1; // Default to 1 if undefined
+                                // Valid presets: 0 (Today), 1, 2, 3, 7, 14, 30
+                                const validPresets = [0, 1, 2, 3, 7, 14, 30];
+                                const isCustom = !validPresets.includes(dateRangeDays);
+                                
+                                // Reset form first to clear any previous values
+                                scheduleForm.resetFields();
+                                
+                                // Set all form values
                                 scheduleForm.setFieldsValue({
-                                  name: record.name,
-                                  stations: record.stations,
-                                  location: record.location,
-                                  dateRangeDays: record.dateRangeDays,
+                                  name: record.name || '',
+                                  stations: record.stations || [],
+                                  location: record.location || '',
+                                  dateRangeDays: isCustom ? 'custom' : dateRangeDays,
+                                  customDateRangeDays: isCustom ? dateRangeDays : undefined,
                                   scheduleTime: dayjs(`${hours}:${minutes}`, 'HH:mm'),
-                                  timezone: record.timezone,
-                                  frequency: record.frequency,
-                                  weeklyDays: record.weeklyDays,
-                                  description: record.description,
+                                  timezone: record.timezone || 'UTC',
+                                  frequency: record.frequency || 'daily',
+                                  weeklyDays: record.weeklyDays || [],
+                                  description: record.description || '',
                                 });
                                 setShowScheduleModal(true);
                               }}
                               size="small"
+                              disabled={loadingSchedules}
                             >
                               Edit
                             </Button>
-                            <Button
-                              type="link"
-                              danger
-                              icon={<DeleteOutlined />}
-                              onClick={() => handleDeleteSchedule(record)}
-                              size="small"
-                            >
-                              Delete
-                            </Button>
+                            </Tooltip>
+                            <Tooltip title="Delete schedule">
+                              <Button
+                                type="link"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent table row click
+                                  console.log('[CronJobManagement] Delete button clicked, calling handleDeleteSchedule');
+                                  handleDeleteSchedule(record);
+                                }}
+                                size="small"
+                                disabled={loadingSchedules}
+                              >
+                                Delete
+                              </Button>
+                            </Tooltip>
                           </Space>
                         ),
                       },
@@ -1050,9 +1392,120 @@ export const CronJobManagementModern = () => {
               </div>
             ),
           },
+          {
+            key: 'archive',
+            label: (
+              <span>
+                <FileTextOutlined />
+                Archive
+              </span>
+            ),
+            children: (
+              <div>
+                <Card style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Archive</h3>
+                      <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                        Executions older than 7 days (Retention: {archiveRetentionDays} days)
+                      </div>
+                    </div>
+                    <Space>
+                      <Button
+                        icon={<SettingOutlined />}
+                        onClick={() => setShowRetentionModal(true)}
+                      >
+                        Retention Settings
+                      </Button>
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={loadArchiveData}
+                        loading={loadingArchive}
+                      >
+                        Refresh
+                      </Button>
+                    </Space>
+                  </div>
+                </Card>
+
+                <Card>
+                  <Table
+                    columns={columns}
+                    dataSource={archiveExecutions.filter(e => {
+                      if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+                      if (workflowFilter !== 'all' && e.workflowType !== workflowFilter) return false;
+                      if (searchQuery) {
+                        const query = searchQuery.toLowerCase();
+                        return (
+                          e.id.toLowerCase().includes(query) ||
+                          e.location?.toLowerCase().includes(query) ||
+                          e.stations.some(s => s.toLowerCase().includes(query))
+                        );
+                      }
+                      return true;
+                    })}
+                    rowKey="id"
+                    loading={loadingArchive}
+                    scroll={{ x: 1200 }}
+                    pagination={{
+                      pageSize: 20,
+                      showSizeChanger: true,
+                      showTotal: (total) => `Total ${total} archived executions`,
+                    }}
+                    onRow={(record) => ({
+                      onClick: () => {
+                        setSelectedExecution(record);
+                        setExecutionDevices([]);
+                        setShowDetailsModal(true);
+                      },
+                      style: { cursor: 'pointer' },
+                    })}
+                  />
+                </Card>
+              </div>
+            ),
+          },
         ]}
+        activeKey={activeTab}
+        onChange={setActiveTab}
         style={{ marginTop: 16 }}
       />
+
+      {/* Archive Retention Settings Modal */}
+      <Modal
+        title="Archive Retention Settings"
+        open={showRetentionModal}
+        onOk={() => {
+          setShowRetentionModal(false);
+          if (activeTab === 'archive') {
+            loadArchiveData();
+          }
+        }}
+        onCancel={() => setShowRetentionModal(false)}
+        width={500}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>Retention Period (Days)</div>
+          <Input
+            type="number"
+            min={1}
+            max={365}
+            value={archiveRetentionDays}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (!isNaN(value) && value >= 1 && value <= 365) {
+                setArchiveRetentionDays(value);
+              }
+            }}
+            addonAfter="days"
+            style={{ width: '100%' }}
+          />
+          <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+            Executions older than this period will be automatically removed from the archive.
+            Default: 14 days. Range: 1-365 days.
+          </div>
+        </div>
+      </Modal>
 
       {/* Trigger Workflow Modal */}
       <Modal
@@ -1338,18 +1791,102 @@ export const CronJobManagementModern = () => {
         }
       `}</style>
 
+      {/* Delete Confirmation Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 20 }} />
+            <span>Delete Cron Schedule</span>
+          </div>
+        }
+        open={showDeleteModal}
+        onOk={confirmDeleteSchedule}
+        onCancel={cancelDeleteSchedule}
+        okText="Delete"
+        okType="danger"
+        cancelText="Cancel"
+        confirmLoading={deletingSchedule}
+        okButtonProps={{ 
+          disabled: deletingSchedule,
+          danger: true,
+        }}
+        cancelButtonProps={{ 
+          disabled: deletingSchedule,
+        }}
+        maskClosable={!deletingSchedule}
+        closable={!deletingSchedule}
+        width={500}
+      >
+        {scheduleToDelete && (
+          <div style={{ padding: '8px 0' }}>
+            <Alert
+              message="Warning: This action cannot be undone"
+              description={
+                <div>
+                  <p style={{ marginBottom: 12, fontWeight: 500 }}>
+                    Are you sure you want to delete the schedule <strong>"{scheduleToDelete.name}"</strong>?
+                  </p>
+                  <div style={{ 
+                    backgroundColor: '#fafafa', 
+                    padding: 12, 
+                    borderRadius: 4,
+                    marginTop: 12,
+                    fontSize: 13,
+                    color: '#666'
+                  }}>
+                    <div><strong>Schedule Details:</strong></div>
+                    <div>• Frequency: {scheduleToDelete.frequency === 'daily' ? 'Daily' : 'Weekly'}</div>
+                    <div>• Time: {scheduleToDelete.scheduleTime} ({scheduleToDelete.timezone})</div>
+                    <div>• Stations: {scheduleToDelete.stations.length} selected</div>
+                    <div>• Location: {scheduleToDelete.location}</div>
+                    <div>• Total Runs: {scheduleToDelete.totalRuns}</div>
+                  </div>
+                  <p style={{ marginTop: 16, marginBottom: 0, color: '#ff4d4f', fontWeight: 500 }}>
+                    All schedule data and execution history will be permanently removed.
+                  </p>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          </div>
+        )}
+      </Modal>
+
       {/* Create/Edit Cron Schedule Modal */}
       <Modal
         title={editingSchedule ? 'Edit Cron Schedule' : 'Create Cron Schedule'}
         open={showScheduleModal}
         onOk={() => scheduleForm.submit()}
         onCancel={() => {
-          setShowScheduleModal(false);
-          setEditingSchedule(null);
-          scheduleForm.resetFields();
+          if (!savingSchedule) {
+            setShowScheduleModal(false);
+            setEditingSchedule(null);
+            scheduleForm.resetFields();
+            // Reset to default values after cancel
+            scheduleForm.setFieldsValue({
+              frequency: 'daily',
+              weeklyDays: [],
+              dateRangeDays: 1,
+              customDateRangeDays: undefined,
+              timezone: 'UTC',
+              scheduleTime: dayjs('02:00', 'HH:mm'),
+            });
+          }
         }}
         width={700}
         okText={editingSchedule ? 'Update' : 'Create'}
+        confirmLoading={savingSchedule}
+        okButtonProps={{ 
+          disabled: savingSchedule,
+          loading: savingSchedule,
+        }}
+        cancelButtonProps={{ 
+          disabled: savingSchedule,
+        }}
+        maskClosable={!savingSchedule}
+        closable={!savingSchedule}
       >
         <Form
           form={scheduleForm}
@@ -1357,6 +1894,7 @@ export const CronJobManagementModern = () => {
           onFinish={handleSaveSchedule}
           initialValues={{
             frequency: 'daily',
+            weeklyDays: [],
             dateRangeDays: 1,
             timezone: 'UTC',
             scheduleTime: dayjs('02:00', 'HH:mm'),
@@ -1401,11 +1939,196 @@ export const CronJobManagementModern = () => {
 
           <Form.Item
             name="dateRangeDays"
-            label="Date Range (Days Back)"
-            rules={[{ required: true, message: 'Please specify date range' }]}
-            tooltip="How many days back to process (e.g., 1 = yesterday, 7 = last week)"
+            label="Process Data From"
+            rules={[{ required: true, message: 'Please select a date range option' }]}
+            tooltip="Select which date to process. Phonecheck API requires same date for from/to, with time range from 1 AM (or 00:00 for today) to the time the schedule runs."
           >
-            <Input type="number" min={1} max={30} />
+            <Select 
+              placeholder="Select date range"
+              onChange={(value) => {
+                // Clear custom value when switching to preset
+                if (value !== 'custom') {
+                  scheduleForm.setFieldsValue({ 
+                    dateRangeDays: value,
+                    customDateRangeDays: undefined,
+                  });
+                } else {
+                  scheduleForm.setFieldsValue({ dateRangeDays: value });
+                }
+              }}
+            >
+              <Select.Option value={0}>
+                Today (from midnight to run time)
+              </Select.Option>
+              <Select.Option value={1}>
+                Yesterday (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value={2}>
+                2 Days Ago (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value={3}>
+                3 Days Ago (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value={7}>
+                7 Days Ago (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value={14}>
+                14 Days Ago (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value={30}>
+                30 Days Ago (from 1 AM to run time)
+              </Select.Option>
+              <Select.Option value="custom">
+                Custom Days Ago (from 1 AM to run time)
+              </Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => 
+              prevValues.dateRangeDays !== currentValues.dateRangeDays
+            }
+          >
+            {({ getFieldValue }) => {
+              const dateRangeDays = getFieldValue('dateRangeDays');
+              const timezoneValue = getFieldValue('timezone') || 'UTC';
+              const customDays = getFieldValue('customDateRangeDays');
+              
+              if (dateRangeDays === 'custom') {
+                return (
+                  <Form.Item
+                    name="customDateRangeDays"
+                    label="Custom Days Back"
+                    rules={[
+                      { required: true, message: 'Please enter number of days' },
+                      { type: 'number', min: 1, max: 90, message: 'Must be between 1 and 90 days' }
+                    ]}
+                    tooltip="Enter the number of days back to process (1-90)"
+                  >
+                    <Input 
+                      type="number" 
+                      min={1} 
+                      max={90}
+                      placeholder="e.g., 5"
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value);
+                        if (!isNaN(value) && value > 0 && value <= 90) {
+                          scheduleForm.setFieldsValue({ 
+                            customDateRangeDays: value,
+                          });
+                        } else if (e.target.value === '') {
+                          // Clear the value if input is empty
+                          scheduleForm.setFieldsValue({ 
+                            customDateRangeDays: undefined,
+                          });
+                        }
+                      }}
+                    />
+                    {customDays && !isNaN(customDays) && customDays > 0 && (
+                      <div style={{ 
+                        marginTop: 8, 
+                        padding: '8px 12px', 
+                        backgroundColor: '#e6f7ff', 
+                        borderRadius: 4,
+                        fontSize: 12,
+                        color: '#1890ff',
+                        border: '1px solid #91d5ff'
+                      }}>
+                        <strong>Preview:</strong> Will process{' '}
+                        <strong>{dayjs().tz(timezoneValue).subtract(customDays, 'day').format('MMM D, YYYY')}</strong>
+                        {' '}({customDays === 1 ? 'Yesterday' : `${customDays} days ago`})
+                        <br />
+                        <span style={{ fontSize: 11, color: '#666' }}>
+                          Time range: 01:00 to current time when schedule runs
+                        </span>
+                      </div>
+                    )}
+                  </Form.Item>
+                );
+              }
+              
+              if (dateRangeDays && typeof dateRangeDays === 'number') {
+                // Calculate and show preview
+                // Phonecheck API requires same date for from/to, with time range from 1 AM (or 00:00 for today) to current time
+                try {
+                  const now = dayjs().tz(timezoneValue);
+                  let targetDate: dayjs.Dayjs;
+                  let timeRange: string;
+                  
+                  if (dateRangeDays === 0) {
+                    targetDate = now;
+                    timeRange = '00:00 to current time';
+                  } else {
+                    targetDate = now.subtract(dateRangeDays, 'day');
+                    timeRange = '01:00 to current time';
+                  }
+                  
+                  const dateLabel = dateRangeDays === 0 
+                    ? 'Today' 
+                    : dateRangeDays === 1 
+                    ? 'Yesterday' 
+                    : `${dateRangeDays} days ago`;
+                  
+                  return (
+                    <div style={{ 
+                      marginTop: 8, 
+                      padding: '8px 12px', 
+                      backgroundColor: '#e6f7ff', 
+                      borderRadius: 4,
+                      fontSize: 12,
+                      color: '#1890ff',
+                      border: '1px solid #91d5ff'
+                    }}>
+                      <strong>Preview:</strong> Will process <strong>{targetDate.format('MMM D, YYYY')}</strong> ({dateLabel})
+                      <br />
+                      <span style={{ fontSize: 11, color: '#666' }}>
+                        Time range: {timeRange} when schedule runs
+                      </span>
+                    </div>
+                  );
+                } catch (error) {
+                  // Fallback if timezone is invalid
+                  const now = dayjs();
+                  let targetDate: dayjs.Dayjs;
+                  let timeRange: string;
+                  
+                  if (dateRangeDays === 0) {
+                    targetDate = now;
+                    timeRange = '00:00 to current time';
+                  } else {
+                    targetDate = now.subtract(dateRangeDays, 'day');
+                    timeRange = '01:00 to current time';
+                  }
+                  
+                  const dateLabel = dateRangeDays === 0 
+                    ? 'Today' 
+                    : dateRangeDays === 1 
+                    ? 'Yesterday' 
+                    : `${dateRangeDays} days ago`;
+                  
+                  return (
+                    <div style={{ 
+                      marginTop: 8, 
+                      padding: '8px 12px', 
+                      backgroundColor: '#e6f7ff', 
+                      borderRadius: 4,
+                      fontSize: 12,
+                      color: '#1890ff',
+                      border: '1px solid #91d5ff'
+                    }}>
+                      <strong>Preview:</strong> Will process <strong>{targetDate.format('MMM D, YYYY')}</strong> ({dateLabel})
+                      <br />
+                      <span style={{ fontSize: 11, color: '#666' }}>
+                        Time range: {timeRange} when schedule runs
+                      </span>
+                    </div>
+                  );
+                }
+              }
+              
+              return null;
+            }}
           </Form.Item>
 
           <Divider orientation="left" style={{ margin: '16px 0' }}>Schedule Configuration</Divider>
@@ -1446,42 +2169,149 @@ export const CronJobManagementModern = () => {
             label="Frequency *"
             rules={[{ required: true, message: 'Please select frequency' }]}
           >
-            <Select style={{ width: '100%' }}>
-              <Select.Option value="daily">Daily</Select.Option>
-              <Select.Option value="weekly">Weekly</Select.Option>
-            </Select>
+            <div style={{ display: 'none' }}>
+              <Input />
+            </div>
+          </Form.Item>
+
+          <Form.Item
+            label="Schedule Frequency *"
+            required
+            tooltip="Select 'Daily' to run every day, or select specific days of the week"
+          >
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) => 
+                prevValues.frequency !== currentValues.frequency || 
+                JSON.stringify(prevValues.weeklyDays) !== JSON.stringify(currentValues.weeklyDays)
+              }
+            >
+              {({ getFieldValue }) => {
+                const frequency = getFieldValue('frequency');
+                const weeklyDays = getFieldValue('weeklyDays') || [];
+                
+                return (
+                  <div>
+                    <div style={{ marginBottom: 12 }}>
+                      <Button
+                        type={frequency === 'daily' ? 'primary' : 'default'}
+                        onClick={() => {
+                          scheduleForm.setFieldsValue({
+                            frequency: 'daily',
+                            weeklyDays: [],
+                          });
+                        }}
+                        style={{
+                          minWidth: 100,
+                          height: 40,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Daily
+                      </Button>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ marginBottom: 8, fontSize: 13, color: '#666' }}>
+                        Or select specific days of the week:
+                      </div>
+                      <Space wrap>
+                        {WEEK_DAYS.map(day => {
+                          const isSelected = weeklyDays.includes(day.value);
+                          
+                          return (
+                            <Button
+                              key={day.value}
+                              type={isSelected ? 'primary' : 'default'}
+                              onClick={() => {
+                                const currentDays = getFieldValue('weeklyDays') || [];
+                                let newDays: number[];
+                                
+                                if (isSelected) {
+                                  // Remove day
+                                  newDays = currentDays.filter((d: number) => d !== day.value);
+                                } else {
+                                  // Add day
+                                  newDays = [...currentDays, day.value].sort();
+                                }
+                                
+                                scheduleForm.setFieldsValue({
+                                  frequency: newDays.length > 0 ? 'weekly' : 'daily',
+                                  weeklyDays: newDays,
+                                });
+                              }}
+                              style={{
+                                minWidth: 60,
+                                height: 36,
+                              }}
+                            >
+                              {day.label}
+                            </Button>
+                          );
+                        })}
+                      </Space>
+                    </div>
+                  </div>
+                );
+              }}
+            </Form.Item>
           </Form.Item>
 
           <Form.Item
             noStyle
-            shouldUpdate={(prevValues, currentValues) => prevValues.frequency !== currentValues.frequency}
+            shouldUpdate={(prevValues, currentValues) => 
+              prevValues.frequency !== currentValues.frequency || 
+              JSON.stringify(prevValues.weeklyDays) !== JSON.stringify(currentValues.weeklyDays)
+            }
           >
             {({ getFieldValue }) => {
               const frequency = getFieldValue('frequency');
-              if (frequency === 'weekly') {
+              const weeklyDays = getFieldValue('weeklyDays') || [];
+              
+              if (frequency === 'weekly' && weeklyDays.length > 0) {
                 return (
-                  <Form.Item
-                    name="weeklyDays"
-                    label="Select Days *"
-                    rules={[{ required: true, message: 'Please select at least one day' }]}
-                  >
-                    <Checkbox.Group style={{ width: '100%' }}>
-                      <Row>
-                        <Col span={8}><Checkbox value={0}>Sunday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={1}>Monday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={2}>Tuesday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={3}>Wednesday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={4}>Thursday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={5}>Friday</Checkbox></Col>
-                        <Col span={8}><Checkbox value={6}>Saturday</Checkbox></Col>
-                      </Row>
-                    </Checkbox.Group>
-                  </Form.Item>
+                  <div style={{ 
+                    marginTop: -8, 
+                    marginBottom: 16, 
+                    padding: '8px 12px', 
+                    backgroundColor: '#e6f7ff', 
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: '#1890ff',
+                    border: '1px solid #91d5ff'
+                  }}>
+                    <strong>Selected days:</strong> {weeklyDays.map((d: number) => WEEK_DAYS[d]?.label).join(', ')}
+                  </div>
                 );
               }
+              
+              if (frequency === 'daily') {
+                return (
+                  <div style={{ 
+                    marginTop: -8, 
+                    marginBottom: 16, 
+                    padding: '8px 12px', 
+                    backgroundColor: '#e6f7ff', 
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: '#1890ff',
+                    border: '1px solid #91d5ff'
+                  }}>
+                    <strong>Schedule will run every day</strong>
+                  </div>
+                );
+              }
+              
               return null;
             }}
           </Form.Item>
+
+          <Form.Item
+            name="weeklyDays"
+            hidden
+          >
+            <Input />
+          </Form.Item>
+
         </Form>
       </Modal>
 

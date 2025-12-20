@@ -152,16 +152,18 @@ async function buildInMemory() {
 
 // Dev server with API proxy
 const server = createServer(async (req, res) => {
-  const url = req.url?.split('?')[0] || '/';
+  const fullUrl = req.url || '/';
+  const url = fullUrl.split('?')[0];
   
   try {
     // Proxy API requests to backend
     if (url.startsWith('/api/')) {
       return new Promise((resolve) => {
+        // Use full URL (including query string) for the proxy path
         const proxyReq = httpRequest({
           hostname: 'localhost',
           port: BACKEND_PORT,
-          path: url,
+          path: fullUrl, // Use full URL with query parameters
           method: req.method,
           headers: {
             'Content-Type': 'application/json',

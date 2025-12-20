@@ -40,3 +40,4 @@ CREATE INDEX IF NOT EXISTS idx_cron_schedule_next_run ON cron_job_schedule(next_
 -- Add comment
 COMMENT ON TABLE cron_job_schedule IS 'Stores scheduled cron job configurations for automated workflow execution';
 
+

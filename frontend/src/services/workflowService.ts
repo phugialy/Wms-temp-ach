@@ -18,6 +18,10 @@ export interface CronJobExecution {
   workflowType: string;
   triggerSource: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  scheduleId?: string | null;
+  scheduleName?: string | null;
+  scheduleTime?: string | null;
+  scheduleFrequency?: string | null;
   stations: string[];
   dateFrom: string | null;
   dateTo: string | null;
@@ -62,7 +66,25 @@ export interface WorkflowStats {
   failed: number;
   running: number;
   pending: number;
-  averages: {
+  totals: {
+    daily: {
+      devicesFound: number;
+      devicesAdded: number;
+      durationMs: number;
+    };
+    weekly: {
+      devicesFound: number;
+      devicesAdded: number;
+      durationMs: number;
+    };
+    monthly: {
+      devicesFound: number;
+      devicesAdded: number;
+      durationMs: number;
+    };
+  };
+  // Deprecated: kept for backward compatibility
+  averages?: {
     devicesFound: number;
     devicesAdded: number;
     durationMs: number;
@@ -143,20 +165,23 @@ export const executeBulkAddWorkflow = async (
 };
 
 /**
- * Get workflow execution history
+ * Get workflow execution history with optional date filtering
  */
 export const getExecutionHistory = async (
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  dateFrom?: string,
+  dateTo?: string
 ): Promise<CronJobExecution[]> => {
   try {
-    console.log('[WorkflowService] getExecutionHistory called with:', { limit, offset });
+    console.log('[WorkflowService] getExecutionHistory called with:', { limit, offset, dateFrom, dateTo });
     console.log('[WorkflowService] Calling apiClient.get("/workflows/executions")...');
     
-    const response = await apiClient.get<ExecutionHistoryResponse>('/workflows/executions', {
-      limit,
-      offset,
-    });
+    const params: any = { limit, offset };
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo) params.dateTo = dateTo;
+    
+    const response = await apiClient.get<ExecutionHistoryResponse>('/workflows/executions', params);
 
     console.log('[WorkflowService] Received response:', response);
 

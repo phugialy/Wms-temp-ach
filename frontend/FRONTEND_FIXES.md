@@ -65,3 +65,4 @@ refresh: false, // Disable React Refresh for now - causes $RefreshSig$ errors
 - Added loading states for better UX
 - Better console logging for debugging
 
+

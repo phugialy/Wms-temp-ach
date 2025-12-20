@@ -702,8 +702,12 @@ model ImeiDataQueue {
 model CronJobExecution {
   id              BigInt    @id @default(autoincrement())
   workflowType    String    @map("workflow_type") @db.VarChar(50) // 'bulk-add', etc.
-  triggerSource   String    @map("trigger_source") @db.VarChar(50) // 'vercel-cron', 'manual', 'api'
+  triggerSource   String    @map("trigger_source") @db.VarChar(50) // 'vercel-cron', 'manual', 'api', 'scheduled-cron'
   status          String    @default("pending") @db.VarChar(20) // 'pending', 'running', 'completed', 'failed'
+  
+  // Schedule reference (if triggered by a schedule)
+  scheduleId      BigInt?   @map("schedule_id") // Reference to CronJobSchedule
+  schedule        CronJobSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   
   // Workflow parameters
   stations        String[]  // Array of station names
@@ -737,5 +741,48 @@ model CronJobExecution {
   @@index([startedAt], map: "idx_cron_job_started_at")
   @@index([completedAt], map: "idx_cron_job_completed_at")
   @@index([dateFrom, dateTo], map: "idx_cron_job_date_range")
+  @@index([scheduleId], map: "idx_cron_job_schedule_id")
   @@map("cron_job_execution")
+}
+
+// Cron Job Schedule Configuration
+model CronJobSchedule {
+  id              BigInt    @id @default(autoincrement())
+  name            String    @db.VarChar(100) // User-friendly name for the schedule
+  workflowType    String    @default("bulk-add") @map("workflow_type") @db.VarChar(50)
+  
+  // Workflow parameters (pre-set)
+  stations        String[]  // Array of station names
+  location        String    @db.VarChar(100)
+  dateRangeDays   Int       @default(1) @map("date_range_days") // How many days back to process (e.g., 1 = yesterday)
+  
+  // Schedule configuration
+  scheduleTime    String    @map("schedule_time") @db.VarChar(10) // HH:mm format (e.g., "02:00")
+  timezone        String    @default("UTC") @db.VarChar(50)
+  frequency       String    @map("frequency") @db.VarChar(20) // 'daily', 'weekly'
+  weeklyDays      Int[]     @default([]) @map("weekly_days") // 0=Sunday, 1=Monday, ..., 6=Saturday
+  cronExpression  String?   @map("cron_expression") @db.VarChar(100) // Generated cron expression
+  
+  // Status
+  isActive        Boolean   @default(true) @map("is_active")
+  
+  // Metadata
+  description     String?   @db.Text
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(6)
+  nextRunAt      DateTime? @map("next_run_at") @db.Timestamptz(6)
+  totalRuns      Int       @default(0) @map("total_runs")
+  successfulRuns Int       @default(0) @map("successful_runs")
+  failedRuns     Int       @default(0) @map("failed_runs")
+  
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?   @map("created_by") @db.VarChar(100)
+
+  // Relations
+  executions      CronJobExecution[]
+
+  @@index([isActive], map: "idx_cron_schedule_active")
+  @@index([frequency], map: "idx_cron_schedule_frequency")
+  @@index([nextRunAt], map: "idx_cron_schedule_next_run")
+  @@map("cron_job_schedule")
 }

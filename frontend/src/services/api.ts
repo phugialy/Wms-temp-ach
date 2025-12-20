@@ -124,13 +124,43 @@ export const apiClient = {
   },
 
   put: async <T = any>(url: string, data?: any): Promise<ApiResponse<T>> => {
-    const response = await api.put<ApiResponse<T>>(url, data);
-    return response.data;
+    console.log(`[ApiClient] PUT ${url}`, data ? { data } : '');
+    try {
+      const response = await api.put<ApiResponse<T>>(url, data);
+      console.log(`[ApiClient] PUT ${url} - Response:`, {
+        status: response.status,
+        data: response.data,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error(`[ApiClient] PUT ${url} - Error:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw error;
+    }
   },
 
   delete: async <T = any>(url: string): Promise<ApiResponse<T>> => {
-    const response = await api.delete<ApiResponse<T>>(url);
-    return response.data;
+    console.log(`[ApiClient] DELETE ${url}`);
+    try {
+      const response = await api.delete<ApiResponse<T>>(url);
+      console.log(`[ApiClient] DELETE ${url} - Response:`, {
+        status: response.status,
+        data: response.data,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error(`[ApiClient] DELETE ${url} - Error:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      throw error;
+    }
   },
 };
 

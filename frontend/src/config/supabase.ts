@@ -28,3 +28,4 @@ export const getSupabaseConfig = (): SupabaseConfig => {
 // Export singleton config
 export const supabaseConfig = getSupabaseConfig();
 
+

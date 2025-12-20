@@ -78,15 +78,15 @@ export class ItemsService {
       const item = await this.prisma.item.create({
         data: {
           imei: data.imei ?? 'UNKNOWN-IMEI',
-          model: data.model ?? null,
-          modelNumber: data.modelNumber ?? null,
-          carrier: data.carrier ?? null,
-          capacity: data.capacity ?? null,
-          color: data.color ?? null,
-          batteryHealth: data.batteryHealth ?? null,
-          batteryCount: data.batteryCount ?? null,
-          working: data.working ?? null,
-          location: data.location ?? null
+          model: data.model ?? undefined,
+          modelNumber: data.modelNumber ?? undefined,
+          carrier: data.carrier ?? undefined,
+          capacity: data.capacity ?? undefined,
+          color: data.color ?? undefined,
+          batteryHealth: data.batteryHealth !== null && data.batteryHealth !== undefined ? String(data.batteryHealth) : undefined,
+          batteryCount: data.batteryCount !== null && data.batteryCount !== undefined ? Number(data.batteryCount) : undefined,
+          working: data.working !== null ? data.working : undefined,
+          location: data.location ?? undefined
         }
       });
 
@@ -123,7 +123,7 @@ export class ItemsService {
       const updatedItems = await Promise.all(
         existingItems.map(item =>
           this.prisma.item.update({
-            where: { imei: item.imei },
+            where: { imei: item.imei !== null ? item.imei : undefined },
             data: updateData
           })
         )
@@ -151,7 +151,7 @@ export class ItemsService {
       await Promise.all(
         existingItems.map(item =>
           this.prisma.item.delete({
-            where: { imei: item.imei }
+            where: { imei: item.imei ?? undefined }
           })
         )
       );
