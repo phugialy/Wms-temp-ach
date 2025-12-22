@@ -748,10 +748,18 @@ export const CronJobManagementModern = () => {
         return;
       }
 
+      // Ensure stations is always an array (form validation should prevent empty, but be safe)
+      const stationsArray = Array.isArray(values.stations) ? values.stations : [];
+      if (stationsArray.length === 0) {
+        message.error('Please select at least one station');
+        setSavingSchedule(false);
+        return;
+      }
+
       const params: CreateCronScheduleParams = {
         name: values.name.trim(),
         workflowType: 'bulk-add',
-        stations: values.stations,
+        stations: stationsArray, // Always send as array
         location: values.location.trim(),
         dateRangeDays: dateRangeDays,
         scheduleTime: values.scheduleTime.format('HH:mm'),
@@ -761,7 +769,13 @@ export const CronJobManagementModern = () => {
         description: values.description?.trim() || undefined,
       };
 
-      console.log('[CronJobManagement] Submitting schedule:', { editingSchedule: !!editingSchedule, params });
+      console.log('[CronJobManagement] Submitting schedule:', { 
+        editingSchedule: !!editingSchedule, 
+        editingScheduleId: editingSchedule?.id,
+        params,
+        stationsCount: params.stations.length,
+        stations: params.stations
+      });
       
       let result;
       if (editingSchedule) {

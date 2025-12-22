@@ -172,6 +172,12 @@ export class CronScheduleService {
       throw new Error('Schedule not found');
     }
 
+    logger.info(`[CronScheduleService] Updating schedule ${id}`, {
+      existingStations: existing.stations,
+      updateDataStations: updateData.stations,
+      updateDataKeys: Object.keys(updateData)
+    });
+
     // Regenerate cron expression if schedule time or frequency changed
     if (updateData.scheduleTime || updateData.frequency || updateData.weeklyDays) {
       const scheduleTime = updateData.scheduleTime || existing.scheduleTime;
@@ -188,7 +194,14 @@ export class CronScheduleService {
     }
 
     // Stop existing cron job if schedule changed or is being deactivated
-    if (existing.isActive && (updateData.isActive === false || updateData.scheduleTime || updateData.frequency)) {
+    // Also stop if stations changed to ensure new stations are used
+    if (existing.isActive && (
+      updateData.isActive === false || 
+      updateData.scheduleTime || 
+      updateData.frequency ||
+      (updateData.stations && JSON.stringify(updateData.stations) !== JSON.stringify(existing.stations))
+    )) {
+      logger.info(`[CronScheduleService] Stopping schedule ${id} due to configuration change`);
       await this.stopSchedule(id);
     }
 
@@ -197,8 +210,21 @@ export class CronScheduleService {
       data: updateData,
     });
 
+    logger.info(`[CronScheduleService] Schedule ${id} updated in database`, {
+      name: schedule.name,
+      stations: schedule.stations,
+      stationsCount: schedule.stations.length
+    });
+
     // Start cron job if it's now active
-    if (schedule.isActive && (!existing.isActive || updateData.scheduleTime || updateData.frequency)) {
+    // Restart if stations changed to ensure new stations are used
+    if (schedule.isActive && (
+      !existing.isActive || 
+      updateData.scheduleTime || 
+      updateData.frequency ||
+      (updateData.stations && JSON.stringify(updateData.stations) !== JSON.stringify(existing.stations))
+    )) {
+      logger.info(`[CronScheduleService] Starting/restarting schedule ${id} with stations:`, schedule.stations);
       await this.startSchedule(id);
     }
 
@@ -270,23 +296,38 @@ export class CronScheduleService {
           endTime: currentTime,
         });
 
+        // CRITICAL: Re-fetch schedule from database to ensure we have the latest stations
+        // This prevents using stale data if the schedule was updated after the cron job was created
+        const currentSchedule = await this.getScheduleById(schedule.id);
+        if (!currentSchedule) {
+          logger.error(`[CronSchedule] Schedule ${schedule.id} not found in database, skipping execution`);
+          return;
+        }
+
         // Execute workflow with schedule ID for proper indexing and tracking
         // This ensures the execution is linked to this schedule in the database
-        logger.info(`[CronSchedule] Executing workflow with scheduleId: ${schedule.id}`, {
-          scheduleId: schedule.id.toString(),
-          scheduleName: schedule.name,
-          stations: schedule.stations,
-          location: schedule.location,
+        logger.info(`[CronSchedule] Executing workflow with scheduleId: ${currentSchedule.id}`, {
+          scheduleId: currentSchedule.id.toString(),
+          scheduleName: currentSchedule.name,
+          stations: currentSchedule.stations,
+          stationsCount: currentSchedule.stations.length,
+          location: currentSchedule.location,
           dateRange: dateString,
         });
         
+        // Verify stations array is valid
+        if (!Array.isArray(currentSchedule.stations) || currentSchedule.stations.length === 0) {
+          logger.error(`[CronSchedule] Invalid stations array for schedule ${currentSchedule.id}:`, currentSchedule.stations);
+          throw new Error(`Invalid stations configuration for schedule ${currentSchedule.name}`);
+        }
+        
         const result = await workflowEngine.executeBulkAddWorkflow({
-          stations: schedule.stations,
+          stations: currentSchedule.stations, // Use fresh data from database
           dateFrom: dateString, // Same date for both
           dateTo: dateString,   // Same date for both (Phonecheck API requirement)
-          location: schedule.location,
+          location: currentSchedule.location,
           triggerSource: 'scheduled-cron',
-          scheduleId: schedule.id, // CRITICAL: Link execution to schedule for proper indexing
+          scheduleId: currentSchedule.id, // CRITICAL: Link execution to schedule for proper indexing
         });
 
         // Update schedule stats

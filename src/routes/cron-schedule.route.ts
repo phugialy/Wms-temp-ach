@@ -170,10 +170,18 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     }
     const id = BigInt(idParam);
     console.log(`[CronScheduleRoute] PUT /schedules/${id} - Request received`);
+    console.log(`[CronScheduleRoute] Request body:`, JSON.stringify(req.body, null, 2));
 
     const updateData: any = {};
     if (req.body.name !== undefined) updateData.name = req.body.name;
-    if (req.body.stations !== undefined) updateData.stations = req.body.stations;
+    // CRITICAL: Always update stations if provided - this ensures unselected stations are removed
+    if (req.body.stations !== undefined) {
+      // Ensure stations is always an array, even if empty (though validation should prevent empty)
+      updateData.stations = Array.isArray(req.body.stations) ? req.body.stations : [];
+      console.log(`[CronScheduleRoute] Updating stations:`, updateData.stations);
+    } else {
+      console.warn(`[CronScheduleRoute] WARNING: stations not provided in update request - will not update stations field`);
+    }
     if (req.body.location !== undefined) updateData.location = req.body.location;
     if (req.body.dateRangeDays !== undefined) updateData.dateRangeDays = req.body.dateRangeDays;
     if (req.body.scheduleTime !== undefined) updateData.scheduleTime = req.body.scheduleTime;
@@ -183,7 +191,9 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     if (req.body.description !== undefined) updateData.description = req.body.description;
     if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive;
 
+    console.log(`[CronScheduleRoute] Update data to be applied:`, JSON.stringify(updateData, null, 2));
     const schedule = await cronScheduleService.updateSchedule(id, updateData);
+    console.log(`[CronScheduleRoute] Schedule updated successfully. New stations:`, schedule.stations);
 
     // Serialize the response properly
     const responseData = {
