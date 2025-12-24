@@ -273,5 +273,80 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+/**
+ * POST /api/workflows/schedules/:id/trigger
+ * Manually trigger/run a specific schedule immediately
+ */
+router.post('/:id/trigger', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const idParam = req.params['id'];
+    if (!idParam) {
+      res.status(400).json({
+        success: false,
+        error: 'Schedule ID is required',
+      });
+      return;
+    }
+    const id = BigInt(idParam);
+    console.log(`[CronScheduleRoute] POST /schedules/${id}/trigger - Request received`);
+
+    const result = await cronScheduleService.triggerSchedule(id);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Schedule triggered successfully',
+        executionId: result.executionId?.toString(),
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error || 'Failed to trigger schedule',
+      });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[CronScheduleRoute] Error triggering schedule:', errorMessage);
+    logger.error('Error triggering cron schedule', { error: errorMessage });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to trigger schedule',
+      details: errorMessage,
+    });
+  }
+});
+
+/**
+ * POST /api/workflows/schedules/trigger-all
+ * Manually trigger all active schedules
+ */
+router.post('/trigger-all', async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log('[CronScheduleRoute] POST /schedules/trigger-all - Request received');
+
+    const result = await cronScheduleService.triggerAllSchedules();
+
+    res.json({
+      success: true,
+      message: `Triggered ${result.total} schedules: ${result.successful} successful, ${result.failed} failed`,
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      results: result.results,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[CronScheduleRoute] Error triggering all schedules:', errorMessage);
+    logger.error('Error triggering all cron schedules', { error: errorMessage });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to trigger all schedules',
+      details: errorMessage,
+    });
+  }
+});
+
 export default router;
 

@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { path: '/phonecheck', label: 'Phonecheck Lookup', icon: 'fas fa-search', section: 'Operations' },
   
   // Administration
+  { path: '/admin-panel', label: 'Admin Panel', icon: 'fas fa-cog', section: 'Administration', roles: ['ADMIN', 'MANAGER'] },
   { path: '/sku-master', label: 'SKU Master', icon: 'fas fa-tags', section: 'Administration', roles: ['ADMIN'] },
   { path: '/sku-matching', label: 'SKU Matching', icon: 'fas fa-link', section: 'Administration', roles: ['ADMIN'] },
   { path: '/data-cleanup', label: 'Data Cleanup', icon: 'fas fa-broom', section: 'Administration', roles: ['ADMIN'] },

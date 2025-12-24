@@ -197,12 +197,63 @@ export const toggleCronSchedule = async (
   return updateCronSchedule(id, { isActive });
 };
 
+/**
+ * Manually trigger/run a specific schedule immediately
+ */
+export const triggerSchedule = async (id: string): Promise<{ success: boolean; executionId?: string; error?: string }> => {
+  try {
+    const response = await apiClient.post<{ success: boolean; message?: string; executionId?: string; error?: string }>(
+      `/workflows/schedules/${id}/trigger`
+    );
+    return response;
+  } catch (error: any) {
+    console.error('[CronScheduleService] Error triggering schedule:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to trigger schedule',
+    };
+  }
+};
+
+/**
+ * Manually trigger all active schedules
+ */
+export const triggerAllSchedules = async (): Promise<{ 
+  success: boolean; 
+  total?: number; 
+  successful?: number; 
+  failed?: number; 
+  results?: Array<{ scheduleId: string; scheduleName: string; success: boolean; error?: string }>;
+  error?: string;
+}> => {
+  try {
+    const response = await apiClient.post<{ 
+      success: boolean; 
+      message?: string;
+      total?: number; 
+      successful?: number; 
+      failed?: number; 
+      results?: Array<{ scheduleId: string; scheduleName: string; success: boolean; error?: string }>;
+      error?: string;
+    }>('/workflows/schedules/trigger-all');
+    return response;
+  } catch (error: any) {
+    console.error('[CronScheduleService] Error triggering all schedules:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to trigger all schedules',
+    };
+  }
+};
+
 export const cronScheduleService = {
   getCronSchedules,
   createCronSchedule,
   updateCronSchedule,
   deleteCronSchedule,
   toggleCronSchedule,
+  triggerSchedule,
+  triggerAllSchedules,
 };
 
 export default cronScheduleService;

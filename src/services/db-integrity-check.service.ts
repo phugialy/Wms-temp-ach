@@ -152,16 +152,39 @@ export class DbIntegrityCheckService {
   }
 
   /**
+   * Validate if IMEI format is compatible with PhoneCheck API
+   * PhoneCheck API only accepts numeric IMEIs (8-15 digits)
+   */
+  private isValidImeiForPhoneCheck(imei: string): boolean {
+    // PhoneCheck API only works with numeric IMEIs
+    // Standard IMEIs are 15 digits, but some APIs accept 8-15 digits
+    return /^\d{8,15}$/.test(imei);
+  }
+
+  /**
    * Fetch data from PhoneCheck API for a single IMEI
    */
   private async fetchPhoneCheckData(imei: string): Promise<any | null> {
     try {
+      // Skip PhoneCheck API lookup for non-numeric IMEIs (e.g., serial numbers, alphanumeric IDs)
+      if (!this.isValidImeiForPhoneCheck(imei)) {
+        logger.info(`Skipping PhoneCheck API lookup for non-numeric IMEI: ${imei}`, {
+          reason: 'PhoneCheck API only accepts numeric IMEIs (8-15 digits)',
+          imeiFormat: 'alphanumeric_or_serial_number'
+        });
+        return null;
+      }
+
       const rawData = await this.phonecheckService.getDeviceDetails(imei);
       const abstractedData = this.phonecheckService.abstractDeviceData(rawData);
       
       return abstractedData;
     } catch (error) {
-      logger.warn(`Failed to fetch PhoneCheck data for IMEI ${imei}`, { error });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn(`Failed to fetch PhoneCheck data for IMEI ${imei}`, { 
+        error: errorMessage,
+        imei
+      });
       return null;
     }
   }
@@ -283,13 +306,20 @@ export class DbIntegrityCheckService {
 
             if (!phoneCheckData) {
               result.recordsFailed++;
+              
+              // Provide more specific error message based on IMEI format
+              const isNonNumericImei = !this.isValidImeiForPhoneCheck(record.imei);
+              const errorMessage = isNonNumericImei
+                ? `IMEI format not compatible with PhoneCheck API (PhoneCheck only accepts numeric IMEIs: 8-15 digits, but received: ${record.imei})`
+                : 'No data available from PhoneCheck API';
+              
               result.details.processed.push({
                 imei: record.imei,
                 status: 'no_data'
               });
               result.errors.push({
                 imei: record.imei,
-                error: 'No data available from PhoneCheck API'
+                error: errorMessage
               });
               return;
             }

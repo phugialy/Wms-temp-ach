@@ -766,6 +766,11 @@ model CronJobSchedule {
   // Status
   isActive        Boolean   @default(true) @map("is_active")
   
+  // Email reporting configuration
+  emailRecipients String[]  @default([]) @map("email_recipients") // List of email addresses to receive reports
+  emailOnSuccess  Boolean   @default(true) @map("email_on_success") // Send email on successful runs
+  emailOnFailure  Boolean   @default(true) @map("email_on_failure") // Send email on failed runs
+  
   // Metadata
   description     String?   @db.Text
   lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(6)
@@ -785,4 +790,43 @@ model CronJobSchedule {
   @@index([frequency], map: "idx_cron_schedule_frequency")
   @@index([nextRunAt], map: "idx_cron_schedule_next_run")
   @@map("cron_job_schedule")
+}
+
+// Email Report Subscription
+model EmailReportSubscription {
+  id                BigInt    @id @default(autoincrement())
+  name              String    @db.VarChar(100)
+  description       String?   @db.Text
+  
+  // Which Cron Jobs to Monitor
+  scheduleIds       BigInt[]  @default([]) @map("schedule_ids") // Empty array = all schedules
+  locationFilter    String?   @map("location_filter") @db.VarChar(100)
+  
+  // Recipients (Array Format)
+  emailRecipients   String[]  @default([]) @map("email_recipients")
+  
+  // Delivery Schedule
+  deliveryMode      String    @default("immediate") @map("delivery_mode") @db.VarChar(20) // 'immediate' | 'scheduled'
+  scheduleTime      DateTime? @map("schedule_time") @db.Time // When to send (for scheduled)
+  scheduleFrequency String?   @map("schedule_frequency") @db.VarChar(20) // 'daily' | 'weekly' | 'monthly'
+  scheduleDays      Int[]     @default([]) @map("schedule_days") // For weekly: [1,2,3] = Mon, Tue, Wed
+  timezone          String    @default("UTC") @db.VarChar(50)
+  
+  // Email Preferences
+  emailOnSuccess    Boolean   @default(true) @map("email_on_success")
+  emailOnFailure    Boolean   @default(true) @map("email_on_failure")
+  summaryOnly       Boolean   @default(false) @map("summary_only") // Only send summary, skip individual
+  
+  // Status
+  isActive          Boolean   @default(true) @map("is_active")
+  
+  // Metadata
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy         String?   @map("created_by") @db.VarChar(100)
+  lastSentAt        DateTime? @map("last_sent_at") @db.Timestamptz(6)
+
+  @@index([isActive, deliveryMode], map: "idx_email_subscription_active")
+  @@index([deliveryMode, scheduleTime], map: "idx_email_subscription_scheduled_time")
+  @@map("email_report_subscription")
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu, Avatar, Dropdown, Badge, Button, theme } from 'antd';
 import type { MenuProps } from 'antd';
@@ -20,6 +20,7 @@ import {
   MenuUnfoldOutlined,
   UserOutlined,
   LogoutOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -35,26 +36,34 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   // Operations
-  { key: '/single-add', label: 'Single Add', icon: <PlusOutlined />, section: 'Operations' },
-  { key: '/bulk-add', label: 'Bulk Add', icon: <AppstoreOutlined />, section: 'Operations' },
+  { key: '/device-add', label: 'Add Devices', icon: <PlusOutlined />, section: 'Operations' },
   { key: '/inventory', label: 'Inventory Manager', icon: <DatabaseOutlined />, section: 'Operations' },
   { key: '/phonecheck', label: 'Phonecheck Lookup', icon: <SearchOutlined />, section: 'Operations' },
   
   // Administration
+  { key: '/admin-panel', label: 'Admin Panel', icon: <SettingOutlined />, section: 'Administration', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
   { key: '/sku-master', label: 'SKU Master', icon: <TagsOutlined />, section: 'Administration', roles: ['ADMIN'] },
   { key: '/sku-matching', label: 'SKU Matching', icon: <LinkOutlined />, section: 'Administration', roles: ['ADMIN'] },
   { key: '/data-cleanup', label: 'Data Cleanup', icon: <ClearOutlined />, section: 'Administration', roles: ['ADMIN'] },
   { key: '/queue-management', label: 'Queue Management', icon: <UnorderedListOutlined />, section: 'Administration', roles: ['ADMIN'] },
-  { key: '/cron-jobs', label: 'Cron Job Management', icon: <ClockCircleOutlined />, section: 'Administration', roles: ['ADMIN', 'MANAGER'] },
   
   // Analytics
-  { key: '/dashboard', label: 'Executive Dashboard', icon: <DashboardOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },
+  { key: '/dashboard', label: 'Executive Dashboard', icon: <DashboardOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN', 'OPERATOR'] },
   { key: '/reports', label: 'Reports', icon: <FileTextOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },
   { key: '/audit', label: 'Audit Logs', icon: <AuditOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },
 ];
 
 export const ModernLayout = () => {
-  const [collapsed, setCollapsed] = useState(false);
+  // Load collapsed state from localStorage for persistence
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+  
+  // Save collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed));
+  }, [collapsed]);
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
@@ -122,6 +131,7 @@ export const ModernLayout = () => {
         collapsible
         collapsed={collapsed}
         width={250}
+        collapsedWidth={80}
         style={{
           overflow: 'auto',
           height: '100vh',
@@ -129,6 +139,7 @@ export const ModernLayout = () => {
           left: 0,
           top: 0,
           bottom: 0,
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
         theme="dark"
       >
@@ -145,10 +156,19 @@ export const ModernLayout = () => {
             color: '#fff',
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            gap: collapsed ? 0 : 12,
+            transition: 'gap 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            justifyContent: 'center',
           }}>
             <span>📦</span>
-            {!collapsed && <span>WMS</span>}
+            <span style={{
+              opacity: collapsed ? 0 : 1,
+              width: collapsed ? 0 : 'auto',
+              overflow: 'hidden',
+              transition: 'opacity 0.2s ease, width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+              {!collapsed && 'WMS'}
+            </span>
           </div>
         </div>
         <Menu
@@ -160,7 +180,10 @@ export const ModernLayout = () => {
           onClick={handleMenuClick}
         />
       </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 250, transition: 'all 0.2s' }}>
+      <Layout style={{ 
+        marginLeft: collapsed ? 80 : 250, 
+        transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
         <AntHeader
           style={{
             padding: '0 24px',
@@ -178,7 +201,13 @@ export const ModernLayout = () => {
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16, width: 64, height: 64 }}
+            style={{ 
+              fontSize: 16, 
+              width: 64, 
+              height: 64,
+              transition: 'all 0.2s ease',
+            }}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <Badge count={5} size="small">

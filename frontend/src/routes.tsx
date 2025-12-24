@@ -1,11 +1,13 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { ModernLayout } from './components/layout/ModernLayout';
-import { Dashboard } from './pages/Dashboard';
-import { SingleAdd } from './pages/SingleAdd';
-import { BulkAdd } from './pages/BulkAdd';
+import { DashboardModern } from './pages/DashboardModern';
+import { DeviceAdd } from './pages/DeviceAdd';
 import { Inventory } from './pages/Inventory';
+import { InventoryModern } from './pages/InventoryModern';
 import { Phonecheck } from './pages/Phonecheck';
 import { CronJobManagementModern } from './pages/CronJobManagementModern';
+import { AdminPanel } from './pages/AdminPanel';
+import { DbIntegrityCheck } from './pages/DbIntegrityCheck';
 
 export const router = createBrowserRouter([
   {
@@ -14,23 +16,31 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Dashboard />,
+        element: <DashboardModern />,
       },
       {
         path: 'dashboard',
-        element: <Dashboard />,
+        element: <DashboardModern />,
       },
       {
         path: 'single-add',
-        element: <SingleAdd />,
+        element: <DeviceAdd />,
       },
       {
         path: 'bulk-add',
-        element: <BulkAdd />,
+        element: <DeviceAdd />,
+      },
+      {
+        path: 'device-add',
+        element: <DeviceAdd />,
       },
       {
         path: 'inventory',
-        element: <Inventory />,
+        element: <InventoryModern />, // Preview: Ant Design version
+      },
+      {
+        path: 'inventory-old',
+        element: <Inventory />, // Old version kept for reference
       },
       {
         path: 'phonecheck',
@@ -56,6 +66,14 @@ export const router = createBrowserRouter([
       {
         path: 'cron-jobs',
         element: <CronJobManagementModern />,
+      },
+      {
+        path: 'admin-panel',
+        element: <AdminPanel />,
+      },
+      {
+        path: 'db-integrity-check',
+        element: <DbIntegrityCheck />,
       },
       {
         path: 'reports',

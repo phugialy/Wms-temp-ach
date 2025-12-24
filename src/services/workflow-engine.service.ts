@@ -75,7 +75,8 @@ export class WorkflowEngineService {
 
       let totalDevicesFound = 0;
       let totalDevicesProcessed = 0;
-      let totalDevicesAdded = 0;
+      let totalDevicesAdded = 0; // Only count NEW IMEIs (not existing ones that are updated)
+      let totalDevicesUpdated = 0; // Track existing devices that were updated
       let totalDevicesFailed = 0;
       const errors: any[] = [];
       const processedDevices: any[] = []; // Track successfully added devices
@@ -138,22 +139,93 @@ export class WorkflowEngineService {
                 enhancedData = device;
               }
 
-              // Step 2.2.2: Push to DB using existing bulk-add logic
-              // We'll use the existing inventory service to add the device
-              await this.processAndAddDevice(enhancedData || device, params.location, station);
+              // Step 2.2.2: Prepare device data for database insertion
+              // getDeviceDetailsEnhanced returns nested structure { abstracted, raw, metadata }
+              // We need to flatten it and map fields correctly
+              let deviceDataForDb = device; // Default to basic device data
+              
+              if (enhancedData) {
+                // If enhancedData has abstracted property, use that (it's the processed data)
+                if (enhancedData.abstracted) {
+                  const abstracted = enhancedData.abstracted;
+                  // Map abstracted fields to database expected fields
+                  // abstractDeviceData returns lowercase fields, but also needs capacity mapping
+                  deviceDataForDb = {
+                    IMEI: abstracted.imei || enhancedData.imei || device['IMEI'] || device['imei'],
+                    Brand: abstracted.brand || abstracted.Brand || device['Brand'] || device['brand'],
+                    Model: abstracted.model || abstracted.Model || device['Model'] || device['model'],
+                    Capacity: abstracted.capacity || abstracted.Capacity || abstracted.storage || abstracted.Storage || device['Capacity'] || device['capacity'],
+                    Color: abstracted.color || abstracted.Color || device['Color'] || device['color'],
+                    Carrier: abstracted.carrier || abstracted.Carrier || device['Carrier'] || device['carrier'],
+                    Working: abstracted.working || abstracted.Working || device['Working'] || device['working'],
+                    WorkingStatus: abstracted.working || abstracted.Working || device['WorkingStatus'] || device['Working'] || device['working'],
+                    BatteryHealth: abstracted.batteryHealth || abstracted.BatteryHealth || device['BatteryHealth'] || device['batteryHealth'],
+                    Serial: abstracted.serialNumber || abstracted.Serial || abstracted.serial || device['Serial'] || device['serial'],
+                    SKU: device['SKU'] || device['sku'],
+                    ModelNumber: abstracted.modelNumber || abstracted.ModelNumber || abstracted.modelNo || device['Model#'] || device['modelNo'],
+                    TesterName: abstracted.testerName || abstracted.TesterName || device['TesterName'] || device['testerName'] || device['Tester'] || device['tester'],
+                    Defects: abstracted.failed || abstracted.defects || device['Defects'] || device['defects'],
+                    Notes: abstracted.notes || abstracted.Notes || device['Notes'] || device['notes'],
+                    Custom1: abstracted.repairNotes || abstracted.Custom1 || device['Custom1'] || device['custom1'],
+                    // Preserve raw data if available for debugging
+                    ...(enhancedData.raw && { _raw: enhancedData.raw })
+                  };
+                } else if (enhancedData.imei) {
+                  // If enhancedData is already flat (shouldn't happen but handle it)
+                  deviceDataForDb = enhancedData;
+                }
+              }
+
+              // Step 2.2.3: Check if IMEI already exists in database
+              const existingItem = await prisma.item.findUnique({
+                where: { imei },
+                select: { imei: true }
+              });
+              
+              const isNewDevice = !existingItem;
+
+              // Step 2.2.4: Push to DB using existing bulk-add logic
+              // Log data mapping for debugging data integrity issues
+              logger.debug('Processing device data for database', {
+                executionId: executionId.toString(),
+                imei,
+                station,
+                isNewDevice,
+                hasAbstractedData: !!(enhancedData?.abstracted),
+                hasRawData: !!(enhancedData?.raw),
+                fieldsMapped: {
+                  imei: !!deviceDataForDb['IMEI'],
+                  brand: !!deviceDataForDb['Brand'],
+                  model: !!deviceDataForDb['Model'],
+                  capacity: !!deviceDataForDb['Capacity'],
+                  color: !!deviceDataForDb['Color'],
+                  carrier: !!deviceDataForDb['Carrier'],
+                  working: !!deviceDataForDb['Working'],
+                  modelNumber: !!deviceDataForDb['ModelNumber']
+                }
+              });
+              
+              await this.processAndAddDevice(deviceDataForDb, params.location, station);
 
               totalDevicesProcessed++;
-              totalDevicesAdded++;
               
-              // Track device details for metadata
+              // Only count as "added" if it's a NEW IMEI, otherwise count as updated
+              if (isNewDevice) {
+                totalDevicesAdded++;
+              } else {
+                totalDevicesUpdated++;
+              }
+              
+              // Track device details for metadata (use deviceDataForDb which has the mapped fields)
               processedDevices.push({
                 imei: imei,
                 station: station,
-                model: enhancedData?.['Model'] || enhancedData?.['model'] || device?.['Model'] || device?.['model'] || 'N/A',
-                brand: enhancedData?.['Brand'] || enhancedData?.['brand'] || device?.['Brand'] || device?.['brand'] || 'N/A',
-                capacity: enhancedData?.['Capacity'] || enhancedData?.['capacity'] || device?.['Capacity'] || device?.['capacity'] || 'N/A',
-                color: enhancedData?.['Color'] || enhancedData?.['color'] || device?.['Color'] || device?.['color'] || 'N/A',
-                carrier: enhancedData?.['Carrier'] || enhancedData?.['carrier'] || device?.['Carrier'] || device?.['carrier'] || 'N/A',
+                isNew: isNewDevice, // Track whether this was a new device or update
+                model: deviceDataForDb['Model'] || deviceDataForDb['model'] || 'N/A',
+                brand: deviceDataForDb['Brand'] || deviceDataForDb['brand'] || 'N/A',
+                capacity: deviceDataForDb['Capacity'] || deviceDataForDb['capacity'] || 'N/A',
+                color: deviceDataForDb['Color'] || deviceDataForDb['color'] || 'N/A',
+                carrier: deviceDataForDb['Carrier'] || deviceDataForDb['carrier'] || 'N/A',
                 processedAt: new Date().toISOString()
               });
 
@@ -205,7 +277,8 @@ export class WorkflowEngineService {
           errorDetails: errors.length > 0 ? ({ errors: errors.slice(0, 100) } as any) : null, // Limit to first 100 errors
           metadata: {
             devices: processedDevices.slice(0, 1000), // Store up to 1000 devices in metadata
-            totalDevices: processedDevices.length
+            totalDevices: processedDevices.length,
+            devicesUpdated: totalDevicesUpdated // Track updated devices separately in metadata
           } as any
         }
       });
@@ -215,7 +288,8 @@ export class WorkflowEngineService {
         success,
         devicesFound: totalDevicesFound,
         devicesProcessed: totalDevicesProcessed,
-        devicesAdded: totalDevicesAdded,
+        devicesAdded: totalDevicesAdded, // NEW IMEIs only
+        devicesUpdated: totalDevicesUpdated, // Existing IMEIs that were updated
         devicesFailed: totalDevicesFailed,
         durationMs
       });
@@ -279,6 +353,7 @@ export class WorkflowEngineService {
       // Extract device information
       const brand = deviceData['Brand'] || deviceData['brand'] || null;
       const model = deviceData['Model'] || deviceData['model'] || null;
+      const modelNumber = deviceData['ModelNumber'] || deviceData['modelNumber'] || deviceData['Model#'] || deviceData['modelNo'] || null;
       const capacity = deviceData['Capacity'] || deviceData['capacity'] || null;
       const color = deviceData['Color'] || deviceData['color'] || null;
       const carrier = deviceData['Carrier'] || deviceData['carrier'] || null;
@@ -307,6 +382,7 @@ export class WorkflowEngineService {
         create: {
           imei,
           model,
+          modelNumber,
           capacity,
           color,
           carrier,
@@ -316,6 +392,7 @@ export class WorkflowEngineService {
         },
         update: {
           model,
+          modelNumber,
           capacity,
           color,
           carrier,
@@ -327,7 +404,9 @@ export class WorkflowEngineService {
       });
 
       // Create or update DeviceTest if test data exists
-      if (deviceData['Defects'] || deviceData['Notes'] || deviceData['Custom1']) {
+      // Include tester name from abstracted data if available
+      const testerName = deviceData['TesterName'] || deviceData['testerName'] || deviceData['Tester'] || deviceData['tester'] || null;
+      if (deviceData['Defects'] || deviceData['Notes'] || deviceData['Custom1'] || testerName || working !== 'PENDING') {
         await prisma.deviceTest.upsert({
           where: { imei },
           create: {
@@ -336,13 +415,15 @@ export class WorkflowEngineService {
             defects: deviceData['Defects'] || deviceData['defects'] || null,
             notes: deviceData['Notes'] || deviceData['notes'] || null,
             custom1: deviceData['Custom1'] || deviceData['custom1'] || null,
+            tester: testerName,
             test_date: new Date()
           },
           update: {
             working: working.toString().toUpperCase(),
             defects: deviceData['Defects'] || deviceData['defects'] || null,
             notes: deviceData['Notes'] || deviceData['notes'] || null,
-            custom1: deviceData['Custom1'] || deviceData['custom1'] || null
+            custom1: deviceData['Custom1'] || deviceData['custom1'] || null,
+            tester: testerName
           }
         });
       }

@@ -4,6 +4,9 @@ import * as cron from 'node-cron';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { emailReportService } from './email-report.service';
+import { emailSubscriptionService } from './email-subscription.service';
+import type { WorkflowExecutionResult } from './workflow-engine.service';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -233,6 +236,59 @@ export class CronScheduleService {
   }
 
   /**
+   * Send email report after execution
+   */
+  private async sendExecutionEmail(
+    schedule: any,
+    result: WorkflowExecutionResult,
+    executionDate: string
+  ): Promise<void> {
+    try {
+      // Check if email is enabled for this schedule
+      const emailRecipients = schedule.emailRecipients || [];
+      if (emailRecipients.length === 0) {
+        logger.debug(`[CronSchedule] No email recipients configured for schedule ${schedule.name}`);
+        return;
+      }
+
+      // Check if we should send email based on success/failure settings
+      const shouldSendOnSuccess = schedule.emailOnSuccess !== false; // Default to true
+      const shouldSendOnFailure = schedule.emailOnFailure !== false; // Default to true
+
+      if (result.success && !shouldSendOnSuccess) {
+        logger.debug(`[CronSchedule] Email on success disabled for schedule ${schedule.name}`);
+        return;
+      }
+
+      if (!result.success && !shouldSendOnFailure) {
+        logger.debug(`[CronSchedule] Email on failure disabled for schedule ${schedule.name}`);
+        return;
+      }
+
+      logger.info(`[CronSchedule] Sending email report for schedule ${schedule.name}`, {
+        recipients: emailRecipients,
+        success: result.success,
+      });
+
+      // Generate and send daily report for the execution date
+      const emailSent = await emailReportService.sendDailyReport(
+        executionDate,
+        emailRecipients,
+        schedule.location
+      );
+
+      if (emailSent) {
+        logger.info(`[CronSchedule] Email report sent successfully for schedule ${schedule.name}`);
+      } else {
+        logger.warn(`[CronSchedule] Failed to send email report for schedule ${schedule.name}`);
+      }
+    } catch (error) {
+      // Don't fail the cron job if email sending fails
+      logger.error(`[CronSchedule] Error sending email report for schedule ${schedule.name}:`, error);
+    }
+  }
+
+  /**
    * Delete a schedule
    */
   async deleteSchedule(id: bigint) {
@@ -348,6 +404,22 @@ export class CronScheduleService {
         });
 
         logger.info(`[CronSchedule] Completed scheduled job: ${schedule.name} - ${result.success ? 'Success' : 'Failed'}`);
+
+        // Send email reports (both per-schedule and subscription-based)
+        // 1. Per-schedule email (backward compatibility)
+        await this.sendExecutionEmail(currentSchedule, result, dateString);
+        
+        // 2. Subscription-based emails (new system)
+        await emailSubscriptionService.handleImmediateEmail(
+          {
+            id: result.executionId,
+            scheduleId: currentSchedule.id,
+            status: result.status,
+            completedAt: new Date(),
+            location: currentSchedule.location,
+          },
+          result
+        );
       } catch (error) {
         logger.error(`[CronSchedule] Error executing scheduled job: ${schedule.name}`, error);
         
@@ -367,6 +439,187 @@ export class CronScheduleService {
 
     this.cronJobs.set(id.toString(), job);
     logger.info(`[CronSchedule] Started cron job for schedule: ${schedule.name} (ID: ${schedule.id})`);
+  }
+
+  /**
+   * Manually trigger/run a schedule immediately
+   */
+  async triggerSchedule(id: bigint): Promise<{ success: boolean; executionId?: bigint; error?: string }> {
+    try {
+      const schedule = await this.getScheduleById(id);
+      if (!schedule) {
+        return { success: false, error: 'Schedule not found' };
+      }
+
+      logger.info(`[CronSchedule] Manually triggering schedule: ${schedule.name} (ID: ${schedule.id})`);
+
+      // Import workflow service dynamically to avoid circular dependency
+      const { WorkflowEngineService } = await import('./workflow-engine.service');
+      const { PhonecheckService } = await import('./phonecheck.service');
+      const phonecheckService = new PhonecheckService();
+      const workflowEngine = new WorkflowEngineService(phonecheckService);
+
+      // Calculate date range based on dateRangeDays (same logic as scheduled execution)
+      const now = dayjs().tz(schedule.timezone);
+      const currentTime = now.format('HH:mm:ss');
+      
+      let targetDate: dayjs.Dayjs;
+      let startTime: string;
+      
+      if (schedule.dateRangeDays === 0) {
+        targetDate = now;
+        startTime = '00:00:00';
+      } else {
+        targetDate = now.subtract(schedule.dateRangeDays, 'day');
+        startTime = '01:00:00';
+      }
+      
+      const dateString = targetDate.format('YYYY-MM-DD');
+
+      logger.info(`[CronSchedule] Manual trigger - Date range: ${dateString} ${startTime} to ${dateString} ${currentTime}`, {
+        scheduleId: schedule.id.toString(),
+        scheduleName: schedule.name,
+        stations: schedule.stations,
+        location: schedule.location,
+        dateRange: dateString,
+      });
+
+      // Verify stations array is valid
+      if (!Array.isArray(schedule.stations) || schedule.stations.length === 0) {
+        logger.error(`[CronSchedule] Invalid stations array for schedule ${schedule.id}:`, schedule.stations);
+        return { success: false, error: `Invalid stations configuration for schedule ${schedule.name}` };
+      }
+
+      // Execute workflow
+      const result = await workflowEngine.executeBulkAddWorkflow({
+        stations: schedule.stations,
+        dateFrom: dateString,
+        dateTo: dateString,
+        location: schedule.location,
+        triggerSource: 'manual-trigger',
+        scheduleId: schedule.id,
+      });
+
+      // Update schedule stats
+      await prisma.cronJobSchedule.update({
+        where: { id: schedule.id },
+        data: {
+          lastRunAt: new Date(),
+          nextRunAt: this.calculateNextRun(
+            schedule.scheduleTime,
+            schedule.frequency as 'daily' | 'weekly',
+            schedule.weeklyDays,
+            schedule.timezone
+          ),
+          totalRuns: { increment: 1 },
+          successfulRuns: result.success ? { increment: 1 } : undefined,
+          failedRuns: result.success ? undefined : { increment: 1 },
+        },
+      });
+
+      logger.info(`[CronSchedule] Manual trigger completed: ${schedule.name} - ${result.success ? 'Success' : 'Failed'}`);
+
+      // Send email reports
+      await this.sendExecutionEmail(schedule, result, dateString);
+      
+      const { emailSubscriptionService } = await import('./email-subscription.service');
+      await emailSubscriptionService.handleImmediateEmail(
+        {
+          id: result.executionId,
+          scheduleId: schedule.id,
+          status: result.status,
+          completedAt: new Date(),
+          location: schedule.location,
+        },
+        result
+      );
+
+      return { success: result.success, executionId: result.executionId };
+    } catch (error) {
+      logger.error(`[CronSchedule] Error manually triggering schedule ${id}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Update failed runs
+      try {
+        await prisma.cronJobSchedule.update({
+          where: { id },
+          data: {
+            lastRunAt: new Date(),
+            totalRuns: { increment: 1 },
+            failedRuns: { increment: 1 },
+          },
+        });
+      } catch (updateError) {
+        logger.error(`[CronSchedule] Error updating schedule stats after failure:`, updateError);
+      }
+      
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Manually trigger all active schedules
+   */
+  async triggerAllSchedules(): Promise<{ 
+    total: number; 
+    successful: number; 
+    failed: number; 
+    results: Array<{ scheduleId: string; scheduleName: string; success: boolean; error?: string }> 
+  }> {
+    try {
+      const schedules = await this.getAllSchedules();
+      const activeSchedules = schedules.filter(s => s.isActive);
+
+      logger.info(`[CronSchedule] Manually triggering all schedules: ${activeSchedules.length} active schedules`);
+
+      const results: Array<{ scheduleId: string; scheduleName: string; success: boolean; error?: string }> = [];
+      let successful = 0;
+      let failed = 0;
+
+      // Trigger all schedules sequentially to avoid overwhelming the system
+      for (const schedule of activeSchedules) {
+        try {
+          const result = await this.triggerSchedule(schedule.id);
+          results.push({
+            scheduleId: schedule.id.toString(),
+            scheduleName: schedule.name,
+            success: result.success,
+            error: result.error,
+          });
+          
+          if (result.success) {
+            successful++;
+          } else {
+            failed++;
+          }
+
+          // Small delay between triggers to avoid overwhelming the system
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          logger.error(`[CronSchedule] Error triggering schedule ${schedule.id}:`, errorMessage);
+          results.push({
+            scheduleId: schedule.id.toString(),
+            scheduleName: schedule.name,
+            success: false,
+            error: errorMessage,
+          });
+          failed++;
+        }
+      }
+
+      logger.info(`[CronSchedule] Manual trigger all completed: ${successful} successful, ${failed} failed out of ${activeSchedules.length} total`);
+
+      return {
+        total: activeSchedules.length,
+        successful,
+        failed,
+        results,
+      };
+    } catch (error) {
+      logger.error('[CronSchedule] Error triggering all schedules:', error);
+      throw error;
+    }
   }
 
   /**

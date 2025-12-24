@@ -40,6 +40,8 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
+  MailOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -61,6 +63,11 @@ import {
   type CronJobSchedule,
   type CreateCronScheduleParams,
 } from '../services/cronScheduleService';
+import {
+  emailSubscriptionService,
+  type EmailSubscription,
+  type CreateEmailSubscriptionParams,
+} from '../services/emailSubscriptionService';
 
 const { RangePicker } = DatePicker;
 const { Search } = Input;
@@ -145,6 +152,20 @@ export const CronJobManagementModern = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<CronJobSchedule | null>(null);
   const [deletingSchedule, setDeletingSchedule] = useState(false);
+  const [triggeringSchedule, setTriggeringSchedule] = useState<string | null>(null);
+  const [triggeringAll, setTriggeringAll] = useState(false);
+  
+  // Email Subscription Management states
+  const [emailSubscriptions, setEmailSubscriptions] = useState<EmailSubscription[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState<EmailSubscription | null>(null);
+  const [subscriptionForm] = Form.useForm();
+  const [savingSubscription, setSavingSubscription] = useState(false);
+  const [testingEmail, setTestingEmail] = useState<string | null>(null);
+  const [showDeleteSubscriptionModal, setShowDeleteSubscriptionModal] = useState(false);
+  const [subscriptionToDelete, setSubscriptionToDelete] = useState<EmailSubscription | null>(null);
+  const [deletingSubscription, setDeletingSubscription] = useState(false);
   
   // Use ref to track loading state to avoid race conditions
   const isLoadingRef = useRef(false);
@@ -883,6 +904,201 @@ export const CronJobManagementModern = () => {
     loadCronSchedules();
   }, []);
 
+  // Handle trigger single schedule
+  const handleTriggerSchedule = useCallback(async (scheduleId: string, scheduleName: string) => {
+    setTriggeringSchedule(scheduleId);
+    try {
+      const result = await cronScheduleService.triggerSchedule(scheduleId);
+      if (result.success) {
+        message.success(`Schedule "${scheduleName}" triggered successfully`);
+        // Reload schedules to update lastRunAt
+        await loadCronSchedules();
+        // Reload execution history to show new execution
+        await loadData(true);
+      } else {
+        message.error(result.error || `Failed to trigger schedule "${scheduleName}"`);
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error triggering schedule:', error);
+      message.error(`Failed to trigger schedule "${scheduleName}"`);
+    } finally {
+      setTriggeringSchedule(null);
+    }
+  }, [message, loadCronSchedules, loadData]);
+
+  // Handle trigger all schedules
+  const handleTriggerAllSchedules = useCallback(async () => {
+    const activeSchedules = cronSchedules.filter(s => s.isActive);
+    if (activeSchedules.length === 0) {
+      message.warning('No active schedules to trigger');
+      return;
+    }
+
+    setTriggeringAll(true);
+    try {
+      const result = await cronScheduleService.triggerAllSchedules();
+      if (result.success) {
+        const total = result.total || 0;
+        const successful = result.successful || 0;
+        const failed = result.failed || 0;
+        message.success(
+          `Triggered ${total} schedules: ${successful} successful, ${failed} failed`,
+          5
+        );
+        // Reload schedules to update lastRunAt
+        await loadCronSchedules();
+        // Reload execution history to show new executions
+        await loadData(true);
+      } else {
+        message.error(result.error || 'Failed to trigger all schedules');
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error triggering all schedules:', error);
+      message.error('Failed to trigger all schedules');
+    } finally {
+      setTriggeringAll(false);
+    }
+  }, [cronSchedules, message, loadCronSchedules, loadData]);
+
+  // Load email subscriptions
+  const loadEmailSubscriptions = useCallback(async () => {
+    setLoadingSubscriptions(true);
+    try {
+      console.log('[CronJobManagement] Loading email subscriptions...');
+      const result = await emailSubscriptionService.getAllSubscriptions(false);
+      console.log('[CronJobManagement] Load subscriptions result:', result);
+      if (result.success) {
+        if (result.data) {
+          setEmailSubscriptions(result.data);
+          console.log('[CronJobManagement] Loaded', result.data.length, 'subscriptions');
+        } else {
+          // No data returned, set empty array
+          setEmailSubscriptions([]);
+          console.log('[CronJobManagement] No subscriptions found');
+        }
+      } else {
+        console.error('[CronJobManagement] Failed to load subscriptions:', result.error);
+        message.error(result.error || 'Failed to load email subscriptions');
+        // Set empty array on error to clear stale data
+        setEmailSubscriptions([]);
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error loading email subscriptions:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error(`Failed to load email subscriptions: ${errorMessage}`);
+      // Set empty array on error to clear stale data
+      setEmailSubscriptions([]);
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  }, [message]);
+
+  // Load subscriptions when Email Reports tab is active
+  useEffect(() => {
+    if (activeTab === 'email-reports') {
+      loadEmailSubscriptions();
+    }
+  }, [activeTab, loadEmailSubscriptions]);
+
+  // Handle save subscription
+  const handleSaveSubscription = useCallback(async () => {
+    try {
+      const values = await subscriptionForm.validateFields();
+      setSavingSubscription(true);
+
+      const params: CreateEmailSubscriptionParams = {
+        name: values.name,
+        description: values.description,
+        scheduleIds: values.scheduleIds || [],
+        locationFilter: values.locationFilter,
+        emailRecipients: values.emailRecipients || [],
+        deliveryMode: values.deliveryMode,
+        scheduleTime: values.scheduleTime ? values.scheduleTime.format('HH:mm') : undefined,
+        scheduleFrequency: values.scheduleFrequency,
+        scheduleDays: values.scheduleDays,
+        timezone: values.timezone || 'UTC',
+        emailOnSuccess: values.emailOnSuccess !== false,
+        emailOnFailure: values.emailOnFailure !== false,
+        summaryOnly: values.summaryOnly || false,
+      };
+
+      if (editingSubscription) {
+        const result = await emailSubscriptionService.updateSubscription(editingSubscription.id, params);
+        if (result.success) {
+          message.success('Email subscription updated successfully');
+          setShowSubscriptionModal(false);
+          setEditingSubscription(null);
+          subscriptionForm.resetFields();
+          // Reload subscriptions after successful update
+          try {
+            await loadEmailSubscriptions();
+          } catch (loadError) {
+            console.error('[CronJobManagement] Error reloading subscriptions after update:', loadError);
+            // Don't show error to user as the update was successful
+          }
+        } else {
+          message.error(result.error || 'Failed to update subscription');
+        }
+      } else {
+        const result = await emailSubscriptionService.createSubscription(params);
+        if (result.success) {
+          message.success('Email subscription created successfully');
+          setShowSubscriptionModal(false);
+          setEditingSubscription(null);
+          subscriptionForm.resetFields();
+          // Reload subscriptions after successful create
+          try {
+            await loadEmailSubscriptions();
+          } catch (loadError) {
+            console.error('[CronJobManagement] Error reloading subscriptions after create:', loadError);
+            // Don't show error to user as the create was successful, but log it
+            message.warning('Subscription created but failed to refresh the list. Please click Refresh.');
+          }
+        } else {
+          message.error(result.error || 'Failed to create subscription');
+        }
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error saving subscription:', error);
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        // Form validation errors
+        return;
+      }
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error(`Failed to save subscription: ${errorMessage}`);
+    } finally {
+      setSavingSubscription(false);
+    }
+  }, [editingSubscription, subscriptionForm, loadEmailSubscriptions, message]);
+
+  // Handle delete subscription
+  const confirmDeleteSubscription = useCallback(async () => {
+    if (!subscriptionToDelete) return;
+    setDeletingSubscription(true);
+    try {
+      const result = await emailSubscriptionService.deleteSubscription(subscriptionToDelete.id);
+      if (result.success) {
+        message.success('Email subscription deleted successfully');
+        setShowDeleteSubscriptionModal(false);
+        setSubscriptionToDelete(null);
+        await loadEmailSubscriptions();
+      } else {
+        message.error(result.error || 'Failed to delete subscription');
+      }
+    } catch (error) {
+      console.error('[CronJobManagement] Error deleting subscription:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      message.error(`Failed to delete subscription: ${errorMessage}`);
+    } finally {
+      setDeletingSubscription(false);
+    }
+  }, [subscriptionToDelete, loadEmailSubscriptions, message]);
+
+  const cancelDeleteSubscription = () => {
+    setShowDeleteSubscriptionModal(false);
+    setSubscriptionToDelete(null);
+  };
+
   // Load archive data when Archive tab is active
   const loadArchiveData = useCallback(async () => {
     setLoadingArchive(true);
@@ -1195,25 +1411,36 @@ export const CronJobManagementModern = () => {
                         Create and manage automated workflow schedules
                       </div>
                     </div>
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={() => {
-                        setEditingSchedule(null);
-                        scheduleForm.resetFields();
-                        scheduleForm.setFieldsValue({
-                          frequency: 'daily',
-                          weeklyDays: [],
-                          dateRangeDays: 1, // Default to "Yesterday"
-                          customDateRangeDays: undefined,
-                          timezone: 'UTC',
-                          scheduleTime: dayjs('02:00', 'HH:mm'),
-                        });
-                        setShowScheduleModal(true);
-                      }}
-                    >
-                      Create Schedule
-                    </Button>
+                    <Space>
+                      <Button
+                        type="default"
+                        icon={<PlayCircleOutlined />}
+                        onClick={handleTriggerAllSchedules}
+                        loading={triggeringAll}
+                        disabled={triggeringAll || cronSchedules.filter(s => s.isActive).length === 0}
+                      >
+                        Run All Schedules
+                      </Button>
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => {
+                          setEditingSchedule(null);
+                          scheduleForm.resetFields();
+                          scheduleForm.setFieldsValue({
+                            frequency: 'daily',
+                            weeklyDays: [],
+                            dateRangeDays: 1, // Default to "Yesterday"
+                            customDateRangeDays: undefined,
+                            timezone: 'UTC',
+                            scheduleTime: dayjs('02:00', 'HH:mm'),
+                          });
+                          setShowScheduleModal(true);
+                        }}
+                      >
+                        Create Schedule
+                      </Button>
+                    </Space>
                   </div>
 
                   <Table
@@ -1338,6 +1565,21 @@ export const CronJobManagementModern = () => {
                         fixed: 'right' as const,
                         render: (_, record: CronJobSchedule) => (
                           <Space>
+                            <Tooltip title="Run schedule now">
+                              <Button
+                                type="link"
+                                icon={<PlayCircleOutlined />}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await handleTriggerSchedule(record.id, record.name);
+                                }}
+                                loading={triggeringSchedule === record.id}
+                                size="small"
+                                disabled={triggeringSchedule !== null || triggeringAll}
+                              >
+                                Run
+                              </Button>
+                            </Tooltip>
                             <Tooltip title="Edit schedule">
                               <Button
                                 type="link"
@@ -1474,6 +1716,241 @@ export const CronJobManagementModern = () => {
                       },
                       style: { cursor: 'pointer' },
                     })}
+                  />
+                </Card>
+              </div>
+            ),
+          },
+          {
+            key: 'email-reports',
+            label: (
+              <span>
+                <MailOutlined />
+                Email Reports
+              </span>
+            ),
+            children: (
+              <div>
+                <Card style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Email Report Subscriptions</h3>
+                      <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                        Manage email subscriptions for cron job execution reports
+                      </div>
+                    </div>
+                    <Space>
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={loadEmailSubscriptions}
+                        loading={loadingSubscriptions}
+                      >
+                        Refresh
+                      </Button>
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => {
+                        setEditingSubscription(null);
+                        subscriptionForm.resetFields();
+                        subscriptionForm.setFieldsValue({
+                          deliveryMode: 'immediate',
+                          emailOnSuccess: true,
+                          emailOnFailure: true,
+                          summaryOnly: false,
+                          isActive: true,
+                          timezone: 'UTC',
+                          scheduleIds: [],
+                          emailRecipients: [],
+                        });
+                        setShowSubscriptionModal(true);
+                      }}
+                    >
+                      Create Subscription
+                    </Button>
+                    </Space>
+                  </div>
+
+                  <Table
+                    dataSource={emailSubscriptions}
+                    rowKey="id"
+                    loading={loadingSubscriptions}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={
+                            <span>
+                              <div style={{ marginBottom: 8 }}>No email subscriptions configured</div>
+                              <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                                Create a subscription to receive email reports for cron job executions
+                              </div>
+                            </span>
+                          }
+                        />
+                      ),
+                    }}
+                    columns={[
+                      {
+                        title: 'Name',
+                        dataIndex: 'name',
+                        key: 'name',
+                        width: 200,
+                        render: (name: string, record: EmailSubscription) => (
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{name}</div>
+                            {record.description && (
+                              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                                {record.description}
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Recipients',
+                        dataIndex: 'emailRecipients',
+                        key: 'emailRecipients',
+                        width: 250,
+                        render: (recipients: string[]) => (
+                          <div>
+                            {recipients.slice(0, 2).map((email, idx) => (
+                              <Tag key={idx} style={{ marginBottom: 4 }}>{email}</Tag>
+                            ))}
+                            {recipients.length > 2 && (
+                              <Tag>+{recipients.length - 2} more</Tag>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Delivery Mode',
+                        dataIndex: 'deliveryMode',
+                        key: 'deliveryMode',
+                        width: 150,
+                        render: (mode: string, record: EmailSubscription) => {
+                          if (mode === 'immediate') {
+                            return <Tag color="blue">Immediate</Tag>;
+                          }
+                          return (
+                            <div>
+                              <Tag color="green">Scheduled</Tag>
+                              {record.scheduleTime && record.scheduleFrequency && (
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                                  {record.scheduleTime} ({record.scheduleFrequency})
+                                </div>
+                              )}
+                            </div>
+                          );
+                        },
+                      },
+                      {
+                        title: 'Cron Jobs',
+                        dataIndex: 'scheduleIds',
+                        key: 'scheduleIds',
+                        width: 150,
+                        render: (scheduleIds: string[]) => {
+                          if (scheduleIds.length === 0) {
+                            return <Tag color="default">All Schedules</Tag>;
+                          }
+                          return <Tag>{scheduleIds.length} schedule{scheduleIds.length !== 1 ? 's' : ''}</Tag>;
+                        },
+                      },
+                      {
+                        title: 'Status',
+                        dataIndex: 'isActive',
+                        key: 'isActive',
+                        width: 100,
+                        render: (isActive: boolean, record: EmailSubscription) => (
+                          <Switch
+                            checked={isActive}
+                            onChange={async (checked) => {
+                              const result = await emailSubscriptionService.updateSubscription(record.id, { isActive: checked });
+                              if (result.success) {
+                                message.success(`Subscription ${checked ? 'activated' : 'deactivated'}`);
+                                loadEmailSubscriptions();
+                              } else {
+                                message.error(result.error || 'Failed to update subscription');
+                              }
+                            }}
+                            checkedChildren="Active"
+                            unCheckedChildren="Inactive"
+                          />
+                        ),
+                      },
+                      {
+                        title: 'Actions',
+                        key: 'actions',
+                        width: 200,
+                        fixed: 'right' as const,
+                        render: (_: any, record: EmailSubscription) => (
+                          <Space>
+                            <Button
+                              type="link"
+                              icon={<SendOutlined />}
+                              onClick={async () => {
+                                setTestingEmail(record.id);
+                                const result = await emailSubscriptionService.sendTestEmail(record.id);
+                                if (result.success) {
+                                  message.success('Test email sent successfully');
+                                } else {
+                                  message.error(result.error || 'Failed to send test email');
+                                }
+                                setTestingEmail(null);
+                              }}
+                              loading={testingEmail === record.id}
+                              size="small"
+                            >
+                              Test
+                            </Button>
+                            <Button
+                              type="link"
+                              icon={<EditOutlined />}
+                              onClick={() => {
+                                setEditingSubscription(record);
+                                subscriptionForm.setFieldsValue({
+                                  name: record.name,
+                                  description: record.description,
+                                  scheduleIds: record.scheduleIds,
+                                  locationFilter: record.locationFilter,
+                                  emailRecipients: record.emailRecipients,
+                                  deliveryMode: record.deliveryMode,
+                                  scheduleTime: record.scheduleTime ? dayjs(record.scheduleTime, 'HH:mm') : undefined,
+                                  scheduleFrequency: record.scheduleFrequency,
+                                  scheduleDays: record.scheduleDays,
+                                  timezone: record.timezone || 'UTC',
+                                  emailOnSuccess: record.emailOnSuccess,
+                                  emailOnFailure: record.emailOnFailure,
+                                  summaryOnly: record.summaryOnly,
+                                  isActive: record.isActive,
+                                });
+                                setShowSubscriptionModal(true);
+                              }}
+                              size="small"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="link"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => {
+                                setSubscriptionToDelete(record);
+                                setShowDeleteSubscriptionModal(true);
+                              }}
+                              size="small"
+                            >
+                              Delete
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    scroll={{ x: 1000 }}
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                    }}
                   />
                 </Card>
               </div>
@@ -2349,6 +2826,280 @@ export const CronJobManagementModern = () => {
           background-color: #bae7ff !important;
         }
       `}</style>
+
+      {/* Email Subscription Form Modal */}
+      <Modal
+        title={editingSubscription ? 'Edit Email Subscription' : 'Create Email Subscription'}
+        open={showSubscriptionModal}
+        onOk={handleSaveSubscription}
+        onCancel={() => {
+          setShowSubscriptionModal(false);
+          setEditingSubscription(null);
+          subscriptionForm.resetFields();
+        }}
+        okText={editingSubscription ? 'Update' : 'Create'}
+        cancelText="Cancel"
+        confirmLoading={savingSubscription}
+        width={800}
+        maskClosable={!savingSubscription}
+        closable={!savingSubscription}
+      >
+        <Form
+          form={subscriptionForm}
+          layout="vertical"
+          initialValues={{
+            deliveryMode: 'immediate',
+            emailOnSuccess: true,
+            emailOnFailure: true,
+            summaryOnly: false,
+            isActive: true,
+            timezone: 'UTC',
+            scheduleIds: [],
+            emailRecipients: [],
+          }}
+        >
+          <Form.Item
+            name="name"
+            label="Subscription Name"
+            rules={[{ required: true, message: 'Please enter subscription name' }]}
+          >
+            <Input placeholder="e.g., Daily Morning Summary" />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="Description"
+          >
+            <Input.TextArea rows={2} placeholder="Optional description" />
+          </Form.Item>
+
+          <Divider orientation="left">Cron Jobs to Monitor</Divider>
+
+          <Form.Item
+            name="scheduleIds"
+            label="Select Cron Jobs"
+            tooltip="Leave empty to monitor all schedules"
+          >
+            <Select
+              mode="multiple"
+              placeholder="Select cron jobs (empty = all schedules)"
+              allowClear
+            >
+              {cronSchedules.map(schedule => (
+                <Select.Option key={schedule.id} value={schedule.id}>
+                  {schedule.name} ({schedule.scheduleTime})
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="locationFilter"
+            label="Filter by Location (Optional)"
+          >
+            <Select placeholder="All locations" allowClear>
+              {AVAILABLE_LOCATIONS.map(loc => (
+                <Select.Option key={loc} value={loc}>{loc}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Divider orientation="left">Email Recipients</Divider>
+
+          <Form.Item
+            name="emailRecipients"
+            label="Email Addresses"
+            rules={[
+              { required: true, message: 'Please add at least one email recipient' },
+              { type: 'array', min: 1, message: 'Please add at least one email recipient' },
+            ]}
+          >
+            <Select
+              mode="tags"
+              placeholder="Enter email addresses and press Enter"
+              tokenSeparators={[',', ' ']}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Divider orientation="left">Delivery Schedule</Divider>
+
+          <Form.Item
+            name="deliveryMode"
+            label="Delivery Mode"
+            rules={[{ required: true }]}
+          >
+            <Select>
+              <Select.Option value="immediate">Immediate (send after each execution)</Select.Option>
+              <Select.Option value="scheduled">Scheduled Summary (send at specified time)</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.deliveryMode !== currentValues.deliveryMode}
+          >
+            {({ getFieldValue }) => {
+              const deliveryMode = getFieldValue('deliveryMode');
+              if (deliveryMode === 'scheduled') {
+                return (
+                  <>
+                    <Form.Item
+                      name="scheduleTime"
+                      label="Schedule Time"
+                      rules={[{ required: true, message: 'Please select schedule time' }]}
+                    >
+                      <TimePicker format="HH:mm" style={{ width: '100%' }} />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="scheduleFrequency"
+                      label="Frequency"
+                      rules={[{ required: true, message: 'Please select frequency' }]}
+                    >
+                      <Select>
+                        <Select.Option value="daily">Daily</Select.Option>
+                        <Select.Option value="weekly">Weekly</Select.Option>
+                        <Select.Option value="monthly">Monthly</Select.Option>
+                      </Select>
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prevValues, currentValues) => prevValues.scheduleFrequency !== currentValues.scheduleFrequency}
+                    >
+                      {({ getFieldValue }) => {
+                        const frequency = getFieldValue('scheduleFrequency');
+                        if (frequency === 'weekly') {
+                          return (
+                            <Form.Item
+                              name="scheduleDays"
+                              label="Days of Week"
+                              rules={[{ required: true, message: 'Please select at least one day' }]}
+                            >
+                              <Checkbox.Group>
+                                {WEEK_DAYS.map(day => (
+                                  <Checkbox key={day.value} value={day.value}>
+                                    {day.label}
+                                  </Checkbox>
+                                ))}
+                              </Checkbox.Group>
+                            </Form.Item>
+                          );
+                        }
+                        return null;
+                      }}
+                    </Form.Item>
+
+                    <Form.Item
+                      name="timezone"
+                      label="Timezone"
+                    >
+                      <Select>
+                        <Select.Option value="UTC">UTC</Select.Option>
+                        <Select.Option value="America/New_York">America/New_York (EST/EDT)</Select.Option>
+                        <Select.Option value="America/Chicago">America/Chicago (CST/CDT)</Select.Option>
+                        <Select.Option value="America/Denver">America/Denver (MST/MDT)</Select.Option>
+                        <Select.Option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </>
+                );
+              }
+              return null;
+            }}
+          </Form.Item>
+
+          <Divider orientation="left">Email Preferences</Divider>
+
+          <Form.Item
+            name="emailOnSuccess"
+            valuePropName="checked"
+          >
+            <Checkbox>Send email on successful executions</Checkbox>
+          </Form.Item>
+
+          <Form.Item
+            name="emailOnFailure"
+            valuePropName="checked"
+          >
+            <Checkbox>Send email on failed executions</Checkbox>
+          </Form.Item>
+
+          <Form.Item
+            name="summaryOnly"
+            valuePropName="checked"
+            tooltip="If enabled, only send aggregated summary reports, not individual execution details"
+          >
+            <Checkbox>Summary only (aggregated reports)</Checkbox>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Delete Subscription Confirmation Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 20 }} />
+            <span>Delete Email Subscription</span>
+          </div>
+        }
+        open={showDeleteSubscriptionModal}
+        onOk={confirmDeleteSubscription}
+        onCancel={cancelDeleteSubscription}
+        okText="Delete"
+        okType="danger"
+        cancelText="Cancel"
+        confirmLoading={deletingSubscription}
+        okButtonProps={{ 
+          disabled: deletingSubscription,
+          danger: true,
+        }}
+        cancelButtonProps={{ 
+          disabled: deletingSubscription,
+        }}
+        maskClosable={!deletingSubscription}
+        closable={!deletingSubscription}
+        width={500}
+      >
+        {subscriptionToDelete && (
+          <div style={{ padding: '8px 0' }}>
+            <Alert
+              message="Warning: This action cannot be undone"
+              description={
+                <div>
+                  <p style={{ marginBottom: 12, fontWeight: 500 }}>
+                    Are you sure you want to delete the subscription <strong>"{subscriptionToDelete.name}"</strong>?
+                  </p>
+                  <div style={{ 
+                    backgroundColor: '#fafafa', 
+                    padding: 12, 
+                    borderRadius: 4,
+                    marginTop: 12,
+                    fontSize: 13,
+                    color: '#666'
+                  }}>
+                    <div><strong>Subscription Details:</strong></div>
+                    <div>• Recipients: {subscriptionToDelete.emailRecipients.length} email(s)</div>
+                    <div>• Delivery: {subscriptionToDelete.deliveryMode === 'immediate' ? 'Immediate' : 'Scheduled'}</div>
+                    {subscriptionToDelete.scheduleIds.length > 0 && (
+                      <div>• Cron Jobs: {subscriptionToDelete.scheduleIds.length} selected</div>
+                    )}
+                    {subscriptionToDelete.scheduleIds.length === 0 && (
+                      <div>• Cron Jobs: All schedules</div>
+                    )}
+                  </div>
+                  <p style={{ marginTop: 16, marginBottom: 0, color: '#ff4d4f', fontWeight: 500 }}>
+                    This subscription will stop receiving email reports immediately.
+                  </p>
+                </div>
+              }
+              type="warning"
+              showIcon
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

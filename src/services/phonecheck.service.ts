@@ -74,7 +74,7 @@ export class PhonecheckService {
 
   private setCachedDevice(imei: string, data: any): void {
     deviceCache.set(imei, { data, timestamp: Date.now() });
-    logger.info('Device cached', { imei });
+    logger.debug('Device cached', { imei });
   }
 
   // Clear cache method for manual cache management
@@ -463,7 +463,7 @@ export class PhonecheckService {
     
     // If data is already comprehensive, use it as-is with minimal transformation
     if (isAlreadyProcessed) {
-      logger.info('Using already processed data from Phonecheck', { 
+      logger.debug('Using already processed data from Phonecheck', { 
         imei: raw.imei || raw.IMEI,
         hasComprehensiveData: true 
       });
@@ -498,7 +498,7 @@ export class PhonecheckService {
     }
 
     // If data needs processing, apply full abstraction
-    logger.info('Processing raw data with full abstraction', { 
+    logger.debug('Processing raw data with full abstraction', { 
       imei: raw.imei || raw.IMEI,
       hasComprehensiveData: false 
     });
@@ -538,7 +538,7 @@ export class PhonecheckService {
       // Check cache first
       const cachedData = this.getCachedDevice(imei);
       if (cachedData) {
-        logger.info('Device found in cache', { imei });
+        logger.debug('Device found in cache', { imei });
         return {
           ...cachedData,
           fromCache: true,
@@ -590,7 +590,7 @@ export class PhonecheckService {
       // Cache the enhanced response
       this.setCachedDevice(imei, enhancedData);
       
-      logger.info('Successfully retrieved enhanced device details', { 
+      logger.debug('Successfully retrieved enhanced device details', { 
         imei,
         dataQuality: enhancedData.metadata.dataQuality,
         processingLevel: enhancedData.metadata.processingLevel
