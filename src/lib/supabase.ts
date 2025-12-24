@@ -16,6 +16,20 @@ export const supabase = createClient(
   supabaseApiKey || 'placeholder-key'
 );
 
+// Admin client for backend operations (requires service role key)
+// Use SUPABASE_SERVICE_ROLE_KEY for admin operations, fallback to SUPABASE_API_KEY
+const supabaseServiceRoleKey = process.env['SUPABASE_SERVICE_ROLE_KEY'] || supabaseApiKey;
+export const supabaseAdmin = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseServiceRoleKey || 'placeholder-key',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
+);
+
 // Helper function to check if Supabase is properly configured
 export const isSupabaseConfigured = (): boolean => {
   return !!(supabaseUrl && supabaseApiKey);

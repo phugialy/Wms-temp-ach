@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Badge, Button, theme } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Badge, Button, theme, Modal, Form, Switch, Select, Divider, Typography, Space, message } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -21,6 +21,7 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -35,20 +36,21 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  // Operations
-  { key: '/device-add', label: 'Add Devices', icon: <PlusOutlined />, section: 'Operations' },
-  { key: '/inventory', label: 'Inventory Manager', icon: <DatabaseOutlined />, section: 'Operations' },
-  { key: '/phonecheck', label: 'Phonecheck Lookup', icon: <SearchOutlined />, section: 'Operations' },
+  // Primary Operations - Most Important (Top Priority)
+  { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined />, section: 'Primary', roles: ['MANAGER', 'ADMIN', 'OPERATOR'] },
+  { key: '/device-add', label: 'Add Devices', icon: <PlusOutlined />, section: 'Primary' },
+  { key: '/inventory', label: 'Inventory', icon: <DatabaseOutlined />, section: 'Primary' },
+  { key: '/phonecheck', label: 'Phonecheck', icon: <SearchOutlined />, section: 'Primary' },
   
-  // Administration
+  // Administration - Secondary Priority
   { key: '/admin-panel', label: 'Admin Panel', icon: <SettingOutlined />, section: 'Administration', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
+  { key: '/cron-jobs', label: 'Cron Jobs', icon: <ClockCircleOutlined />, section: 'Administration', roles: ['ADMIN', 'MANAGER'] },
   { key: '/sku-master', label: 'SKU Master', icon: <TagsOutlined />, section: 'Administration', roles: ['ADMIN'] },
   { key: '/sku-matching', label: 'SKU Matching', icon: <LinkOutlined />, section: 'Administration', roles: ['ADMIN'] },
-  { key: '/data-cleanup', label: 'Data Cleanup', icon: <ClearOutlined />, section: 'Administration', roles: ['ADMIN'] },
   { key: '/queue-management', label: 'Queue Management', icon: <UnorderedListOutlined />, section: 'Administration', roles: ['ADMIN'] },
+  { key: '/data-cleanup', label: 'Data Cleanup', icon: <ClearOutlined />, section: 'Administration', roles: ['ADMIN'] },
   
-  // Analytics
-  { key: '/dashboard', label: 'Executive Dashboard', icon: <DashboardOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN', 'OPERATOR'] },
+  // Analytics & Reports - Lower Priority
   { key: '/reports', label: 'Reports', icon: <FileTextOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },
   { key: '/audit', label: 'Audit Logs', icon: <AuditOutlined />, section: 'Analytics', roles: ['MANAGER', 'ADMIN'] },
 ];
@@ -59,6 +61,23 @@ export const ModernLayout = () => {
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
   });
+  
+  // Page settings modal state
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [settingsForm] = Form.useForm();
+  
+  // Load page settings from localStorage
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('page-settings');
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings);
+        settingsForm.setFieldsValue(settings);
+      } catch (e) {
+        console.error('Error loading page settings:', e);
+      }
+    }
+  }, [settingsForm]);
   
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -103,9 +122,10 @@ export const ModernLayout = () => {
 
   const userMenuItems: MenuProps['items'] = [
     {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: 'Profile',
+      key: 'account-settings',
+      icon: <SettingOutlined />,
+      label: 'Account Settings',
+      onClick: () => navigate('/account-settings'),
     },
     {
       type: 'divider',
@@ -123,6 +143,18 @@ export const ModernLayout = () => {
 
   const userName = user?.name || 'User';
   const userInitial = userName.charAt(0).toUpperCase();
+
+  const handleSettingsSave = (values: any) => {
+    localStorage.setItem('page-settings', JSON.stringify(values));
+    
+    // Apply settings dynamically
+    if (values.defaultSidebarCollapsed !== undefined) {
+      setCollapsed(values.defaultSidebarCollapsed);
+    }
+    
+    setSettingsVisible(false);
+    message.success('Page settings saved successfully!');
+  };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -209,33 +241,122 @@ export const ModernLayout = () => {
             }}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Badge count={5} size="small">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Page Settings Button */}
+            <Button
+              type="text"
+              icon={<SettingOutlined style={{ fontSize: 18 }} />}
+              onClick={() => setSettingsVisible(true)}
+              style={{
+                fontSize: 16,
+                width: 40,
+                height: 40,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label="Page Settings"
+              title="Page Settings"
+            />
+
+            {/* Notifications Button */}
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'notification-1',
+                    label: (
+                      <div style={{ padding: '4px 0' }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>New device added</div>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                          2 minutes ago
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'notification-2',
+                    label: (
+                      <div style={{ padding: '4px 0' }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>Bulk import completed</div>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                          15 minutes ago
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    type: 'divider',
+                  },
+                  {
+                    key: 'view-all',
+                    label: 'View all notifications',
+                    style: { textAlign: 'center' },
+                  },
+                ],
+              }}
+              placement="bottomRight"
+              trigger={['click']}
+            >
+              <Badge count={5} size="small" offset={[-2, 2]}>
+                <Button
+                  type="text"
+                  icon={<BellOutlined style={{ fontSize: 18 }} />}
+                  style={{
+                    fontSize: 16,
+                    width: 40,
+                    height: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  aria-label="Notifications"
+                />
+              </Badge>
+            </Dropdown>
+
+            {/* User Menu */}
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Button
                 type="text"
-                icon={<BellOutlined style={{ fontSize: 18 }} />}
-                style={{ fontSize: 16 }}
-              />
-            </Badge>
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 8, 
-                cursor: 'pointer',
-                padding: '4px 12px',
-                borderRadius: 6,
-                transition: 'background 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 0, 0, 0.04)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                style={{
+                  height: 'auto',
+                  padding: '4px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
               >
-                <Avatar style={{ backgroundColor: '#1890ff' }}>{userInitial}</Avatar>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>{userName}</span>
+                <Avatar
+                  style={{
+                    backgroundColor: '#1890ff',
+                    flexShrink: 0,
+                  }}
+                  size="small"
+                >
+                  {userInitial}
+                </Avatar>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)' }}>
+                    {userName}
+                  </span>
                   <span style={{ fontSize: 12, color: '#8c8c8c' }}>{userRole}</span>
                 </div>
-              </div>
+                <DownOutlined
+                  style={{
+                    fontSize: 12,
+                    color: '#8c8c8c',
+                    marginLeft: 4,
+                  }}
+                />
+              </Button>
             </Dropdown>
           </div>
         </AntHeader>
@@ -251,6 +372,128 @@ export const ModernLayout = () => {
           <Outlet />
         </Content>
       </Layout>
+
+      {/* Page Settings Modal */}
+      <Modal
+        title={
+          <Space>
+            <SettingOutlined />
+            <span>Page Settings</span>
+          </Space>
+        }
+        open={settingsVisible}
+        onCancel={() => setSettingsVisible(false)}
+        onOk={() => settingsForm.submit()}
+        okText="Save Settings"
+        cancelText="Cancel"
+        width={600}
+      >
+        <Form
+          form={settingsForm}
+          layout="vertical"
+          onFinish={handleSettingsSave}
+          initialValues={{
+            compactMode: false,
+            showBreadcrumbs: true,
+            itemsPerPage: 20,
+            autoRefresh: false,
+            refreshInterval: 30,
+            density: 'comfortable',
+          }}
+        >
+          <Typography.Title level={5}>Display Settings</Typography.Title>
+          <Form.Item
+            label="Compact Mode"
+            name="compactMode"
+            valuePropName="checked"
+            tooltip="Reduce spacing and padding for a more compact view"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="Show Breadcrumbs"
+            name="showBreadcrumbs"
+            valuePropName="checked"
+            tooltip="Display breadcrumb navigation at the top of pages"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="Table Density"
+            name="density"
+            tooltip="Control the spacing in data tables"
+          >
+            <Select>
+              <Select.Option value="comfortable">Comfortable</Select.Option>
+              <Select.Option value="compact">Compact</Select.Option>
+              <Select.Option value="spacious">Spacious</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Divider />
+
+          <Typography.Title level={5}>Data Settings</Typography.Title>
+          <Form.Item
+            label="Items Per Page"
+            name="itemsPerPage"
+            tooltip="Default number of items to show per page in tables"
+          >
+            <Select>
+              <Select.Option value={10}>10</Select.Option>
+              <Select.Option value={20}>20</Select.Option>
+              <Select.Option value={50}>50</Select.Option>
+              <Select.Option value={100}>100</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            label="Auto Refresh"
+            name="autoRefresh"
+            valuePropName="checked"
+            tooltip="Automatically refresh data at regular intervals"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.autoRefresh !== currentValues.autoRefresh}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('autoRefresh') ? (
+                <Form.Item
+                  label="Refresh Interval (seconds)"
+                  name="refreshInterval"
+                  tooltip="How often to automatically refresh data"
+                >
+                  <Select>
+                    <Select.Option value={10}>10 seconds</Select.Option>
+                    <Select.Option value={30}>30 seconds</Select.Option>
+                    <Select.Option value={60}>1 minute</Select.Option>
+                    <Select.Option value={300}>5 minutes</Select.Option>
+                  </Select>
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+
+          <Divider />
+
+          <Typography.Title level={5}>Sidebar Settings</Typography.Title>
+          <Form.Item
+            label="Default Sidebar State"
+            name="defaultSidebarCollapsed"
+            tooltip="How the sidebar should appear when you first load the page"
+          >
+            <Select>
+              <Select.Option value={false}>Expanded</Select.Option>
+              <Select.Option value={true}>Collapsed</Select.Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   );
 };

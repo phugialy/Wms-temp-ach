@@ -9,3 +9,16 @@ export interface ApiResponse<T = any> {
   message?: string;
   [key: string]: any; // Allow additional properties
 }
+
+/**
+ * User type for authentication
+ */
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  full_name?: string;
+  role: 'OPERATOR' | 'ADMIN' | 'MANAGER';
+  is_verified?: boolean;
+  is_active?: boolean;
+}

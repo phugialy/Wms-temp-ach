@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { ModernLayout } from './components/layout/ModernLayout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardModern } from './pages/DashboardModern';
 import { DeviceAdd } from './pages/DeviceAdd';
 import { Inventory } from './pages/Inventory';
@@ -8,11 +9,32 @@ import { Phonecheck } from './pages/Phonecheck';
 import { CronJobManagementModern } from './pages/CronJobManagementModern';
 import { AdminPanel } from './pages/AdminPanel';
 import { DbIntegrityCheck } from './pages/DbIntegrityCheck';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+import { AdminApprovals } from './pages/AdminApprovals';
+import { VerifyEmail } from './pages/VerifyEmail';
+import { AccountSettings } from './pages/AccountSettings';
 
 export const router = createBrowserRouter([
   {
+    path: '/login',
+    element: <Login />,
+  },
+  {
+    path: '/register',
+    element: <Register />,
+  },
+  {
+    path: '/verify-email',
+    element: <VerifyEmail />,
+  },
+  {
     path: '/',
-    element: <ModernLayout />,
+    element: (
+      <ProtectedRoute>
+        <ModernLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         index: true,
@@ -72,6 +94,10 @@ export const router = createBrowserRouter([
         element: <AdminPanel />,
       },
       {
+        path: 'admin-approvals',
+        element: <AdminApprovals />,
+      },
+      {
         path: 'db-integrity-check',
         element: <DbIntegrityCheck />,
       },
@@ -82,6 +108,10 @@ export const router = createBrowserRouter([
       {
         path: 'audit',
         element: <div style={{ padding: 24 }}>Audit Logs - Coming Soon</div>,
+      },
+      {
+        path: 'account-settings',
+        element: <AccountSettings />,
       },
     ],
   },

@@ -42,6 +42,7 @@ import app1ImeiProcessingRoutes from './routes/app1-imei-processing.route';
 import simpleImeiRoutes from './routes/simple-imei.route';
 import inventoryAddRoutes from './routes/inventory-add.route';
 import dbIntegrityCheckRoutes from './routes/db-integrity-check.route';
+import authRoutes from './routes/auth.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -107,6 +108,7 @@ app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows/schedules', cronScheduleRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/email/subscriptions', emailSubscriptionRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/comprehensive-sku-test', comprehensiveSkuTestRoutes);
 app.use('/api/sample-match-results', sampleMatchResultsRoutes);
 app.use('/api/sku-matching-analysis', skuMatchingAnalysisRoutes);
