@@ -36,9 +36,12 @@ import performanceTestRoutes from './routes/performance-test.route';
 import cleanInputRoutes from './routes/clean-input.route';
 import workflowRoutes from './routes/workflow.route';
 import cronScheduleRoutes from './routes/cron-schedule.route';
+import emailRoutes from './routes/email.route';
+import emailSubscriptionRoutes from './routes/email-subscription.route';
 import app1ImeiProcessingRoutes from './routes/app1-imei-processing.route';
 import simpleImeiRoutes from './routes/simple-imei.route';
 import inventoryAddRoutes from './routes/inventory-add.route';
+import dbIntegrityCheckRoutes from './routes/db-integrity-check.route';
 
 // Import utilities
 import { errorHandler } from './utils/errorHandler';
@@ -102,6 +105,8 @@ app.use('/api', inventoryApiRoutes);
 app.use('/api/workflow', synchronousWorkflowRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflows/schedules', cronScheduleRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/email/subscriptions', emailSubscriptionRoutes);
 app.use('/api/comprehensive-sku-test', comprehensiveSkuTestRoutes);
 app.use('/api/sample-match-results', sampleMatchResultsRoutes);
 app.use('/api/sku-matching-analysis', skuMatchingAnalysisRoutes);
@@ -116,6 +121,7 @@ app.use('/api/input', cleanInputRoutes);
 app.use('/api/imei', app1ImeiProcessingRoutes);
 app.use('/api/simple-imei', simpleImeiRoutes);
 app.use('/api/inventory', inventoryAddRoutes);
+app.use('/api/db-integrity-check', dbIntegrityCheckRoutes);
 
 // Serve React app for all non-API routes (SPA fallback)
 app.get('*', (req, res, next) => {
@@ -124,7 +130,14 @@ app.get('*', (req, res, next) => {
     return next();
   }
   
-  // Serve index.html for React Router
+  // Skip static asset requests (they should be handled by express.static above)
+  // This prevents the catch-all from serving index.html for JS/CSS/image files
+  if (req.path.startsWith('/assets/') || 
+      req.path.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)) {
+    return next(); // Let express.static handle it, or return 404 if file doesn't exist
+  }
+  
+  // Serve index.html for React Router (SPA fallback)
   const indexPath = path.join(process.cwd(), 'frontend', 'dist', 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
@@ -164,6 +177,9 @@ process.on('SIGTERM', async () => {
 
 // Initialize cron schedules on server start
 import { CronScheduleService } from './services/cron-schedule.service';
+import { emailSubscriptionService } from './services/email-subscription.service';
+import * as cron from 'node-cron';
+
 const cronScheduleService = new CronScheduleService();
 
 // Start server
@@ -178,6 +194,18 @@ app.listen(PORT, async () => {
     logger.info('✅ Cron schedules initialized');
   } catch (error) {
     logger.error('Failed to initialize cron schedules:', error);
+  }
+
+  // Initialize scheduled email delivery cron job
+  // Runs every hour to check for scheduled email subscriptions
+  try {
+    cron.schedule('0 * * * *', async () => {
+      logger.info('[ScheduledEmailCron] Checking for scheduled email subscriptions');
+      await emailSubscriptionService.handleScheduledEmails();
+    });
+    logger.info('✅ Scheduled email delivery cron job initialized (runs every hour)');
+  } catch (error) {
+    logger.error('Failed to initialize scheduled email cron job:', error);
   }
 });
 

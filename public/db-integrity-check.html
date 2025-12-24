@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Database Integrity Check</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">
+                            <i class="fas fa-database mr-2 text-blue-600"></i>
+                            Database Integrity Check
+                        </h1>
+                        <p class="text-sm text-gray-500 mt-1">
+                            Scan and update records with missing identification fields
+                        </p>
+                    </div>
+                    <a href="/inventory-manager-new.html" class="text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-arrow-left mr-1"></i>Back to Inventory
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Statistics Card -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        <i class="fas fa-chart-bar mr-2 text-blue-600"></i>
+                        Missing Data Statistics
+                    </h2>
+                    <button
+                        onclick="loadStats()"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                    >
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+                <div id="statsContainer" class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <div class="text-2xl font-bold text-gray-900" id="totalRecords">-</div>
+                        <div class="text-sm text-gray-500">Total Records</div>
+                    </div>
+                    <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                        <div class="text-2xl font-bold text-yellow-700" id="missingAny">-</div>
+                        <div class="text-sm text-yellow-600">Missing Any Field</div>
+                    </div>
+                    <div class="text-center p-4 bg-orange-50 rounded-lg">
+                        <div class="text-2xl font-bold text-orange-700" id="missingModel">-</div>
+                        <div class="text-sm text-orange-600">Missing Model</div>
+                    </div>
+                    <div class="text-center p-4 bg-purple-50 rounded-lg">
+                        <div class="text-2xl font-bold text-purple-700" id="missingCapacity">-</div>
+                        <div class="text-sm text-purple-600">Missing Capacity</div>
+                    </div>
+                    <div class="text-center p-4 bg-pink-50 rounded-lg">
+                        <div class="text-2xl font-bold text-pink-700" id="missingColor">-</div>
+                        <div class="text-sm text-pink-600">Missing Color</div>
+                    </div>
+                    <div class="text-center p-4 bg-red-50 rounded-lg">
+                        <div class="text-2xl font-bold text-red-700" id="missingCarrier">-</div>
+                        <div class="text-sm text-red-600">Missing Carrier</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Integrity Check Tool -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-tools mr-2 text-blue-600"></i>
+                    Integrity Check Configuration
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Options -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Missing Fields to Check
+                        </label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="checkModel" checked class="mr-2" value="model">
+                                <span>Model</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="checkCapacity" checked class="mr-2" value="capacity">
+                                <span>Capacity / Storage</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="checkColor" checked class="mr-2" value="color">
+                                <span>Color</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="checkCarrier" checked class="mr-2" value="carrier">
+                                <span>Carrier</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Settings -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Max Items to Process
+                            </label>
+                            <input
+                                type="number"
+                                id="maxItems"
+                                value="100"
+                                min="1"
+                                max="1000"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Limit number of records to process (1-1000)</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Batch Size
+                            </label>
+                            <input
+                                type="number"
+                                id="batchSize"
+                                value="5"
+                                min="1"
+                                max="20"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Number of IMEIs to process in parallel (1-20)</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Delay Between Batches (ms)
+                            </label>
+                            <input
+                                type="number"
+                                id="delayBetweenBatches"
+                                value="1000"
+                                min="0"
+                                max="10000"
+                                step="100"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Delay to avoid API rate limiting (0-10000ms)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-wrap gap-3">
+                    <button
+                        onclick="scanMissingData()"
+                        class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
+                    >
+                        <i class="fas fa-search mr-2"></i>Scan Only (Read-Only)
+                    </button>
+                    <button
+                        onclick="runIntegrityCheck()"
+                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                    >
+                        <i class="fas fa-play mr-2"></i>Run Full Integrity Check
+                    </button>
+                    <button
+                        onclick="clearResults()"
+                        class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 flex items-center"
+                    >
+                        <i class="fas fa-times mr-2"></i>Clear Results
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress Indicator -->
+            <div id="progressContainer" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center">
+                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3"></div>
+                        <span class="font-medium text-blue-900" id="progressText">Processing...</span>
+                    </div>
+                    <span class="text-sm text-blue-700" id="progressPercent">0%</span>
+                </div>
+                <div class="w-full bg-blue-200 rounded-full h-2">
+                    <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="resultsContainer" class="hidden">
+                <!-- Summary -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-check-circle mr-2 text-green-600"></i>
+                        Results Summary
+                    </h2>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div class="text-center p-4 bg-gray-50 rounded-lg">
+                            <div class="text-2xl font-bold text-gray-900" id="resultTotalScanned">-</div>
+                            <div class="text-sm text-gray-500">Total Scanned</div>
+                        </div>
+                        <div class="text-center p-4 bg-blue-50 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-700" id="resultWithMissing">-</div>
+                            <div class="text-sm text-blue-600">With Missing Data</div>
+                        </div>
+                        <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                            <div class="text-2xl font-bold text-yellow-700" id="resultProcessed">-</div>
+                            <div class="text-sm text-yellow-600">Processed</div>
+                        </div>
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-700" id="resultUpdated">-</div>
+                            <div class="text-sm text-green-600">Updated</div>
+                        </div>
+                        <div class="text-center p-4 bg-red-50 rounded-lg">
+                            <div class="text-2xl font-bold text-red-700" id="resultFailed">-</div>
+                            <div class="text-sm text-red-600">Failed</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-600" id="resultProcessingTime"></div>
+                </div>
+
+                <!-- Errors (if any) -->
+                <div id="errorsContainer" class="hidden bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+                    <h2 class="text-lg font-semibold text-red-900 mb-4">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        Errors
+                    </h2>
+                    <div id="errorsList" class="space-y-2 max-h-64 overflow-y-auto"></div>
+                </div>
+
+                <!-- Missing Data Records -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-list mr-2 text-blue-600"></i>
+                        Records with Missing Data
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IMEI</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Missing Fields</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Model</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Capacity</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Color</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Carrier</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Table rows will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '/api/db-integrity-check';
+
+        // Load statistics on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+        });
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const result = await response.json();
+
+                if (result.success && result.data.stats) {
+                    const stats = result.data.stats;
+                    document.getElementById('totalRecords').textContent = stats.totalRecords || 0;
+                    document.getElementById('missingAny').textContent = stats.missingAnyField || 0;
+                    document.getElementById('missingModel').textContent = stats.missingModel || 0;
+                    document.getElementById('missingCapacity').textContent = stats.missingCapacity || 0;
+                    document.getElementById('missingColor').textContent = stats.missingColor || 0;
+                    document.getElementById('missingCarrier').textContent = stats.missingCarrier || 0;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                showToast('Failed to load statistics', 'error');
+            }
+        }
+
+        // Get selected missing fields
+        function getSelectedFields() {
+            const fields = [];
+            if (document.getElementById('checkModel').checked) fields.push('model');
+            if (document.getElementById('checkCapacity').checked) fields.push('capacity');
+            if (document.getElementById('checkColor').checked) fields.push('color');
+            if (document.getElementById('checkCarrier').checked) fields.push('carrier');
+            return fields;
+        }
+
+        // Scan for missing data (read-only)
+        async function scanMissingData() {
+            try {
+                showProgress('Scanning database for missing data...', 0);
+
+                const selectedFields = getSelectedFields();
+                if (selectedFields.length === 0) {
+                    showToast('Please select at least one field to check', 'error');
+                    hideProgress();
+                    return;
+                }
+
+                const maxItems = parseInt(document.getElementById('maxItems').value) || 100;
+
+                const response = await fetch(`${API_BASE}/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        missingFields: selectedFields,
+                        maxItems
+                    })
+                });
+
+                const result = await response.json();
+                hideProgress();
+
+                if (result.success) {
+                    displayScanResults(result.data);
+                    showToast(`Found ${result.data.records.length} records with missing data`, 'success');
+                } else {
+                    showToast(result.error || 'Failed to scan', 'error');
+                }
+            } catch (error) {
+                hideProgress();
+                console.error('Error scanning:', error);
+                showToast('Failed to scan database', 'error');
+            }
+        }
+
+        // Run full integrity check
+        async function runIntegrityCheck() {
+            if (!confirm('This will update records in the database. Continue?')) {
+                return;
+            }
+
+            try {
+                showProgress('Running integrity check...', 0);
+
+                const selectedFields = getSelectedFields();
+                if (selectedFields.length === 0) {
+                    showToast('Please select at least one field to check', 'error');
+                    hideProgress();
+                    return;
+                }
+
+                const maxItems = parseInt(document.getElementById('maxItems').value) || 100;
+                const batchSize = parseInt(document.getElementById('batchSize').value) || 5;
+                const delay = parseInt(document.getElementById('delayBetweenBatches').value) || 1000;
+
+                const response = await fetch(`${API_BASE}/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        missingFields: selectedFields,
+                        maxItems,
+                        batchSize,
+                        delayBetweenBatches: delay
+                    })
+                });
+
+                const result = await response.json();
+                hideProgress();
+
+                if (result.success) {
+                    displayResults(result.data);
+                    showToast(result.message || 'Integrity check completed', 'success');
+                } else {
+                    showToast(result.error || 'Failed to run integrity check', 'error');
+                }
+            } catch (error) {
+                hideProgress();
+                console.error('Error running integrity check:', error);
+                showToast('Failed to run integrity check', 'error');
+            }
+        }
+
+        // Display scan results (read-only)
+        function displayScanResults(data) {
+            displayResults({
+                totalScanned: data.total || 0,
+                recordsWithMissingData: data.records.length,
+                recordsProcessed: 0,
+                recordsUpdated: 0,
+                recordsFailed: 0,
+                errors: [],
+                processingTime: 0,
+                details: {
+                    found: data.records,
+                    processed: []
+                }
+            });
+        }
+
+        // Display results
+        function displayResults(data) {
+            document.getElementById('resultsContainer').classList.remove('hidden');
+
+            // Summary
+            document.getElementById('resultTotalScanned').textContent = data.totalScanned || 0;
+            document.getElementById('resultWithMissing').textContent = data.recordsWithMissingData || 0;
+            document.getElementById('resultProcessed').textContent = data.recordsProcessed || 0;
+            document.getElementById('resultUpdated').textContent = data.recordsUpdated || 0;
+            document.getElementById('resultFailed').textContent = data.recordsFailed || 0;
+
+            if (data.processingTime > 0) {
+                const seconds = (data.processingTime / 1000).toFixed(2);
+                document.getElementById('resultProcessingTime').textContent = `Processing time: ${seconds} seconds`;
+            } else {
+                document.getElementById('resultProcessingTime').textContent = '';
+            }
+
+            // Errors
+            if (data.errors && data.errors.length > 0) {
+                document.getElementById('errorsContainer').classList.remove('hidden');
+                const errorsList = document.getElementById('errorsList');
+                errorsList.innerHTML = data.errors.map(err => `
+                    <div class="p-3 bg-red-100 rounded border border-red-300">
+                        <strong>IMEI ${err.imei}:</strong> ${err.error}
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('errorsContainer').classList.add('hidden');
+            }
+
+            // Records table
+            const tbody = document.getElementById('recordsTableBody');
+            if (data.details && data.details.found && data.details.found.length > 0) {
+                tbody.innerHTML = data.details.found.map(record => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900">${record.imei}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            ${record.missingFields.map(f => `<span class="inline-block px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded mr-1">${f}</span>`).join('')}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${record.model || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${record.capacity || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${record.color || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${record.carrier || 'N/A'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No records found</td></tr>';
+            }
+        }
+
+        // Clear results
+        function clearResults() {
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('errorsContainer').classList.add('hidden');
+        }
+
+        // Progress functions
+        function showProgress(text, percent) {
+            document.getElementById('progressContainer').classList.remove('hidden');
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressPercent').textContent = `${percent}%`;
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+
+        function hideProgress() {
+            document.getElementById('progressContainer').classList.add('hidden');
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg text-white ${
+                type === 'success' ? 'bg-green-500' :
+                type === 'error' ? 'bg-red-500' :
+                'bg-blue-500'
+            }`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
