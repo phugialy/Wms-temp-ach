@@ -14,6 +14,7 @@ import { Register } from './pages/Register';
 import { AdminApprovals } from './pages/AdminApprovals';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { AccountSettings } from './pages/AccountSettings';
+import { BulkVerification } from './pages/BulkVerification';
 
 export const router = createBrowserRouter([
   {
@@ -112,6 +113,10 @@ export const router = createBrowserRouter([
       {
         path: 'account-settings',
         element: <AccountSettings />,
+      },
+      {
+        path: 'bulk-verification',
+        element: <BulkVerification />,
       },
     ],
   },

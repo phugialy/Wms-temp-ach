@@ -22,6 +22,7 @@ import {
   LogoutOutlined,
   SettingOutlined,
   DownOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { key: '/device-add', label: 'Add Devices', icon: <PlusOutlined />, section: 'Primary' },
   { key: '/inventory', label: 'Inventory', icon: <DatabaseOutlined />, section: 'Primary' },
   { key: '/phonecheck', label: 'Phonecheck', icon: <SearchOutlined />, section: 'Primary' },
+  { key: '/bulk-verification', label: 'Bulk Verification', icon: <CheckCircleOutlined />, section: 'Primary', roles: ['ADMIN', 'MANAGER'] },
   
   // Administration - Secondary Priority
   { key: '/admin-panel', label: 'Admin Panel', icon: <SettingOutlined />, section: 'Administration', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
