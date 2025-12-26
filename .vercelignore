@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Development files
+.env
+.env.local
+.env.development
+.env.test
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (keep dist for deployment)
+# dist/ - Keep this for Vercel to serve
+
+# Documentation
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# Misc
+.cache/
+.temp/
+tmp/
+
+# Prisma
+prisma/migrations/
+!prisma/schema.prisma
+
+# Scripts (not needed in production)
+scripts/
+tests/
+
+# Legacy files
+public/*.html
+!public/index.html
+
