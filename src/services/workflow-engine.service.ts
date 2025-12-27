@@ -47,12 +47,13 @@ async function withRetry<T>(
 
 export interface BulkAddWorkflowParams {
   stations: string[];
-  dateFrom: string; // ISO date string
-  dateTo: string; // ISO date string
+  dateFrom: string; // ISO date string (YYYY-MM-DD)
+  dateTo: string; // ISO date string (YYYY-MM-DD)
   location: string;
-  triggerSource?: string; // 'vercel-cron', 'manual', 'api', 'scheduled-cron'
+  triggerSource?: string; // 'vercel-cron', 'manual', 'api', 'scheduled-cron', 'manual-trigger'
   scheduleId?: bigint; // ID of the schedule that triggered this execution
   batchSize?: number; // Number of devices to process per batch (default: 50)
+  runTime?: string; // For scheduled cron jobs: HH:mm format - the time when the job runs (used as end time)
 }
 
 export interface WorkflowExecutionResult {
@@ -96,12 +97,56 @@ export class WorkflowEngineService {
         }
       }
 
-      // Normalize dates to ensure they're stored as dates (not timestamps)
-      // Extract just the date part (YYYY-MM-DD) to avoid timezone issues
-      const dateFromDate = new Date(params.dateFrom);
-      dateFromDate.setHours(0, 0, 0, 0); // Set to midnight to ensure it's a pure date
-      const dateToDate = new Date(params.dateTo);
-      dateToDate.setHours(0, 0, 0, 0); // Set to midnight to ensure it's a pure date
+      // Normalize dates to ensure they're stored with proper time ranges
+      // For manual triggers: dateFrom = 00:00:00 (start of day), dateTo = 23:59:59 (end of day)
+      // For scheduled cron jobs: both dates should be the same day with appropriate times
+      
+      // Parse date strings as local dates (not UTC) to avoid timezone shifts
+      // Format: YYYY-MM-DD
+      const fromParts = params.dateFrom.split('-');
+      if (fromParts.length !== 3) {
+        throw new Error(`Invalid dateFrom format: ${params.dateFrom}. Expected YYYY-MM-DD`);
+      }
+      const fromYear = parseInt(fromParts[0]!, 10);
+      const fromMonth = parseInt(fromParts[1]!, 10);
+      const fromDay = parseInt(fromParts[2]!, 10);
+      if (isNaN(fromYear) || isNaN(fromMonth) || isNaN(fromDay)) {
+        throw new Error(`Invalid dateFrom format: ${params.dateFrom}. Expected YYYY-MM-DD`);
+      }
+      const dateFromDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0); // Local time: 00:00:00
+      
+      const toParts = params.dateTo.split('-');
+      if (toParts.length !== 3) {
+        throw new Error(`Invalid dateTo format: ${params.dateTo}. Expected YYYY-MM-DD`);
+      }
+      const toYear = parseInt(toParts[0]!, 10);
+      const toMonth = parseInt(toParts[1]!, 10);
+      const toDay = parseInt(toParts[2]!, 10);
+      if (isNaN(toYear) || isNaN(toMonth) || isNaN(toDay)) {
+        throw new Error(`Invalid dateTo format: ${params.dateTo}. Expected YYYY-MM-DD`);
+      }
+      let dateToDate: Date;
+      
+      // For manual triggers: end time = 23:59:59 (end of day)
+      // For scheduled cron jobs: end time = runTime (the time when the cron job runs, e.g., 19:01)
+      if (params.triggerSource === 'manual' || params.triggerSource === 'manual-retry') {
+        dateToDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999); // Local time: 23:59:59.999
+      } else if ((params.triggerSource === 'scheduled-cron' || params.triggerSource === 'manual-trigger') && params.runTime) {
+        // Parse runTime (HH:mm format) and use as end time
+        const timeParts = params.runTime.split(':');
+        if (timeParts.length !== 2) {
+          throw new Error(`Invalid runTime format: ${params.runTime}. Expected HH:mm`);
+        }
+        const endHour = parseInt(timeParts[0]!, 10);
+        const endMinute = parseInt(timeParts[1]!, 10);
+        if (isNaN(endHour) || isNaN(endMinute)) {
+          throw new Error(`Invalid runTime format: ${params.runTime}. Expected HH:mm`);
+        }
+        dateToDate = new Date(toYear, toMonth - 1, toDay, endHour, endMinute, 0, 0); // Local time: runTime (e.g., 19:01)
+      } else {
+        // Default for other trigger sources: start of day
+        dateToDate = new Date(toYear, toMonth - 1, toDay, 0, 0, 0, 0); // Local time: 00:00:00
+      }
 
       // Step 1: Create execution record
       const execution = await prisma.cronJobExecution.create({

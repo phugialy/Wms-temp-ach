@@ -325,34 +325,38 @@ export class CronScheduleService {
         logger.info(`[CronSchedule] Executing scheduled job: ${schedule.name} (ID: ${schedule.id})`);
         
         // Calculate date range based on dateRangeDays
-        // Phonecheck API requires same date for from/to, with time range from 1 AM (or 00:00 for today) to current time
+        // Phonecheck API requires same date for from/to
+        // Start time: 00:00:00 (or 01:00:00 for past dates)
+        // End time: schedule.scheduleTime (the time when this cron job runs, e.g., 19:01)
         const now = dayjs().tz(schedule.timezone);
-        const currentTime = now.format('HH:mm:ss');
         
         let targetDate: dayjs.Dayjs;
         let startTime: string;
         
         if (schedule.dateRangeDays === 0) {
-          // Process today: from 00:00 to current time
+          // Process today: from 00:00 to schedule time
           targetDate = now;
           startTime = '00:00:00';
         } else {
-          // Process past date: from 01:00 to current time (but on the target date)
+          // Process past date: from 01:00 to schedule time (but on the target date)
           targetDate = now.subtract(schedule.dateRangeDays, 'day');
           startTime = '01:00:00';
         }
         
         // Both dates are the same calendar date (Phonecheck API requirement)
-        // CRITICAL: Each cron job execution processes exactly ONE day (00:00 to 18:00 on that day)
-        // This ensures no date accumulation - each run processes only the target date
+        // CRITICAL: Each cron job execution processes exactly ONE day
+        // Start: 00:00:00 (or 01:00:00 for past dates)
+        // End: schedule.scheduleTime (e.g., 19:01 when the job runs)
         const dateString = targetDate.format('YYYY-MM-DD');
+        const endTime = schedule.scheduleTime; // HH:mm format (e.g., "19:01")
         
-        logger.info(`[CronSchedule] Date range calculated: ${dateString} ${startTime} to ${dateString} ${currentTime}`, {
+        logger.info(`[CronSchedule] Date range calculated: ${dateString} ${startTime} to ${dateString} ${endTime}`, {
           dateRangeDays: schedule.dateRangeDays,
           targetDate: dateString,
           startTime,
-          endTime: currentTime,
-          note: 'Single day processing - dateFrom === dateTo to prevent accumulation'
+          endTime: endTime,
+          scheduleTime: schedule.scheduleTime,
+          note: 'Single day processing - dateFrom === dateTo, end time = schedule run time'
         });
 
         // CRITICAL: Re-fetch schedule from database to ensure we have the latest stations
@@ -387,6 +391,7 @@ export class CronScheduleService {
           location: currentSchedule.location,
           triggerSource: 'scheduled-cron',
           scheduleId: currentSchedule.id, // CRITICAL: Link execution to schedule for proper indexing
+          runTime: endTime, // Pass the schedule time as end time (e.g., "19:01")
         });
 
         // Update schedule stats
@@ -463,8 +468,8 @@ export class CronScheduleService {
       const workflowEngine = new WorkflowEngineService(phonecheckService);
 
       // Calculate date range based on dateRangeDays (same logic as scheduled execution)
+      // For manual trigger of a schedule, use the schedule's run time as end time
       const now = dayjs().tz(schedule.timezone);
-      const currentTime = now.format('HH:mm:ss');
       
       let targetDate: dayjs.Dayjs;
       let startTime: string;
@@ -478,13 +483,15 @@ export class CronScheduleService {
       }
       
       const dateString = targetDate.format('YYYY-MM-DD');
+      const endTime = schedule.scheduleTime; // Use schedule's run time as end time (e.g., "19:01")
 
-      logger.info(`[CronSchedule] Manual trigger - Date range: ${dateString} ${startTime} to ${dateString} ${currentTime}`, {
+      logger.info(`[CronSchedule] Manual trigger - Date range: ${dateString} ${startTime} to ${dateString} ${endTime}`, {
         scheduleId: schedule.id.toString(),
         scheduleName: schedule.name,
         stations: schedule.stations,
         location: schedule.location,
         dateRange: dateString,
+        scheduleTime: endTime,
       });
 
       // Verify stations array is valid
@@ -501,6 +508,7 @@ export class CronScheduleService {
         location: schedule.location,
         triggerSource: 'manual-trigger',
         scheduleId: schedule.id,
+        runTime: endTime, // Pass the schedule time as end time (e.g., "19:01")
       });
 
       // Update schedule stats
