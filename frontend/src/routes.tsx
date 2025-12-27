@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ModernLayout } from './components/layout/ModernLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardModern } from './pages/DashboardModern';
@@ -29,6 +29,12 @@ export const router = createBrowserRouter([
     path: '/verify-email',
     element: <VerifyEmail />,
   },
+  // Root route: redirect to dashboard (which requires authentication)
+  {
+    path: '/',
+    element: <Navigate to="/dashboard" replace />,
+  },
+  // All protected routes (including dashboard)
   {
     path: '/',
     element: (
@@ -37,10 +43,6 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <DashboardModern />,
-      },
       {
         path: 'dashboard',
         element: <DashboardModern />,
@@ -54,38 +56,38 @@ export const router = createBrowserRouter([
         element: <DeviceAdd />,
       },
       {
-        path: 'device-add',
-        element: <DeviceAdd />,
-      },
-      {
         path: 'inventory',
-        element: <InventoryModern />, // Preview: Ant Design version
-      },
-      {
-        path: 'inventory-old',
-        element: <Inventory />, // Old version kept for reference
+        element: <InventoryModern />, // Modern Ant Design version
       },
       {
         path: 'phonecheck',
         element: <Phonecheck />,
       },
-      // Placeholder routes for other pages
-      {
-        path: 'sku-master',
-        element: <div style={{ padding: 24 }}>SKU Master - Coming Soon</div>,
-      },
-      {
-        path: 'sku-matching',
-        element: <div style={{ padding: 24 }}>SKU Matching - Coming Soon</div>,
-      },
-      {
-        path: 'data-cleanup',
-        element: <div style={{ padding: 24 }}>Data Cleanup - Coming Soon</div>,
-      },
-      {
-        path: 'queue-management',
-        element: <div style={{ padding: 24 }}>Queue Management - Coming Soon</div>,
-      },
+      // DEPRECATED/DEACTIVATED ROUTES - Commented out but kept for reference
+      // {
+      //   path: 'device-add',
+      //   element: <DeviceAdd />, // Duplicate - use /single-add or /bulk-add instead
+      // },
+      // {
+      //   path: 'inventory-old',
+      //   element: <Inventory />, // Old version - replaced by /inventory
+      // },
+      // {
+      //   path: 'sku-master',
+      //   element: <div style={{ padding: 24 }}>SKU Master - Coming Soon</div>, // Placeholder - not implemented
+      // },
+      // {
+      //   path: 'sku-matching',
+      //   element: <div style={{ padding: 24 }}>SKU Matching - Coming Soon</div>, // Placeholder - not implemented
+      // },
+      // {
+      //   path: 'data-cleanup',
+      //   element: <div style={{ padding: 24 }}>Data Cleanup - Coming Soon</div>, // Placeholder - not implemented
+      // },
+      // {
+      //   path: 'queue-management',
+      //   element: <div style={{ padding: 24 }}>Queue Management - Coming Soon</div>, // Placeholder - not implemented
+      // },
       {
         path: 'cron-jobs',
         element: <CronJobManagementModern />,
@@ -102,14 +104,15 @@ export const router = createBrowserRouter([
         path: 'db-integrity-check',
         element: <DbIntegrityCheck />,
       },
-      {
-        path: 'reports',
-        element: <div style={{ padding: 24 }}>Reports - Coming Soon</div>,
-      },
-      {
-        path: 'audit',
-        element: <div style={{ padding: 24 }}>Audit Logs - Coming Soon</div>,
-      },
+      // DEPRECATED/DEACTIVATED ROUTES - Placeholder routes not yet implemented
+      // {
+      //   path: 'reports',
+      //   element: <div style={{ padding: 24 }}>Reports - Coming Soon</div>, // Placeholder - not implemented
+      // },
+      // {
+      //   path: 'audit',
+      //   element: <div style={{ padding: 24 }}>Audit Logs - Coming Soon</div>, // Placeholder - not implemented
+      // },
       {
         path: 'account-settings',
         element: <AccountSettings />,
@@ -120,5 +123,18 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  // Catch-all route: redirect unknown paths
+  {
+    path: '*',
+    element: (
+      <ProtectedRoute>
+        <ModernLayout>
+          <div style={{ padding: 24, textAlign: 'center' }}>
+            <h2>Page Not Found</h2>
+            <p>The page you're looking for doesn't exist.</p>
+          </div>
+        </ModernLayout>
+      </ProtectedRoute>
+    ),
+  },
 ]);
-

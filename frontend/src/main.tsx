@@ -12,13 +12,11 @@ import './index.css'
 // Configure dayjs
 dayjs.locale('en')
 
-// Initialize auth with default user (for now)
+// Initialize auth - check session on app startup
+// DO NOT set a default user - this bypasses authentication!
 import { useAuthStore } from './stores/authStore'
-useAuthStore.getState().setUser({
-  id: '1',
-  name: 'Operator',
-  role: 'OPERATOR',
-})
+// Check session immediately on app load
+useAuthStore.getState().checkSession()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

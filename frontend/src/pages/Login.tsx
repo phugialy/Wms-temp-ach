@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Form, Input, Button, Card, message, Typography, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
@@ -9,12 +9,14 @@ const { Title, Text } = Typography;
 export const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   useEffect(() => {
+    // If already authenticated, redirect to dashboard
     if (isAuthenticated) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -24,7 +26,9 @@ export const Login = () => {
       const result = await login(values.email, values.password);
       if (result.success) {
         message.success('Login successful!');
-        navigate('/dashboard');
+        // Always redirect to dashboard after successful login
+        // Ignore any 'from' location state - dashboard is the default landing page
+        navigate('/dashboard', { replace: true });
       } else {
         message.error(result.error || 'Login failed');
       }
