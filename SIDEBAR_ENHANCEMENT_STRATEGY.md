@@ -299,3 +299,4 @@ Then if needed, move to Option B for full consistency.
 
 See `EnhancedSidebar.tsx` for full implementation reference.
 
+

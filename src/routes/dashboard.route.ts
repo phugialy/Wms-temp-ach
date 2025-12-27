@@ -199,5 +199,317 @@ router.get('/cron-jobs-today', async (req: Request, res: Response): Promise<void
   }
 });
 
+/**
+ * GET /api/dashboard/imei-processing-stats
+ * Get comprehensive IMEI processing statistics with date ranges
+ * Query params: station (optional), startDate (optional), endDate (optional)
+ */
+router.get('/imei-processing-stats', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { station, startDate, endDate } = req.query;
+
+    // Build WHERE clause
+    let whereClause = 'WHERE 1=1';
+    const queryParams: any[] = [];
+    let paramIndex = 1;
+
+    if (station) {
+      whereClause += ` AND $${paramIndex} = ANY(stations)`;
+      queryParams.push(station);
+      paramIndex++;
+    }
+
+    if (startDate) {
+      whereClause += ` AND date_from >= $${paramIndex}::date`;
+      queryParams.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      whereClause += ` AND date_to <= $${paramIndex}::date`;
+      queryParams.push(endDate);
+      paramIndex++;
+    }
+
+    // Get all executions with IMEI counts and date ranges
+    const executionsQuery = `
+      SELECT 
+        id,
+        workflow_type,
+        trigger_source,
+        status,
+        schedule_id,
+        stations,
+        date_from,
+        date_to,
+        location,
+        devices_found,
+        devices_processed,
+        devices_added,
+        devices_failed,
+        started_at,
+        completed_at,
+        duration_ms,
+        metadata,
+        created_at
+      FROM cron_job_execution
+      ${whereClause}
+      ORDER BY started_at DESC NULLS LAST, created_at DESC
+    `;
+
+    const { rows: executions } = await pool.query(executionsQuery, queryParams);
+
+    // Calculate totals
+    const totals = executions.reduce(
+      (acc, exec) => ({
+        totalExecutions: acc.totalExecutions + 1,
+        totalDevicesFound: acc.totalDevicesFound + (exec.devices_found || 0),
+        totalDevicesProcessed: acc.totalDevicesProcessed + (exec.devices_processed || 0),
+        totalDevicesAdded: acc.totalDevicesAdded + (exec.devices_added || 0),
+        totalDevicesFailed: acc.totalDevicesFailed + (exec.devices_failed || 0),
+      }),
+      {
+        totalExecutions: 0,
+        totalDevicesFound: 0,
+        totalDevicesProcessed: 0,
+        totalDevicesAdded: 0,
+        totalDevicesFailed: 0,
+      }
+    );
+
+    // Helper function to normalize date to string (YYYY-MM-DD)
+    // Handles PostgreSQL DATE columns which can be returned as strings or Date objects
+    const normalizeDate = (date: any): string | null => {
+      if (!date) return null;
+      
+      // If it's already a string
+      if (typeof date === 'string') {
+        // Extract date part (handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm:ss' formats)
+        const datePart = date.split('T')[0];
+        // Validate it's a proper date format
+        if (datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+          return datePart;
+        }
+        return null;
+      }
+      
+      // If it's a Date object
+      if (date instanceof Date) {
+        // Check if it's a valid date
+        if (isNaN(date.getTime())) {
+          return null;
+        }
+        const isoString = date.toISOString();
+        const dateStr = isoString.split('T')[0];
+        // toISOString() always returns a string, so split('T')[0] will always exist
+        return (dateStr as string) || null;
+      }
+      
+      // Try to convert to Date first, then format
+      try {
+        const dateObj = new Date(date);
+        if (!isNaN(dateObj.getTime())) {
+          const isoString = dateObj.toISOString();
+          const dateStr = isoString.split('T')[0];
+          // toISOString() always returns a string, so split('T')[0] will always exist
+          return (dateStr as string) || null;
+        }
+      } catch (e) {
+        // Ignore conversion errors
+      }
+      
+      return null;
+    };
+
+    // Get date range (earliest date_from to latest date_to)
+    // NOTE: Each execution should process only ONE day (dateFrom === dateTo)
+    // The overall range shows the span of all executions, not a single execution's range
+    const dateRanges = executions
+      .filter((e) => e.date_from || e.date_to)
+      .map((e) => {
+        const from = normalizeDate(e.date_from);
+        const to = normalizeDate(e.date_to || e.date_from);
+        // Check if this execution spans multiple days (shouldn't happen for cron jobs)
+        const isSingleDay = from === to || (from && to && from === to);
+        return {
+          from,
+          to,
+          isSingleDay,
+        };
+      });
+
+    const earliestDate = dateRanges.length > 0
+      ? dateRanges.reduce((earliest, range) => {
+          const fromDate = range.from;
+          return !earliest || (fromDate && fromDate < earliest) ? fromDate : earliest;
+        }, null as string | null)
+      : null;
+
+    const latestDate = dateRanges.length > 0
+      ? dateRanges.reduce((latest, range) => {
+          const toDate = range.to;
+          return !latest || (toDate && toDate > latest) ? toDate : latest;
+        }, null as string | null)
+      : null;
+
+    // Count executions that span multiple days (should be 0 for proper cron jobs)
+    const multiDayExecutions = dateRanges.filter(r => !r.isSingleDay).length;
+
+    // Extract unique IMEIs from metadata (if available)
+    const allImeis = new Set<string>();
+    executions.forEach((exec) => {
+      if (exec.metadata && typeof exec.metadata === 'object') {
+        const metadata = exec.metadata as any;
+        if (metadata.devices && Array.isArray(metadata.devices)) {
+          metadata.devices.forEach((device: any) => {
+            if (device.imei) {
+              allImeis.add(device.imei);
+            }
+          });
+        }
+      }
+    });
+
+    // Group by station
+    const stationStats = new Map<string, {
+      station: string;
+      executions: number;
+      devicesFound: number;
+      devicesProcessed: number;
+      devicesAdded: number;
+      devicesFailed: number;
+      dateRanges: Array<{ from: string | null; to: string | null }>;
+    }>();
+
+    executions.forEach((exec) => {
+      const stations = exec.stations || [];
+      stations.forEach((station: string) => {
+        if (!stationStats.has(station)) {
+          stationStats.set(station, {
+            station,
+            executions: 0,
+            devicesFound: 0,
+            devicesProcessed: 0,
+            devicesAdded: 0,
+            devicesFailed: 0,
+            dateRanges: [],
+          });
+        }
+        const stats = stationStats.get(station)!;
+        stats.executions += 1;
+        stats.devicesFound += exec.devices_found || 0;
+        stats.devicesProcessed += exec.devices_processed || 0;
+        stats.devicesAdded += exec.devices_added || 0;
+        stats.devicesFailed += exec.devices_failed || 0;
+        if (exec.date_from || exec.date_to) {
+        stats.dateRanges.push({
+          from: normalizeDate(exec.date_from),
+          to: normalizeDate(exec.date_to || exec.date_from),
+        });
+        }
+      });
+    });
+
+    // Format executions with metadata extraction
+    const formattedExecutions = executions.map((exec) => {
+      let imeiCountFromMetadata = 0;
+      let uniqueImeisFromMetadata: string[] = [];
+
+      if (exec.metadata && typeof exec.metadata === 'object') {
+        const metadata = exec.metadata as any;
+        if (metadata.devices && Array.isArray(metadata.devices)) {
+          uniqueImeisFromMetadata = metadata.devices
+            .map((d: any) => d.imei)
+            .filter((imei: any) => imei);
+          imeiCountFromMetadata = uniqueImeisFromMetadata.length;
+        } else if (metadata.totalDevices) {
+          imeiCountFromMetadata = metadata.totalDevices;
+        }
+      }
+
+      return {
+        id: exec.id.toString(),
+        workflowType: exec.workflow_type,
+        triggerSource: exec.trigger_source,
+        status: exec.status,
+        scheduleId: exec.schedule_id ? exec.schedule_id.toString() : null,
+        stations: exec.stations || [],
+        dateFrom: normalizeDate(exec.date_from),
+        dateTo: normalizeDate(exec.date_to || exec.date_from),
+        isSingleDay: (() => {
+          const from = normalizeDate(exec.date_from);
+          const to = normalizeDate(exec.date_to || exec.date_from);
+          return from === to;
+        })(),
+        location: exec.location,
+        devicesFound: exec.devices_found || 0,
+        devicesProcessed: exec.devices_processed || 0,
+        devicesAdded: exec.devices_added || 0,
+        devicesFailed: exec.devices_failed || 0,
+        startedAt: exec.started_at,
+        completedAt: exec.completed_at,
+        durationMs: exec.duration_ms,
+        imeiCountFromMetadata,
+        uniqueImeisFromMetadata: uniqueImeisFromMetadata.slice(0, 100), // Limit to first 100 for response size
+        createdAt: exec.created_at,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalExecutions: totals.totalExecutions,
+          totalDevicesFound: totals.totalDevicesFound,
+          totalDevicesProcessed: totals.totalDevicesProcessed,
+          totalDevicesAdded: totals.totalDevicesAdded,
+          totalDevicesFailed: totals.totalDevicesFailed,
+          uniqueImeisInMetadata: allImeis.size,
+          dateRange: {
+            from: earliestDate,
+            to: latestDate,
+            note: earliestDate && latestDate && earliestDate !== latestDate
+              ? `Overall range across ${totals.totalExecutions} executions. Each execution processes ONE day only.`
+              : 'Single day or no date range',
+          },
+          multiDayExecutions: multiDayExecutions,
+          warning: multiDayExecutions > 0
+            ? `${multiDayExecutions} execution(s) span multiple days - this should not happen for cron jobs`
+            : null,
+        },
+        byStation: Array.from(stationStats.values()).map((stats) => ({
+          ...stats,
+          dateRange: stats.dateRanges.length > 0
+            ? {
+                from: stats.dateRanges.reduce((earliest, range) => 
+                  !earliest || (range.from && range.from < earliest) ? range.from : earliest, 
+                  null as string | null
+                ),
+                to: stats.dateRanges.reduce((latest, range) => 
+                  !latest || (range.to && range.to > latest) ? range.to : latest, 
+                  null as string | null
+                ),
+              }
+            : null,
+        })),
+        executions: formattedExecutions,
+      },
+      filters: {
+        station: station || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('[DashboardRoute] Error fetching IMEI processing stats:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch IMEI processing statistics',
+      details: errorMessage,
+    });
+  }
+});
+
 export default router;
 

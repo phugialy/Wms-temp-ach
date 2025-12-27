@@ -29,3 +29,4 @@ export const getSupabaseConfig = (): SupabaseConfig => {
 export const supabaseConfig = getSupabaseConfig();
 
 
+

@@ -149,4 +149,95 @@ router.post('/process-bulk-smart', phonecheckController.processBulkDevicesSmart)
 router.delete('/cache', phonecheckController.clearCache);
 router.get('/cache/stats', phonecheckController.getCacheStats);
 
+/**
+ * GET /api/phonecheck/raw-response
+ * Get raw response from Phonecheck API for debugging
+ * Query params: station, date, startDate, endDate, limit, offset
+ */
+router.get('/raw-response', async (req, res) => {
+  try {
+    const { station, date, startDate, endDate, limit = '500', offset = '0' } = req.query;
+    
+    const token = await phonecheckService['getAuthToken']();
+    const endpoint = `${process.env['PHONECHECK_BASE_URL'] || 'https://api.phonecheck.com'}/v2/master/all-devices`;
+    
+    const payload: any = {
+      limit: parseInt(String(limit), 10),
+      offset: parseInt(String(offset), 10)
+    };
+    
+    if (date) {
+      payload.date = date;
+    } else if (startDate && endDate) {
+      payload.startDate = startDate;
+      payload.endDate = endDate;
+    } else {
+      payload.date = '';
+    }
+    
+    if (station) {
+      payload.station = station;
+    }
+    
+    logger.info('Raw Phonecheck API request', {
+      endpoint,
+      payload,
+      hasToken: !!token
+    });
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token_master': token
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const responseText = await response.text();
+    let parsedResponse;
+    
+    try {
+      parsedResponse = JSON.parse(responseText);
+    } catch (e) {
+      parsedResponse = responseText;
+    }
+    
+    res.json({
+      success: true,
+      request: {
+        endpoint,
+        payload,
+        method: 'POST'
+      },
+      response: {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: parsedResponse,
+        rawText: responseText,
+        bodyType: typeof parsedResponse,
+        isArray: Array.isArray(parsedResponse),
+        bodyLength: Array.isArray(parsedResponse) ? parsedResponse.length : 
+                   (parsedResponse?.devices ? parsedResponse.devices.length : 
+                   (parsedResponse?.data ? parsedResponse.data.length : 0)),
+        numberOfDevices: parsedResponse?.numberOfDevices,
+        total: parsedResponse?.total,
+        hasDevicesArray: !!parsedResponse?.devices,
+        hasDataArray: !!parsedResponse?.data
+      }
+    });
+  } catch (error) {
+    logger.error('Raw Phonecheck API request failed', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : undefined
+    });
+  }
+});
+
 export default router;

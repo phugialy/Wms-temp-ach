@@ -82,6 +82,27 @@ export class WorkflowEngineService {
     let executionId: bigint | null = null;
 
     try {
+      // CRITICAL: For scheduled cron jobs, ensure dateFrom === dateTo (single day processing only)
+      // This prevents date accumulation - each cron job execution should process exactly ONE day
+      if (params.triggerSource === 'scheduled-cron') {
+        if (params.dateFrom !== params.dateTo) {
+          logger.warn('⚠️ Scheduled cron job has mismatched dates - forcing dateTo to match dateFrom', {
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            scheduleId: params.scheduleId?.toString()
+          });
+          // Force dateTo to match dateFrom for single-day processing
+          params.dateTo = params.dateFrom;
+        }
+      }
+
+      // Normalize dates to ensure they're stored as dates (not timestamps)
+      // Extract just the date part (YYYY-MM-DD) to avoid timezone issues
+      const dateFromDate = new Date(params.dateFrom);
+      dateFromDate.setHours(0, 0, 0, 0); // Set to midnight to ensure it's a pure date
+      const dateToDate = new Date(params.dateTo);
+      dateToDate.setHours(0, 0, 0, 0); // Set to midnight to ensure it's a pure date
+
       // Step 1: Create execution record
       const execution = await prisma.cronJobExecution.create({
         data: {
@@ -90,8 +111,8 @@ export class WorkflowEngineService {
           status: 'running',
           scheduleId: params.scheduleId,
           stations: params.stations,
-          dateFrom: new Date(params.dateFrom),
-          dateTo: new Date(params.dateTo),
+          dateFrom: dateFromDate,
+          dateTo: dateToDate,
           location: params.location,
           startedAt: new Date(),
           metadata: {
@@ -156,15 +177,25 @@ export class WorkflowEngineService {
           );
 
           totalDevicesFound += devices.length;
+          
+          // Log device count - 0 devices is a valid, successful scenario (not a failure)
+          if (devices.length === 0) {
+            logger.info(`✅ No devices found for station ${station} on ${params.dateFrom} - this is expected if no devices were processed that day`, {
+              executionId: executionId.toString(),
+              station,
+              dateFrom: params.dateFrom,
+              dateTo: params.dateTo,
+              deviceCount: 0,
+              note: 'Zero devices is a valid, successful scenario - not a failure'
+            });
+            continue; // Continue to next station - this is not an error
+          }
+          
           logger.info(`📦 Found ${devices.length} devices from station ${station}`, {
             executionId: executionId.toString(),
             station,
             deviceCount: devices.length
           });
-
-          if (devices.length === 0) {
-            continue;
-          }
 
           // Step 2.2: Split devices into batches for isolated error handling
           const batches: any[][] = [];
@@ -496,7 +527,9 @@ export class WorkflowEngineService {
       }
 
       const durationMs = Date.now() - startTime;
-      const success = totalDevicesFailed === 0;
+      // Success is determined by: no failures occurred (not by device count)
+      // Zero devices found is a valid, successful scenario
+      const success = totalDevicesFailed === 0 && errors.length === 0;
 
       // Step 3: Update execution record with retry logic
       if (executionId === null) {
@@ -515,6 +548,8 @@ export class WorkflowEngineService {
             devicesProcessed: totalDevicesProcessed,
             devicesAdded: totalDevicesAdded,
             devicesFailed: totalDevicesFailed,
+            // Only set error message if there were actual errors, not if devicesFound is 0
+            // 0 devices found is a valid scenario, not an error
             errorMessage: errors.length > 0 ? `${errors.length} devices failed` : null,
             errorDetails: errors.length > 0 ? ({ errors: errors.slice(0, 100) } as any) : null, // Limit to first 100 errors
             metadata: {
@@ -523,7 +558,8 @@ export class WorkflowEngineService {
               devicesUpdated: totalDevicesUpdated, // Track updated devices separately in metadata
               batchStats: batchStats, // Track batch-level statistics
               batchSize: BATCH_SIZE, // Store batch size used
-              totalBatches: batchStats.length // Total number of batches processed
+              totalBatches: batchStats.length, // Total number of batches processed
+              zeroDevicesNote: totalDevicesFound === 0 ? 'Zero devices found is a valid, successful scenario - not a failure' : undefined
             } as any
           }
         }),
@@ -532,16 +568,31 @@ export class WorkflowEngineService {
         'Final execution update'
       );
 
-      logger.info('✅ Workflow execution completed', {
-        executionId: executionId.toString(),
-        success,
-        devicesFound: totalDevicesFound,
-        devicesProcessed: totalDevicesProcessed,
-        devicesAdded: totalDevicesAdded, // NEW IMEIs only
-        devicesUpdated: totalDevicesUpdated, // Existing IMEIs that were updated
-        devicesFailed: totalDevicesFailed,
-        durationMs
-      });
+      // Log completion - make it clear that 0 devices is successful
+      if (totalDevicesFound === 0) {
+        logger.info('✅ Workflow execution completed successfully - No devices found (this is expected)', {
+          executionId: executionId.toString(),
+          success: true,
+          devicesFound: totalDevicesFound,
+          devicesProcessed: totalDevicesProcessed,
+          devicesAdded: totalDevicesAdded,
+          devicesUpdated: totalDevicesUpdated,
+          devicesFailed: totalDevicesFailed,
+          durationMs,
+          note: 'Zero devices found is a valid, successful scenario - the workflow completed without errors'
+        });
+      } else {
+        logger.info('✅ Workflow execution completed', {
+          executionId: executionId.toString(),
+          success,
+          devicesFound: totalDevicesFound,
+          devicesProcessed: totalDevicesProcessed,
+          devicesAdded: totalDevicesAdded, // NEW IMEIs only
+          devicesUpdated: totalDevicesUpdated, // Existing IMEIs that were updated
+          devicesFailed: totalDevicesFailed,
+          durationMs
+        });
+      }
 
       return {
         executionId,
@@ -716,9 +767,31 @@ export class WorkflowEngineService {
         if (dateTo) whereClause.createdAt.lte = dateTo;
       }
       
+      // Optimize query: Only select needed fields, exclude large metadata field
+      // This prevents timeout when metadata contains large device arrays
       const executions = await prisma.cronJobExecution.findMany({
         where: whereClause,
-        include: {
+        select: {
+          id: true,
+          workflowType: true,
+          triggerSource: true,
+          status: true,
+          scheduleId: true,
+          stations: true,
+          dateFrom: true,
+          dateTo: true,
+          location: true,
+          startedAt: true,
+          completedAt: true,
+          durationMs: true,
+          devicesFound: true,
+          devicesProcessed: true,
+          devicesAdded: true,
+          devicesFailed: true,
+          errorMessage: true,
+          createdAt: true,
+          updatedAt: true,
+          // Include schedule relation but exclude metadata (too large)
           schedule: {
             select: {
               id: true,
@@ -727,12 +800,14 @@ export class WorkflowEngineService {
               frequency: true,
             }
           }
+          // Explicitly exclude metadata to improve performance
         },
         orderBy: { createdAt: 'desc' },
-        take: limit,
+        take: Math.min(limit, 100), // Cap at 100 to prevent timeout
         skip: offset
       });
-      console.log(`[WorkflowEngine] Found ${executions.length} executions`);
+      
+      console.log(`[WorkflowEngine] Found ${executions.length} executions (metadata excluded for performance)`);
       return executions;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

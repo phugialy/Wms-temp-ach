@@ -81,6 +81,18 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
       processingTime
     });
 
+    // Determine response message based on result
+    let message: string;
+    if (!result.success) {
+      message = `Workflow completed with errors: ${result.devicesFailed} devices failed`;
+    } else if (result.devicesFound === 0) {
+      message = `Workflow completed successfully: No devices found for the specified date range (this is expected if no devices were processed that day)`;
+    } else if (result.devicesAdded > 0) {
+      message = `Workflow completed: ${result.devicesAdded} devices added successfully`;
+    } else {
+      message = `Workflow completed: ${result.devicesFound} devices found, ${result.devicesProcessed} processed`;
+    }
+
     res.status(result.success ? 200 : 500).json({
       success: result.success,
       executionId: result.executionId.toString(),
@@ -91,13 +103,12 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
         devicesAdded: result.devicesAdded,
         devicesFailed: result.devicesFailed,
         durationMs: result.durationMs,
-        processingTime
+        processingTime,
+        note: result.devicesFound === 0 ? 'Zero devices found is a valid, successful scenario - not a failure' : undefined
       },
       error: result.errorMessage,
       errorDetails: result.errorDetails,
-      message: result.success
-        ? `Workflow completed: ${result.devicesAdded} devices added successfully`
-        : `Workflow completed with errors: ${result.devicesFailed} devices failed`
+      message
     });
 
   } catch (error) {
@@ -134,7 +145,9 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
 router.get('/executions', async (req: Request, res: Response): Promise<void> => {
   const startTime = Date.now();
   try {
-    const limit = parseInt(req.query['limit'] as string) || 50;
+    // Cap limit to prevent timeout (max 100 records)
+    const requestedLimit = parseInt(req.query['limit'] as string) || 50;
+    const limit = Math.min(requestedLimit, 100);
     const offset = parseInt(req.query['offset'] as string) || 0;
     
     // Optional date filtering
@@ -145,8 +158,9 @@ router.get('/executions', async (req: Request, res: Response): Promise<void> => 
       dateFrom: dateFrom?.toISOString(),
       dateTo: dateTo?.toISOString()
     });
+    
     const executions = await workflowEngine.getExecutionHistory(limit, offset, dateFrom, dateTo);
-    console.log(`[WorkflowRoute] Returning ${executions.length} executions`);
+    console.log(`[WorkflowRoute] Returning ${executions.length} executions (took ${Date.now() - startTime}ms)`);
 
     // Serialize BigInt IDs and dates properly, include schedule info
     const serializedExecutions = executions.map(execution => ({

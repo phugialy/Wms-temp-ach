@@ -292,3 +292,4 @@ curl http://localhost:3001/api/admin/inventory-stats
 - [Supabase Environment Variables](https://supabase.com/docs/guides/getting-started/local-development#environment-variables)
 - [Prisma Environment Variables](https://www.prisma.io/docs/concepts/components/prisma-schema#environment-variable-expansion)
 
+

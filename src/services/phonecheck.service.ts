@@ -138,18 +138,13 @@ export class PhonecheckService {
       
       if (isSingleDate) {
         // Single date filtering using 'date' parameter (works correctly)
+        // ONLY try with station filter - don't fallback to all stations
         searchVariations.push(
           { 
             type: 'single_date', 
             date: startDate, 
             station, 
-            description: 'Single date filter using date parameter' 
-          },
-          { 
-            type: 'single_date', 
-            date: startDate, 
-            station: undefined, 
-            description: 'Single date filter without station' 
+            description: 'Single date filter using date parameter with station' 
           }
         );
       } else if (isDateRange) {
@@ -264,16 +259,27 @@ export class PhonecheckService {
                 actualDevices = (devicesData as any).data;
                 logger.info('Data property response', { deviceCount: actualDevices.length });
               } else if ((devicesData as any).numberOfDevices !== undefined) {
+                const numberOfDevices = (devicesData as any).numberOfDevices;
                 logger.info('Response with numberOfDevices', { 
-                  numberOfDevices: (devicesData as any).numberOfDevices,
+                  numberOfDevices,
                   hasDevicesArray: !!(devicesData as any).devices,
                   devicesArrayLength: (devicesData as any).devices ? (devicesData as any).devices.length : 0,
                   station, 
                   startDate: searchVariation.startDate 
                 });
                 
+                // CRITICAL: If API says 0 devices, return empty array even if devices array exists (stale data)
+                if (numberOfDevices === 0) {
+                  logger.info('API reports 0 devices - returning empty array', {
+                    station,
+                    date: searchVariation.date || searchVariation.startDate,
+                    devicesArrayLength: (devicesData as any).devices ? (devicesData as any).devices.length : 0
+                  });
+                  return [];
+                }
+                
                 // If numberOfDevices > 0 but devices array is empty, try to get devices
-                if ((devicesData as any).numberOfDevices > 0 && (!(devicesData as any).devices || (devicesData as any).devices.length === 0)) {
+                if (numberOfDevices > 0 && (!(devicesData as any).devices || (devicesData as any).devices.length === 0)) {
                   logger.info('Devices exist but array is empty, trying to fetch devices');
                   // Try with different parameters
                                      const devicePayload = {
@@ -313,9 +319,109 @@ export class PhonecheckService {
 
             if (actualDevices.length > 0) {
               // Filter out devices without IMEI
-              const devicesWithIMEI = actualDevices.filter((device: any) => {
+              let devicesWithIMEI = actualDevices.filter((device: any) => {
                 return device['IMEI'] || device['imei'] || device['DeviceIMEI'] || device['deviceImei'];
               });
+
+              // Check if we need pagination (if we got exactly 500 devices, there might be more)
+              const totalDevicesAvailable = (devicesData as any)?.numberOfDevices || (devicesData as any)?.total || actualDevices.length;
+              const needsPagination = actualDevices.length === 500 && totalDevicesAvailable > 500;
+
+              if (needsPagination) {
+                logger.info('Detected pagination needed', {
+                  devicesReturned: actualDevices.length,
+                  totalAvailable: totalDevicesAvailable,
+                  station,
+                  date: searchVariation.date || searchVariation.startDate
+                });
+
+                // Fetch remaining pages
+                let offset = 500;
+                const maxPages = 10; // Safety limit to prevent infinite loops
+                let pageCount = 1;
+
+                while (offset < totalDevicesAvailable && pageCount < maxPages) {
+                  try {
+                    const paginatedPayload = {
+                      ...payload,
+                      limit: 500,
+                      offset: offset
+                    };
+
+                    logger.info(`Fetching page ${pageCount + 1}`, {
+                      offset,
+                      limit: 500,
+                      station,
+                      date: searchVariation.date || searchVariation.startDate
+                    });
+
+                    const paginatedResponse = await fetch(endpoint, {
+                      method: 'POST',
+                      headers: { 
+                        'Content-Type': 'application/json', 
+                        'token_master': token 
+                      },
+                      body: JSON.stringify(paginatedPayload),
+                      signal: controller.signal
+                    });
+
+                    if (paginatedResponse.ok) {
+                      const paginatedText = await paginatedResponse.text();
+                      const paginatedData = JSON.parse(paginatedText);
+                      
+                      let paginatedDevices: any[] = [];
+                      if (Array.isArray(paginatedData)) {
+                        paginatedDevices = paginatedData;
+                      } else if (paginatedData?.devices && Array.isArray(paginatedData.devices)) {
+                        paginatedDevices = paginatedData.devices;
+                      } else if (paginatedData?.data && Array.isArray(paginatedData.data)) {
+                        paginatedDevices = paginatedData.data;
+                      }
+
+                      if (paginatedDevices.length > 0) {
+                        const paginatedWithIMEI = paginatedDevices.filter((device: any) => {
+                          return device['IMEI'] || device['imei'] || device['DeviceIMEI'] || device['deviceImei'];
+                        });
+                        devicesWithIMEI = devicesWithIMEI.concat(paginatedWithIMEI);
+                        offset += paginatedDevices.length;
+                        pageCount++;
+
+                        logger.info(`Fetched page ${pageCount}`, {
+                          devicesInPage: paginatedWithIMEI.length,
+                          totalDevicesSoFar: devicesWithIMEI.length,
+                          offset
+                        });
+
+                        // If we got less than 500, we've reached the end
+                        if (paginatedDevices.length < 500) {
+                          break;
+                        }
+                      } else {
+                        break; // No more devices
+                      }
+                    } else {
+                      logger.warn('Pagination request failed', {
+                        status: paginatedResponse.status,
+                        offset
+                      });
+                      break;
+                    }
+                  } catch (paginationError) {
+                    logger.warn('Pagination error', {
+                      error: paginationError instanceof Error ? paginationError.message : String(paginationError),
+                      offset
+                    });
+                    break;
+                  }
+                }
+
+                logger.info('Pagination complete', {
+                  totalPages: pageCount,
+                  totalDevices: devicesWithIMEI.length,
+                  station,
+                  date: searchVariation.date || searchVariation.startDate
+                });
+              }
 
               logger.info('Successfully pulled devices from Phonecheck', { 
                 endpoint: endpoint,
@@ -325,8 +431,8 @@ export class PhonecheckService {
                 startDate: searchVariation.startDate, 
                 endDate: searchVariation.endDate,
                 date: searchVariation.date,
-                totalDevices: actualDevices.length,
-                devicesWithIMEI: devicesWithIMEI.length
+                totalDevices: devicesWithIMEI.length,
+                paginated: needsPagination
               });
 
               return devicesWithIMEI;
@@ -356,8 +462,15 @@ export class PhonecheckService {
         }
       }
 
-      // If no devices found in any date range, throw error
-      throw new Error(`No devices found for station ${station} in any date range`);
+      // If no devices found in any date range, return empty array (not an error)
+      // Zero devices is a valid, successful scenario - not a failure
+      logger.info('No devices found in any search variation - returning empty array (this is expected)', { 
+        station, 
+        startDate, 
+        endDate,
+        note: 'Zero devices found is a valid scenario, not an error'
+      });
+      return [];
 
     } catch (error) {
       logger.error('Error pulling devices from Phonecheck station', { 

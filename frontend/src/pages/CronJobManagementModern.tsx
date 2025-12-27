@@ -462,8 +462,15 @@ export const CronJobManagementModern = () => {
       console.log('[CronJobManagement] Triggering workflow with params:', params);
       const result = await workflowService.executeBulkAddWorkflow(params);
 
-      if (result.success) {
-        message.success(`Workflow triggered successfully! Execution ID: ${result.executionId}`);
+      console.log('[CronJobManagement] Workflow result:', result);
+
+      if (result.success === true) {
+        // Show success message with execution ID if available
+        const successMsg = result.message || 
+          (result.executionId 
+            ? `Workflow triggered successfully! Execution ID: ${result.executionId}` 
+            : 'Workflow triggered successfully!');
+        message.success(successMsg);
         setShowTriggerModal(false);
         // Reset form
         setTriggerForm({
@@ -476,7 +483,10 @@ export const CronJobManagementModern = () => {
           loadData();
         }, 1000);
       } else {
-        message.error(`Failed to trigger workflow: ${result.error || 'Unknown error'}`);
+        // Show error message
+        const errorMsg = result.error || result.message || 'Unknown error';
+        console.error('[CronJobManagement] Workflow failed:', result);
+        message.error(`Failed to trigger workflow: ${errorMsg}`);
       }
     } catch (error) {
       console.error('[CronJobManagement] Error triggering workflow:', error);

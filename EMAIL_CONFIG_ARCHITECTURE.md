@@ -233,3 +233,4 @@ This follows standard SaaS patterns where:
 - **Feature configs** live with the feature
 - **Infrastructure configs** live in Settings
 
+

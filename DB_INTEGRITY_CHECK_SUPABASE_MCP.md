@@ -144,3 +144,4 @@ Potential improvements using MCP tools:
 - Service layer uses **direct connections** for read/write operations
 - Both approaches use the same Supabase database
 - MCP tools provide additional visibility and verification capabilities
+

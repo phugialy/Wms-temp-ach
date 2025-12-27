@@ -18,3 +18,4 @@ COMMENT ON COLUMN cron_job_schedule.email_recipients IS 'Array of email addresse
 COMMENT ON COLUMN cron_job_schedule.email_on_success IS 'Whether to send email reports when execution succeeds';
 COMMENT ON COLUMN cron_job_schedule.email_on_failure IS 'Whether to send email reports when execution fails';
 
+

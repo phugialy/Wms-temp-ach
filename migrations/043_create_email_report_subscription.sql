@@ -55,3 +55,4 @@ COMMENT ON COLUMN email_report_subscription.email_recipients IS 'Array of email 
 COMMENT ON COLUMN email_report_subscription.delivery_mode IS 'Delivery mode: immediate (after each execution) or scheduled (at specified time)';
 COMMENT ON COLUMN email_report_subscription.summary_only IS 'If true, only send aggregated summary, not individual execution details';
 
+

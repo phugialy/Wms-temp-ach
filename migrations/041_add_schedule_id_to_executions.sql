@@ -16,3 +16,4 @@ CREATE INDEX IF NOT EXISTS idx_cron_job_schedule_id ON cron_job_execution(schedu
 COMMENT ON COLUMN cron_job_execution.schedule_id IS 'Reference to the cron schedule that triggered this execution (null for manual triggers)';
 
 
+

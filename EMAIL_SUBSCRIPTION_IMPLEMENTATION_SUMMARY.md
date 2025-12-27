@@ -257,3 +257,4 @@ POST /api/email/subscriptions
 
 The backend is complete and ready! The subscription system gives you the flexibility you need. 🚀
 
+

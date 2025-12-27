@@ -158,3 +158,4 @@ The component now has:
 Try refreshing the page and check the browser console for the new logs!
 
 
+

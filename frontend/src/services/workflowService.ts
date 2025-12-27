@@ -147,10 +147,15 @@ export const executeBulkAddWorkflow = async (
     });
 
     // Handle both direct response and wrapped ApiResponse format
-    const result = response.data || response;
+    // apiClient.post already returns response.data, so response IS the ApiResponse object
+    const result = response;
+    
+    // Check success explicitly (not just truthy check)
+    // Backend returns success: true even when devicesFound is 0 (valid scenario)
+    const isSuccess = result.success === true;
     
     return {
-      success: result.success || false,
+      success: isSuccess,
       executionId: result.executionId || result.data?.executionId,
       message: result.message || result.data?.message,
       error: result.error || result.data?.error,

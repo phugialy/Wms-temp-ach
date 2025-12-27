@@ -109,3 +109,4 @@ The "No data available from PhoneCheck API" error for `R52T706B87W` is **expecte
 2. This IMEI is alphanumeric and incompatible
 3. The fix now **clearly explains** this in the error message
 4. Processing is **optimized** by skipping incompatible IMEIs early
+

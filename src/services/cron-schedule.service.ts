@@ -343,6 +343,8 @@ export class CronScheduleService {
         }
         
         // Both dates are the same calendar date (Phonecheck API requirement)
+        // CRITICAL: Each cron job execution processes exactly ONE day (00:00 to 18:00 on that day)
+        // This ensures no date accumulation - each run processes only the target date
         const dateString = targetDate.format('YYYY-MM-DD');
         
         logger.info(`[CronSchedule] Date range calculated: ${dateString} ${startTime} to ${dateString} ${currentTime}`, {
@@ -350,6 +352,7 @@ export class CronScheduleService {
           targetDate: dateString,
           startTime,
           endTime: currentTime,
+          note: 'Single day processing - dateFrom === dateTo to prevent accumulation'
         });
 
         // CRITICAL: Re-fetch schedule from database to ensure we have the latest stations

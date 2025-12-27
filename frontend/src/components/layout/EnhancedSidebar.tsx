@@ -255,3 +255,4 @@ export const EnhancedSidebar = ({ collapsed, onToggle }: EnhancedSidebarProps) =
 
 export default EnhancedSidebar;
 
+

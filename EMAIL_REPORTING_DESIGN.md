@@ -136,3 +136,4 @@ Add to `CronJobSchedule`:
 6. ✅ Integrate with cron execution flow
 7. ✅ Add UI for email configuration
 
+
