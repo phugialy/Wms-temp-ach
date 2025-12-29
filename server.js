@@ -137,12 +137,15 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 WMS API Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`📦 Inventory API: http://localhost:${PORT}/api/inventory`);
-  console.log(`👨‍💼 Admin API: http://localhost:${PORT}/api/admin/inventory`);
-});
+// Only start server if not in Vercel environment
+// Vercel will use the api/index.js entry point instead
+if (!process.env.VERCEL && !process.env.VERCEL_ENV) {
+  app.listen(PORT, () => {
+    console.log(`🚀 WMS API Server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`📦 Inventory API: http://localhost:${PORT}/api/inventory`);
+    console.log(`👨‍💼 Admin API: http://localhost:${PORT}/api/admin/inventory`);
+  });
+}
 
 module.exports = app;
