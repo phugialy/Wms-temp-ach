@@ -75,8 +75,8 @@ app.use('/api/imei-queue', imeiQueueApi);
 app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
 app.use('/api/sku-test', skuTestApi);
+app.use('/api/workflows/schedules', cronScheduleApi); // Must come BEFORE /api/workflows to avoid route conflicts
 app.use('/api/workflows', workflowApi);
-app.use('/api/workflows/schedules', cronScheduleApi);
 app.use('/api', bulkDataApi);
 app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
