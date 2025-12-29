@@ -10,7 +10,7 @@
     "build": "pnpm build:frontend && pnpm build:backend",
     "build:frontend": "pnpm --filter frontend build",
     "build:backend": "prisma generate && tsc || true",
-    "build:vercel": "prisma generate && pnpm build:frontend && (tsc || echo 'TypeScript compilation had errors but continuing...')",
+    "build:vercel": "prisma generate && (tsc || true) && pnpm build:frontend",
     "postinstall": "prisma generate",
     "start": "node dist/index.js",
     "server": "node server.js",

@@ -12,16 +12,55 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Import API routes
-const inventoryApi = require('./src/api/inventoryApi');
-const cleanupApi = require('./src/api/cleanupApi');
-const bulkDataApi = require('./src/api/bulkDataApi');
-const phonecheckApi = require('./src/api/phonecheckApi');
-const adminApi = require('./src/api/adminApi');
-const imeiQueueApi = require('./src/api/imeiQueueApi');
-const skuMasterApi = require('./src/api/skuMasterApi');
-const skuMatchingApi = require('./src/api/skuMatchingApi');
-const skuTestApi = require('./src/routes/skuTest');
-const workflowApi = require('./src/api/workflowApi');
+// In production (Vercel), use compiled JavaScript from dist/
+// In development, use TypeScript files from src/ with ts-node
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+
+// Helper to load routes (supports both compiled JS and TypeScript)
+function loadRoute(path) {
+  if (isProduction || isVercel) {
+    // Production: Use compiled JavaScript from dist/
+    try {
+      return require(`./dist/${path.replace('src/', '')}`);
+    } catch (error) {
+      console.warn(`⚠️  Compiled route not found: dist/${path.replace('src/', '')}, trying source...`);
+      // Fallback to source if dist doesn't exist
+    }
+  }
+  
+  // Development: Use TypeScript files with ts-node if available
+  try {
+    if (!require.extensions['.ts']) {
+      require('ts-node/register/transpile-only');
+    }
+    return require(`./${path}`);
+  } catch (error) {
+    console.error(`❌ Failed to load route: ${path}`, error.message);
+    // Return a minimal error router
+    const express = require('express');
+    const router = express.Router();
+    router.all('*', (req, res) => {
+      res.status(503).json({
+        success: false,
+        error: 'Route not available',
+        message: `Failed to load ${path}. Make sure TypeScript is compiled or ts-node is installed.`
+      });
+    });
+    return router;
+  }
+}
+
+const inventoryApi = loadRoute('src/api/inventoryApi');
+const cleanupApi = loadRoute('src/api/cleanupApi');
+const bulkDataApi = loadRoute('src/api/bulkDataApi');
+const phonecheckApi = loadRoute('src/api/phonecheckApi');
+const adminApi = loadRoute('src/api/adminApi');
+const imeiQueueApi = loadRoute('src/api/imeiQueueApi');
+const skuMasterApi = loadRoute('src/api/skuMasterApi');
+const skuMatchingApi = loadRoute('src/api/skuMatchingApi');
+const skuTestApi = loadRoute('src/routes/skuTest');
+const workflowApi = loadRoute('src/api/workflowApi');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
