@@ -62,11 +62,15 @@ const skuMatchingApi = loadRoute('src/api/skuMatchingApi');
 const skuTestApi = loadRoute('src/routes/skuTest');
 const workflowApi = loadRoute('src/api/workflowApi');
 const cronScheduleApi = loadRoute('src/routes/cron-schedule.route');
+const adminRouteApi = loadRoute('src/routes/admin.route');
+const inventoryAddApi = loadRoute('src/routes/inventory-add.route');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
 app.use('/api/phonecheck', phonecheckApi);
 app.use('/api/admin', adminApi);
+app.use('/api/admin', adminRouteApi); // TypeScript admin routes (inventory-push, etc.)
+app.use('/api/inventory', inventoryAddApi); // Inventory add routes (bulk-add)
 app.use('/api/imei-queue', imeiQueueApi);
 app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
