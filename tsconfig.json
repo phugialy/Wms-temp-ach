@@ -23,7 +23,6 @@
     "noImplicitOverride": false,
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
-    "skipLibCheck": true,
     "jsx": "react-jsx"
   },
   "include": [
