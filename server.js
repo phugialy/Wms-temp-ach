@@ -61,6 +61,7 @@ const skuMasterApi = loadRoute('src/api/skuMasterApi');
 const skuMatchingApi = loadRoute('src/api/skuMatchingApi');
 const skuTestApi = loadRoute('src/routes/skuTest');
 const workflowApi = loadRoute('src/api/workflowApi');
+const cronScheduleApi = loadRoute('src/routes/cron-schedule.route');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
@@ -71,6 +72,7 @@ app.use('/api/sku-master', skuMasterApi);
 app.use('/api/sku-matching', skuMatchingApi);
 app.use('/api/sku-test', skuTestApi);
 app.use('/api/workflows', workflowApi);
+app.use('/api/workflows/schedules', cronScheduleApi);
 app.use('/api', bulkDataApi);
 app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
