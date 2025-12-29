@@ -53,7 +53,8 @@ prisma/migrations/
 !prisma/schema.prisma
 
 # Scripts (not needed in production, but frontend build scripts are required)
-# scripts/ - Commented out because frontend/scripts/ is needed for build
+# Exclude root-level scripts only, keep frontend/scripts for build
+/scripts/
 tests/
 
 # Legacy files
