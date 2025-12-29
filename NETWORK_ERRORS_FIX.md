@@ -1,10 +1,15 @@
 # Network Errors Fix - 404 on /api/workflows/schedules
 
-## Issue Identified
+## Issues Identified
 
-**Error:** `404 Not Found` for `/api/workflows/schedules` endpoint
+**Errors:** 
+- `404 Not Found` for `/api/workflows/schedules` endpoint
+- `404 Not Found` for `/api/workflows/stats` endpoint  
+- `404 Not Found` for `/api/workflows/executions` endpoint
 
-**Root Cause:** Route order conflict in Express.js
+**Root Causes:** 
+1. Route order conflict in Express.js (FIXED)
+2. `workflowApi.js` not loading routes correctly in production (FIXED)
 
 ### The Problem
 
@@ -34,10 +39,11 @@ This ensures `/api/workflows/schedules` is matched before `/api/workflows`.
 
 ## Additional Issues to Check
 
-### 1. Route Loading in Production
-- Verify `cronScheduleApi` loads correctly in production
-- Check if TypeScript compilation creates the route file in `dist/`
-- Verify the route path: `src/routes/cron-schedule.route` → `dist/routes/cron-schedule.route.js`
+### 1. Route Loading in Production ✅ FIXED
+- **Issue:** `workflowApi.js` was trying to load TypeScript files directly in production
+- **Problem:** It used `ts-node` which isn't available in production, causing routes to fail
+- **Fix:** Updated `workflowApi.js` to detect production and load from `dist/routes/workflow.route.js` instead
+- **Result:** All workflow routes (`/stats`, `/executions`, `/bulk-add`) now load correctly in production
 
 ### 2. Authentication
 - Check if authentication middleware is blocking the route
@@ -55,6 +61,7 @@ This ensures `/api/workflows/schedules` is matched before `/api/workflows`.
 ## Files Modified
 
 1. `server.js` - Fixed route order (moved `/api/workflows/schedules` before `/api/workflows`)
+2. `src/api/workflowApi.js` - Fixed production route loading (now loads from `dist/` in production, not TypeScript)
 
 ---
 
