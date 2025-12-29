@@ -9,9 +9,169 @@ const phonecheckService = new PhonecheckService();
 const workflowEngine = new WorkflowEngineService(phonecheckService);
 
 /**
+ * Shared workflow execution logic
+ */
+async function executeBulkAddWorkflowHandler(params: {
+  stations: string[];
+  dateFrom: string;
+  dateTo: string;
+  location: string;
+  triggerSource?: string;
+}) {
+  const { stations, dateFrom, dateTo, location, triggerSource } = params;
+  
+  // Validation
+  if (!stations || !Array.isArray(stations) || stations.length === 0) {
+    throw new Error('Stations array is required and must not be empty');
+  }
+
+  if (!dateFrom || !dateTo) {
+    throw new Error('dateFrom and dateTo are required (ISO date strings)');
+  }
+
+  if (!location) {
+    throw new Error('Location is required');
+  }
+
+  logger.info('🚀 Workflow API: Starting bulk-add workflow', {
+    stations,
+    dateFrom,
+    dateTo,
+    location,
+    triggerSource: triggerSource || 'api'
+  });
+
+  // Execute workflow
+  const result = await workflowEngine.executeBulkAddWorkflow({
+    stations,
+    dateFrom,
+    dateTo,
+    location,
+    triggerSource: triggerSource || 'api'
+  });
+
+  return result;
+}
+
+/**
+ * GET /api/workflows/bulk-add
+ * Execute bulk-add workflow automation via Vercel cron job
+ * Reads parameters from environment variables or query string
+ */
+router.get('/bulk-add', async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('[WorkflowRoute] GET /bulk-add - Vercel cron job triggered');
+    
+    // Get parameters from environment variables (for Vercel cron) or query string
+    const stationsEnv = process.env.CRON_STATIONS;
+    const locationEnv = process.env.CRON_DEFAULT_LOCATION;
+    
+    // Parse stations from env (comma-separated) or query param
+    const stations = req.query.stations 
+      ? (Array.isArray(req.query.stations) ? req.query.stations : [req.query.stations]).map(s => String(s))
+      : stationsEnv 
+        ? stationsEnv.split(',').map(s => s.trim()).filter(s => s.length > 0)
+        : [];
+
+    // Get location from query or env
+    const location = (req.query.location as string) || locationEnv || 'Default Location';
+
+    // Calculate date range (default: yesterday for daily cron)
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const dateFrom = (req.query.dateFrom as string) || yesterday.toISOString().split('T')[0];
+    const dateTo = (req.query.dateTo as string) || yesterday.toISOString().split('T')[0];
+    
+    const triggerSource = 'vercel-cron';
+
+    console.log('[WorkflowRoute] Cron job parameters:', {
+      stations,
+      dateFrom,
+      dateTo,
+      location,
+      triggerSource
+    });
+
+    // Validate stations
+    if (stations.length === 0) {
+      console.warn('[WorkflowRoute] No stations configured. Set CRON_STATIONS environment variable.');
+      res.status(400).json({
+        success: false,
+        error: 'No stations configured',
+        message: 'Set CRON_STATIONS environment variable (comma-separated) or provide stations query parameter'
+      });
+      return;
+    }
+
+    // Execute workflow
+    const result = await executeBulkAddWorkflowHandler({
+      stations,
+      dateFrom,
+      dateTo,
+      location,
+      triggerSource
+    });
+
+    const processingTime = Date.now() - startTime;
+    
+    // Determine response message
+    let message: string;
+    if (!result.success) {
+      message = `Workflow completed with errors: ${result.devicesFailed} devices failed`;
+    } else if (result.devicesFound === 0) {
+      message = `Workflow completed successfully: No devices found for the specified date range`;
+    } else if (result.devicesAdded > 0) {
+      message = `Workflow completed: ${result.devicesAdded} devices added successfully`;
+    } else {
+      message = `Workflow completed: ${result.devicesFound} devices found, ${result.devicesProcessed} processed`;
+    }
+
+    res.status(result.success ? 200 : 500).json({
+      success: result.success,
+      executionId: result.executionId.toString(),
+      status: result.status,
+      data: {
+        devicesFound: result.devicesFound,
+        devicesProcessed: result.devicesProcessed,
+        devicesAdded: result.devicesAdded,
+        devicesFailed: result.devicesFailed,
+        durationMs: result.durationMs,
+        processingTime
+      },
+      error: result.errorMessage,
+      errorDetails: result.errorDetails,
+      message
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : String(error);
+    
+    logger.error('❌ Workflow API Error (GET):', {
+      error: errorMessage,
+      stack: errorStack,
+      query: req.query,
+      processingTime: Date.now() - startTime
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Workflow execution failed',
+      details: errorMessage,
+      message: `Failed to execute workflow: ${errorMessage}`,
+      processingTime: Date.now() - startTime
+    });
+  }
+});
+
+/**
  * POST /api/workflows/bulk-add
  * Execute bulk-add workflow automation
- * Designed for Vercel cron job triggers
+ * Designed for manual API triggers
  */
 router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
   const startTime = Date.now();
@@ -22,46 +182,8 @@ router.post('/bulk-add', async (req: Request, res: Response): Promise<void> => {
     
     const { stations, dateFrom, dateTo, location, triggerSource } = req.body;
 
-    // Validation
-    if (!stations || !Array.isArray(stations) || stations.length === 0) {
-      console.warn('[WorkflowRoute] Validation failed: stations array is empty or invalid');
-      res.status(400).json({
-        success: false,
-        error: 'Stations array is required and must not be empty'
-      });
-      return;
-    }
-
-    if (!dateFrom || !dateTo) {
-      console.warn('[WorkflowRoute] Validation failed: dateFrom or dateTo missing');
-      res.status(400).json({
-        success: false,
-        error: 'dateFrom and dateTo are required (ISO date strings)'
-      });
-      return;
-    }
-
-    if (!location) {
-      console.warn('[WorkflowRoute] Validation failed: location missing');
-      res.status(400).json({
-        success: false,
-        error: 'Location is required'
-      });
-      return;
-    }
-
-    console.log('[WorkflowRoute] Validation passed, starting workflow execution');
-    logger.info('🚀 Workflow API: Starting bulk-add workflow', {
-      stations,
-      dateFrom,
-      dateTo,
-      location,
-      triggerSource: triggerSource || 'api'
-    });
-
-    // Execute workflow
-    console.log('[WorkflowRoute] Calling workflowEngine.executeBulkAddWorkflow...');
-    const result = await workflowEngine.executeBulkAddWorkflow({
+    // Execute workflow using shared handler
+    const result = await executeBulkAddWorkflowHandler({
       stations,
       dateFrom,
       dateTo,
