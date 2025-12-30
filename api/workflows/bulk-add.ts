@@ -12,8 +12,9 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Only allow POST requests (Vercel cron jobs send POST)
-  if (req.method !== 'POST') {
+  // Vercel cron jobs send GET requests by default
+  // Allow both GET and POST for flexibility
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -26,11 +27,20 @@ export default async function handler(
   }
 
   try {
-    // Get configuration from environment variables or request body
-    const stations = req.body?.stations || process.env.CRON_STATIONS?.split(',') || [];
-    const dateFrom = req.body?.dateFrom || getDefaultDateFrom();
-    const dateTo = req.body?.dateTo || getDefaultDateTo();
-    const location = req.body?.location || process.env.CRON_DEFAULT_LOCATION || 'Default Location';
+    // Get configuration from environment variables, request body (POST), or query params (GET)
+    const isGet = req.method === 'GET';
+    const stations = isGet 
+      ? (req.query.stations as string)?.split(',') || process.env.CRON_STATIONS?.split(',') || []
+      : req.body?.stations || process.env.CRON_STATIONS?.split(',') || [];
+    const dateFrom = isGet
+      ? (req.query.dateFrom as string) || getDefaultDateFrom()
+      : req.body?.dateFrom || getDefaultDateFrom();
+    const dateTo = isGet
+      ? (req.query.dateTo as string) || getDefaultDateTo()
+      : req.body?.dateTo || getDefaultDateTo();
+    const location = isGet
+      ? (req.query.location as string) || process.env.CRON_DEFAULT_LOCATION || 'Default Location'
+      : req.body?.location || process.env.CRON_DEFAULT_LOCATION || 'Default Location';
 
     if (!stations || stations.length === 0) {
       return res.status(400).json({
