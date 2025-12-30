@@ -433,7 +433,13 @@ export const CronJobManagementModern = () => {
     }
   };
 
-  const handleTriggerWorkflow = async () => {
+  const handleTriggerWorkflow = async (e?: React.MouseEvent<HTMLElement>) => {
+    // Prevent form submission and page reload
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     if (triggerForm.stations.length === 0) {
       message.warning('Please select at least one station');
       return;
@@ -478,7 +484,7 @@ export const CronJobManagementModern = () => {
           dateRange: [dayjs().subtract(1, 'day'), dayjs()],
           location: '',
         });
-        // Reload data after a short delay
+        // Reload data after a short delay (without page reload)
         setTimeout(() => {
           loadData();
         }, 1000);
@@ -2012,10 +2018,14 @@ export const CronJobManagementModern = () => {
       <Modal
         title="Trigger Bulk-Add Workflow"
         open={showTriggerModal}
-        onOk={handleTriggerWorkflow}
+        onOk={(e) => {
+          e?.preventDefault();
+          handleTriggerWorkflow(e);
+        }}
         onCancel={() => setShowTriggerModal(false)}
         confirmLoading={triggering}
         width={600}
+        destroyOnClose
       >
         <Space direction="vertical" style={{ width: '100%' }} size="large">
           <div>

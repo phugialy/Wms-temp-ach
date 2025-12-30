@@ -64,6 +64,7 @@ const workflowApi = loadRoute('src/api/workflowApi');
 const cronScheduleApi = loadRoute('src/routes/cron-schedule.route');
 const adminRouteApi = loadRoute('src/routes/admin.route');
 const inventoryAddApi = loadRoute('src/routes/inventory-add.route');
+const dashboardApi = loadRoute('src/routes/dashboard.route');
 
 // API routes - Order matters! More specific routes first
 app.use('/api/cleanup', cleanupApi);
@@ -77,6 +78,7 @@ app.use('/api/sku-matching', skuMatchingApi);
 app.use('/api/sku-test', skuTestApi);
 app.use('/api/workflows/schedules', cronScheduleApi); // Must come BEFORE /api/workflows to avoid route conflicts
 app.use('/api/workflows', workflowApi);
+app.use('/api/dashboard', dashboardApi); // Dashboard routes (cron-jobs-today, etc.)
 app.use('/api', bulkDataApi);
 app.use('/api', inventoryApi); // This should be last as it catches all /api/* routes
 
