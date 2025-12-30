@@ -14,25 +14,33 @@ try {
   if (isProduction || isVercel) {
     // Production: Try multiple paths to find compiled routes
     const possiblePaths = [
-      // Path 1: If this file is at dist/api/workflowApi.js, routes are at dist/routes/workflow.route.js
-      path.join(__dirname, '../routes/workflow.route'),
-      // Path 2: Absolute from project root
+      // Path 1: Absolute from project root (most reliable)
       path.join(process.cwd(), 'dist/routes/workflow.route'),
+      // Path 2: If this file is at dist/api/workflowApi.js, routes are at dist/routes/workflow.route.js
+      path.join(__dirname, '../routes/workflow.route'),
       // Path 3: Relative from current file location
-      '../routes/workflow.route',
+      path.resolve(__dirname, '../routes/workflow.route'),
       // Path 4: Try from src (if dist doesn't exist)
       path.join(process.cwd(), 'src/routes/workflow.route'),
     ];
     
     let loaded = false;
+    let lastError = null;
     for (const routePath of possiblePaths) {
       try {
+        // Check if file exists first
+        const resolvedPath = require.resolve(routePath);
+        console.log(`🔍 Trying to load workflow routes from: ${routePath}`);
+        console.log(`   Resolved to: ${resolvedPath}`);
+        
         // Try to require the route
         workflowRoutes = require(routePath);
         console.log(`✅ Workflow routes loaded from: ${routePath}`);
         loaded = true;
         break;
       } catch (err) {
+        lastError = err;
+        console.warn(`⚠️  Failed to load from ${routePath}:`, err.message);
         // Try next path
         continue;
       }
@@ -41,11 +49,20 @@ try {
     if (!loaded) {
       // Last resort: try with ts-node (shouldn't happen in production but fallback)
       console.warn('⚠️  Compiled routes not found, trying TypeScript fallback...');
-      if (!require.extensions['.ts']) {
-        require('ts-node/register/transpile-only');
+      console.error('❌ Last error:', lastError?.message);
+      console.error('❌ Current working directory:', process.cwd());
+      console.error('❌ __dirname:', __dirname);
+      try {
+        if (!require.extensions['.ts']) {
+          require('ts-node/register/transpile-only');
+        }
+        workflowRoutes = require('../routes/workflow.route');
+        console.log('✅ Workflow routes loaded from TypeScript (fallback)');
+        loaded = true;
+      } catch (tsError) {
+        console.error('❌ TypeScript fallback also failed:', tsError.message);
+        throw new Error(`Failed to load workflow routes from any path. Last error: ${lastError?.message || tsError.message}`);
       }
-      workflowRoutes = require('../routes/workflow.route');
-      console.log('✅ Workflow routes loaded from TypeScript (fallback)');
     }
   } else {
     // Development: Use TypeScript files with ts-node
