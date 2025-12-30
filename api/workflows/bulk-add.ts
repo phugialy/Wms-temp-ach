@@ -18,12 +18,15 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Verify this is a cron job request (optional security check)
-  const authHeader = req.headers.authorization;
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  // Verify CRON_SECRET ONLY for GET requests (Vercel cron jobs)
+  // POST requests are manual triggers from the UI and should NOT require CRON_SECRET
+  if (req.method === 'GET') {
+    const authHeader = req.headers.authorization;
+    const cronSecret = process.env.CRON_SECRET;
+    
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or missing CRON_SECRET' });
+    }
   }
 
   try {
