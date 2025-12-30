@@ -64,6 +64,27 @@ router.get('/bulk-add', async (req: Request, res: Response): Promise<void> => {
   try {
     console.log('[WorkflowRoute] GET /bulk-add - Vercel cron job triggered');
     
+    // Verify CRON_SECRET if configured (Vercel sends Authorization header)
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHeader = req.headers.authorization;
+      const expectedAuth = `Bearer ${cronSecret}`;
+      
+      if (!authHeader || authHeader !== expectedAuth) {
+        console.warn('[WorkflowRoute] Cron job authentication failed', {
+          hasHeader: !!authHeader,
+          headerValue: authHeader ? '***' : 'missing'
+        });
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized',
+          message: 'Invalid or missing CRON_SECRET'
+        });
+        return;
+      }
+      console.log('[WorkflowRoute] Cron job authenticated successfully');
+    }
+    
     // Get parameters from environment variables (for Vercel cron) or query string
     const stationsEnv = process.env.CRON_STATIONS;
     const locationEnv = process.env.CRON_DEFAULT_LOCATION;
