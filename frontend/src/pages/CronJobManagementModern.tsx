@@ -236,13 +236,13 @@ export const CronJobManagementModern = () => {
       console.log('[CronJobManagement] Calling workflowService.getExecutionHistory()...');
       console.log('[CronJobManagement] Calling workflowService.getWorkflowStats()...');
       
-      // Calculate date range: last 7 days for main history
-      const sevenDaysAgo = dayjs().subtract(7, 'day').startOf('day').toISOString();
+      // Calculate date range: last 30 days for main history (increased from 7 to show more executions)
+      const thirtyDaysAgo = dayjs().subtract(30, 'day').startOf('day').toISOString();
       const now = dayjs().endOf('day').toISOString();
       
       // Use Promise.allSettled to handle partial failures gracefully
       const [executionsResult, statsResult] = await Promise.allSettled([
-        workflowService.getExecutionHistory(100, 0, sevenDaysAgo, now), // Only last 7 days
+        workflowService.getExecutionHistory(100, 0, thirtyDaysAgo, now), // Last 30 days to show previous deployment executions
         workflowService.getWorkflowStats(),
       ]);
       
