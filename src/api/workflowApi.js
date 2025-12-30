@@ -8,32 +8,39 @@ const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
 // Try to load workflow routes (supports both compiled JS and TypeScript)
 let workflowRoutes;
 try {
+  const path = require('path');
+  const fs = require('fs');
+  
   if (isProduction || isVercel) {
-    // Production: Use compiled JavaScript from dist/
-    try {
-      // In production, this file is at dist/api/workflowApi.js
-      // Routes should be at dist/routes/workflow.route.js
-      const path = require('path');
-      const fs = require('fs');
-      
-      // Try to find the compiled route file
-      // __dirname will be dist/api/ in production
-      const routePath = path.join(__dirname, '../routes/workflow.route.js');
-      const routePathNoExt = path.join(__dirname, '../routes/workflow.route');
-      
-      // Check if file exists, if not try without .js extension (Node.js will add it)
-      if (fs.existsSync(routePath) || fs.existsSync(routePathNoExt)) {
-        workflowRoutes = require(routePathNoExt);
-        console.log('✅ Workflow routes loaded from compiled JavaScript:', routePathNoExt);
-      } else {
-        // Fallback: try relative require (Node.js will resolve it)
-        workflowRoutes = require('../routes/workflow.route');
-        console.log('✅ Workflow routes loaded from compiled JavaScript (fallback)');
+    // Production: Try multiple paths to find compiled routes
+    const possiblePaths = [
+      // Path 1: If this file is at dist/api/workflowApi.js, routes are at dist/routes/workflow.route.js
+      path.join(__dirname, '../routes/workflow.route'),
+      // Path 2: Absolute from project root
+      path.join(process.cwd(), 'dist/routes/workflow.route'),
+      // Path 3: Relative from current file location
+      '../routes/workflow.route',
+      // Path 4: Try from src (if dist doesn't exist)
+      path.join(process.cwd(), 'src/routes/workflow.route'),
+    ];
+    
+    let loaded = false;
+    for (const routePath of possiblePaths) {
+      try {
+        // Try to require the route
+        workflowRoutes = require(routePath);
+        console.log(`✅ Workflow routes loaded from: ${routePath}`);
+        loaded = true;
+        break;
+      } catch (err) {
+        // Try next path
+        continue;
       }
-    } catch (error) {
-      console.warn('⚠️  Compiled workflow routes not found, trying source...', error.message);
-      console.warn('⚠️  Error details:', error.stack);
-      // Fall through to try source with ts-node
+    }
+    
+    if (!loaded) {
+      // Last resort: try with ts-node (shouldn't happen in production but fallback)
+      console.warn('⚠️  Compiled routes not found, trying TypeScript fallback...');
       if (!require.extensions['.ts']) {
         require('ts-node/register/transpile-only');
       }
@@ -52,13 +59,26 @@ try {
   // Handle both default export and named export
   workflowRoutes = workflowRoutes.default || workflowRoutes;
   
+  // Verify we got a valid router
+  if (!workflowRoutes) {
+    throw new Error('Workflow routes loaded but is null/undefined');
+  }
+  
+  if (typeof workflowRoutes !== 'function' && typeof workflowRoutes.use !== 'function') {
+    console.error('❌ Workflow routes is not a valid Express router:', typeof workflowRoutes);
+    throw new Error('Workflow routes did not export a valid Express router');
+  }
+  
   // Mount all routes from the workflow router
   router.use('/', workflowRoutes);
   
   console.log('✅ Workflow routes mounted successfully');
+  console.log('✅ Available routes: /bulk-add, /executions, /stats, /stations/stats');
 } catch (error) {
   console.error('❌ Failed to load workflow routes:', error.message);
   console.error('❌ Error stack:', error.stack);
+  console.error('❌ Current directory:', process.cwd());
+  console.error('❌ __dirname:', __dirname);
   console.log('⚠️  Make sure TypeScript is compiled (pnpm build:backend) or ts-node is installed');
   
   // Provide fallback error responses for all routes
