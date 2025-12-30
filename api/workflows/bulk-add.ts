@@ -49,16 +49,23 @@ export default async function handler(
       });
     }
 
-    // Call your workflow API endpoint
-    const workflowApiUrl = process.env.WORKFLOW_API_URL || process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}/api/workflows/bulk-add`
-      : 'http://localhost:3001/api/workflows/bulk-add';
+    // Call your workflow API endpoint (use POST to the Express route)
+    // Note: We're calling the Express app route, not making an external HTTP call
+    // The Express route will handle the actual workflow execution
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.WORKFLOW_API_URL || 'http://localhost:3001';
+
+    const workflowApiUrl = `${baseUrl}/api/workflows/bulk-add`;
+    
+    console.log('[VercelCron] Calling workflow API:', workflowApiUrl);
+    console.log('[VercelCron] Parameters:', { stations, dateFrom, dateTo, location });
 
     const response = await fetch(workflowApiUrl, {
-      method: 'POST',
+      method: 'POST', // Express route expects POST for workflow execution
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.INTERNAL_API_KEY || ''}`
+        'Authorization': `Bearer ${process.env.INTERNAL_API_KEY || process.env.CRON_SECRET || ''}`
       },
       body: JSON.stringify({
         stations,
