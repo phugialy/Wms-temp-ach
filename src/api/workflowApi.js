@@ -11,12 +11,34 @@ try {
   if (isProduction || isVercel) {
     // Production: Use compiled JavaScript from dist/
     try {
-      // When this file is in dist/api/workflowApi.js, routes are in dist/routes/workflow.route.js
-      workflowRoutes = require('../routes/workflow.route');
-      console.log('✅ Workflow routes loaded from compiled JavaScript (dist/)');
+      // In production, this file is at dist/api/workflowApi.js
+      // Routes should be at dist/routes/workflow.route.js
+      const path = require('path');
+      const fs = require('fs');
+      
+      // Try to find the compiled route file
+      // __dirname will be dist/api/ in production
+      const routePath = path.join(__dirname, '../routes/workflow.route.js');
+      const routePathNoExt = path.join(__dirname, '../routes/workflow.route');
+      
+      // Check if file exists, if not try without .js extension (Node.js will add it)
+      if (fs.existsSync(routePath) || fs.existsSync(routePathNoExt)) {
+        workflowRoutes = require(routePathNoExt);
+        console.log('✅ Workflow routes loaded from compiled JavaScript:', routePathNoExt);
+      } else {
+        // Fallback: try relative require (Node.js will resolve it)
+        workflowRoutes = require('../routes/workflow.route');
+        console.log('✅ Workflow routes loaded from compiled JavaScript (fallback)');
+      }
     } catch (error) {
       console.warn('⚠️  Compiled workflow routes not found, trying source...', error.message);
-      throw error; // Fall through to try source
+      console.warn('⚠️  Error details:', error.stack);
+      // Fall through to try source with ts-node
+      if (!require.extensions['.ts']) {
+        require('ts-node/register/transpile-only');
+      }
+      workflowRoutes = require('../routes/workflow.route');
+      console.log('✅ Workflow routes loaded from TypeScript (fallback)');
     }
   } else {
     // Development: Use TypeScript files with ts-node
