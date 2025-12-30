@@ -91,6 +91,44 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Debug endpoint to check route loading
+app.get('/api/debug/routes', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  
+  const routeChecks = {
+    workflowApi: {
+      loaded: !!workflowApi,
+      type: typeof workflowApi,
+      hasUse: typeof workflowApi?.use === 'function'
+    },
+    cronScheduleApi: {
+      loaded: !!cronScheduleApi,
+      type: typeof cronScheduleApi
+    },
+    dashboardApi: {
+      loaded: !!dashboardApi,
+      type: typeof dashboardApi
+    },
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      cwd: process.cwd(),
+      __dirname: __dirname
+    },
+    files: {
+      workflowRouteExists: fs.existsSync(path.join(process.cwd(), 'dist/routes/workflow.route.js')),
+      workflowRoutePath: path.join(process.cwd(), 'dist/routes/workflow.route.js')
+    }
+  };
+  
+  res.json({
+    success: true,
+    data: routeChecks
+  });
+});
+
 // Serve frontend build files (React app)
 const frontendDistPath = path.join(__dirname, 'frontend', 'dist');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
